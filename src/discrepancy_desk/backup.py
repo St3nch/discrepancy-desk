@@ -104,5 +104,28 @@ def verify_generation(generation_root: Path) -> None:
             raise ValueError("restored database integrity check failed")
         if not verify_audit_chain(connection):
             raise ValueError("restored audit chain verification failed")
+
+        referenced: set[str] = set()
+        for row in connection.execute(
+            "SELECT relative_path, sha256, byte_size FROM evidence_refs ORDER BY relative_path"
+        ):
+            relative_path = str(row[0])
+            referenced.add(relative_path)
+            candidate = generation_root / "evidence" / relative_path
+            if not candidate.is_file():
+                raise ValueError(f"restored evidence missing: {relative_path}")
+            if candidate.stat().st_size != row[2]:
+                raise ValueError(f"database/evidence size disagreement: {relative_path}")
+            if _sha256(candidate) != row[1]:
+                raise ValueError(f"database/evidence hash disagreement: {relative_path}")
+
+        actual = {
+            path.relative_to(generation_root / "evidence").as_posix()
+            for path in (generation_root / "evidence").rglob("*")
+            if path.is_file()
+        }
+        orphaned = sorted(actual - referenced)
+        if orphaned:
+            raise ValueError(f"restored orphan evidence: {orphaned[0]}")
     finally:
         connection.close()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from discrepancy_desk.migration_integrity import MigrationIntegrityError, verify
 from discrepancy_desk.persistence import (
     approve_revision,
     create_revision,
+    register_evidence,
     transition_work_item,
     utc_now,
 )
@@ -93,6 +95,14 @@ def test_backup_restore_verifies_database_evidence_and_audit(tmp_path: Path) -> 
     connection = migrate(database)
     try:
         seed(connection)
+        register_evidence(
+            connection,
+            evidence,
+            evidence_id="evidence-1",
+            work_item_id="work-1",
+            relative_path="capture.json",
+            expected_sha256=hashlib.sha256((evidence / "capture.json").read_bytes()).hexdigest(),
+        )
         transition_work_item(connection, "work-1", "drafting", actor_id="owner")
     finally:
         connection.close()
@@ -110,6 +120,14 @@ def test_backup_tamper_is_rejected(tmp_path: Path) -> None:
     connection = migrate(database)
     try:
         seed(connection)
+        register_evidence(
+            connection,
+            evidence,
+            evidence_id="evidence-1",
+            work_item_id="work-1",
+            relative_path="capture.json",
+            expected_sha256=hashlib.sha256((evidence / "capture.json").read_bytes()).hexdigest(),
+        )
     finally:
         connection.close()
 
@@ -117,4 +135,63 @@ def test_backup_tamper_is_rejected(tmp_path: Path) -> None:
     copied_evidence = result.generation_root / "evidence" / "capture.json"
     copied_evidence.write_bytes(b"modified")
     with pytest.raises(ValueError, match="backup (size|hash) mismatch"):
+        verify_generation(result.generation_root)
+
+
+def test_restore_rejects_orphan_evidence(tmp_path: Path) -> None:
+    database = tmp_path / "live.sqlite3"
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    (evidence / "orphan.json").write_bytes(b"orphan")
+
+    connection = migrate(database)
+    try:
+        seed(connection)
+    finally:
+        connection.close()
+
+    result = create_generation(database, evidence, tmp_path / "backups")
+    with pytest.raises(ValueError, match="orphan evidence"):
+        verify_generation(result.generation_root)
+
+
+def test_restore_rejects_database_hash_disagreement(tmp_path: Path) -> None:
+    database = tmp_path / "live.sqlite3"
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    source = evidence / "capture.json"
+    source.write_bytes(b"canonical")
+
+    connection = migrate(database)
+    try:
+        seed(connection)
+        register_evidence(
+            connection,
+            evidence,
+            evidence_id="evidence-1",
+            work_item_id="work-1",
+            relative_path="capture.json",
+            expected_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+        )
+    finally:
+        connection.close()
+
+    result = create_generation(database, evidence, tmp_path / "backups")
+    restored_db = result.generation_root / "database" / "discrepancy-desk.sqlite3"
+    raw = sqlite3.connect(restored_db)
+    try:
+        raw.execute("UPDATE evidence_refs SET sha256=? WHERE id='evidence-1'", ("0" * 64,))
+        raw.commit()
+    finally:
+        raw.close()
+
+    manifest = result.manifest_path
+    data = __import__("json").loads(manifest.read_text(encoding="utf-8"))
+    for entry in data["files"]:
+        if entry["path"] == "database/discrepancy-desk.sqlite3":
+            entry["sha256"] = hashlib.sha256(restored_db.read_bytes()).hexdigest()
+            entry["byte_size"] = restored_db.stat().st_size
+    manifest.write_text(__import__("json").dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="database/evidence hash disagreement"):
         verify_generation(result.generation_root)

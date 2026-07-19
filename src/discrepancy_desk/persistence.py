@@ -279,3 +279,199 @@ def approve_revision(
     except Exception:
         connection.rollback()
         raise
+
+
+def _request_hash(value: object) -> str:
+    return _hash(_json_bytes(value))
+
+
+def _existing_operation(
+    connection: sqlite3.Connection, operation_type: str, operation_key: str, request_sha256: str
+) -> str | None:
+    row = connection.execute(
+        "SELECT request_sha256, result_ref FROM operation_keys WHERE operation_type=? AND operation_key=?",
+        (operation_type, operation_key),
+    ).fetchone()
+    if row is None:
+        return None
+    if row[0] != request_sha256:
+        raise ValueError("idempotency key reused with conflicting content")
+    return str(row[1])
+
+
+def _record_operation(
+    connection: sqlite3.Connection,
+    *,
+    operation_type: str,
+    operation_key: str,
+    request_sha256: str,
+    result_ref: str,
+) -> None:
+    connection.execute(
+        "INSERT INTO operation_keys VALUES (?, ?, ?, ?, ?)",
+        (operation_type, operation_key, request_sha256, result_ref, utc_now()),
+    )
+
+
+def mark_manual_ready(
+    connection: sqlite3.Connection,
+    *,
+    work_item_id: str,
+    approval_id: str,
+    actor_id: str,
+    operation_key: str,
+) -> str:
+    request = {"work_item_id": work_item_id, "approval_id": approval_id, "actor_id": actor_id}
+    request_sha256 = _request_hash(request)
+    begin_write(connection)
+    try:
+        existing = _existing_operation(connection, "manual_ready", operation_key, request_sha256)
+        if existing is not None:
+            connection.commit()
+            return existing
+        row = connection.execute(
+            """SELECT r.work_item_id, a.decision
+            FROM approvals a JOIN revisions r ON r.id=a.revision_id WHERE a.id=?""",
+            (approval_id,),
+        ).fetchone()
+        if row is None or row[0] != work_item_id or row[1] != "approved":
+            raise ValueError("manual-ready requires a current approval for this work item")
+        cursor = connection.execute(
+            "UPDATE work_items SET state='manual_ready', updated_at=? WHERE id=? AND state='approved'",
+            (utc_now(), work_item_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("manual-ready requires approved state")
+        append_audit(
+            connection, actor_type="human", actor_id=actor_id, operation="manual_ready",
+            record_type="work_item", record_id=work_item_id, payload={"approval_id": approval_id},
+        )
+        _record_operation(
+            connection, operation_type="manual_ready", operation_key=operation_key,
+            request_sha256=request_sha256, result_ref=work_item_id,
+        )
+        connection.commit()
+        return work_item_id
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def record_publication(
+    connection: sqlite3.Connection,
+    *,
+    publication_id: str,
+    revision_id: str,
+    approval_id: str,
+    platform: str,
+    owned_account_id: str,
+    external_post_id: str,
+    canonical_url: str,
+    actor_id: str,
+    operation_key: str,
+) -> str:
+    request = {
+        "publication_id": publication_id, "revision_id": revision_id, "approval_id": approval_id,
+        "platform": platform, "owned_account_id": owned_account_id,
+        "external_post_id": external_post_id, "canonical_url": canonical_url,
+    }
+    request_sha256 = _request_hash(request)
+    begin_write(connection)
+    try:
+        existing = _existing_operation(connection, "record_publication", operation_key, request_sha256)
+        if existing is not None:
+            connection.commit()
+            return existing
+        row = connection.execute(
+            """SELECT r.work_item_id, r.platform, r.owned_account_id, r.binding_sha256,
+                      a.binding_sha256, a.decision
+               FROM revisions r JOIN approvals a ON a.revision_id=r.id
+               WHERE r.id=? AND a.id=?""",
+            (revision_id, approval_id),
+        ).fetchone()
+        if row is None:
+            raise ValueError("publication requires linked revision and approval")
+        if row[1] != platform or row[2] != owned_account_id or row[3] != row[4] or row[5] != "approved":
+            raise ValueError("publication identity or approval binding mismatch")
+        state = connection.execute("SELECT state FROM work_items WHERE id=?", (row[0],)).fetchone()
+        if state is None or state[0] != "manual_ready":
+            raise ValueError("publication requires manual_ready state")
+        connection.execute(
+            """INSERT INTO publications
+            (id, revision_id, approval_id, platform, owned_account_id, external_post_id, canonical_url,
+             verification_state, observed_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'owner_confirmed', ?)""",
+            (publication_id, revision_id, approval_id, platform, owned_account_id, external_post_id, canonical_url, utc_now()),
+        )
+        connection.execute("UPDATE approvals SET decision='consumed' WHERE id=?", (approval_id,))
+        connection.execute("UPDATE work_items SET state='published', updated_at=? WHERE id=?", (utc_now(), row[0]))
+        append_audit(
+            connection, actor_type="human", actor_id=actor_id, operation="record_publication",
+            record_type="publication", record_id=publication_id,
+            payload={"revision_id": revision_id, "approval_id": approval_id, "external_post_id": external_post_id},
+        )
+        _record_operation(
+            connection, operation_type="record_publication", operation_key=operation_key,
+            request_sha256=request_sha256, result_ref=publication_id,
+        )
+        connection.commit()
+        return publication_id
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def record_metric_snapshot(
+    connection: sqlite3.Connection,
+    *,
+    snapshot_id: str,
+    publication_id: str,
+    observation_method: str,
+    capture_session_id: str,
+    metric_set_version: int,
+    metrics: object,
+    observation_state: str,
+    corrects_snapshot_id: str | None = None,
+) -> str:
+    request = {
+        "snapshot_id": snapshot_id, "publication_id": publication_id,
+        "observation_method": observation_method, "capture_session_id": capture_session_id,
+        "metric_set_version": metric_set_version, "metrics": metrics,
+        "observation_state": observation_state, "corrects_snapshot_id": corrects_snapshot_id,
+    }
+    request_sha256 = _request_hash(request)
+    operation_key = f"{publication_id}:{observation_method}:{capture_session_id}"
+    begin_write(connection)
+    try:
+        existing = _existing_operation(connection, "metric_snapshot", operation_key, request_sha256)
+        if existing is not None:
+            connection.commit()
+            return existing
+        if corrects_snapshot_id is not None:
+            prior = connection.execute(
+                "SELECT publication_id FROM metric_snapshots WHERE id=?", (corrects_snapshot_id,)
+            ).fetchone()
+            if prior is None or prior[0] != publication_id:
+                raise ValueError("metric correction must reference a snapshot for the same publication")
+        connection.execute(
+            """INSERT INTO metric_snapshots
+            (id, publication_id, observation_method, capture_session_id, captured_at, metric_set_version,
+             metrics_json, observation_state, corrects_snapshot_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (snapshot_id, publication_id, observation_method, capture_session_id, utc_now(), metric_set_version,
+             _json_bytes(metrics), observation_state, corrects_snapshot_id),
+        )
+        append_audit(
+            connection, actor_type="human" if observation_method == "manual" else "system",
+            actor_id="metric-recorder", operation="record_metric_snapshot",
+            record_type="metric_snapshot", record_id=snapshot_id,
+            payload={"publication_id": publication_id, "observation_method": observation_method,
+                     "capture_session_id": capture_session_id, "observation_state": observation_state},
+        )
+        _record_operation(
+            connection, operation_type="metric_snapshot", operation_key=operation_key,
+            request_sha256=request_sha256, result_ref=snapshot_id,
+        )
+        connection.commit()
+        return snapshot_id
+    except Exception:
+        connection.rollback()
+        raise
