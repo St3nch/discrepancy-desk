@@ -260,11 +260,11 @@ def approve_revision(
             VALUES (?, ?, ?, 'approved', ?, ?, ?)""",
             (approval_id, revision_id, binding_sha256, actor_id, utc_now(), action_id),
         )
-        connection.execute(
+        cursor = connection.execute(
             "UPDATE work_items SET state='approved', updated_at=? WHERE id=? AND state='human_review_needed'",
             (utc_now(), row[1]),
         )
-        if connection.total_changes < 2:
+        if cursor.rowcount != 1:
             raise ValueError("approval requires human_review_needed state")
         append_audit(
             connection,
