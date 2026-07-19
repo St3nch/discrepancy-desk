@@ -1,0 +1,436 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Annotated
+from uuid import uuid4
+
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+
+from .binding import RevisionBundle
+from .db import connect
+from .migration_runner import run_guarded_upgrade
+from .operator_service import (
+    add_source_record,
+    capture_work_item,
+    create_owned_account,
+    get_control_room_item,
+    reject_review,
+)
+from .persistence import (
+    approve_revision,
+    create_revision,
+    mark_manual_ready,
+    record_metric_snapshot,
+    record_publication,
+    record_publication_mismatch,
+    register_evidence,
+    transition_work_item,
+)
+
+PACKAGE_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = PACKAGE_ROOT.parent.parent
+TEMPLATES = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
+
+
+def _id(prefix: str) -> str:
+    return f"{prefix}-{uuid4()}"
+
+
+def _operation(prefix: str) -> str:
+    return f"web:{prefix}:{uuid4()}"
+
+
+def _connection(request: Request) -> sqlite3.Connection:
+    return connect(request.app.state.database_path)
+
+
+def _list_items(connection: sqlite3.Connection) -> list[dict[str, object]]:
+    rows = connection.execute(
+        """SELECT id, title, state, created_at, updated_at
+        FROM work_items ORDER BY updated_at DESC, id"""
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def create_app(
+    *,
+    database_path: Path | None = None,
+    evidence_root: Path | None = None,
+    migrations_root: Path | None = None,
+) -> FastAPI:
+    resolved_database = database_path or PROJECT_ROOT / "runtime" / "discrepancy-desk.sqlite3"
+    resolved_evidence = evidence_root or PROJECT_ROOT / "evidence"
+    resolved_migrations = migrations_root or PROJECT_ROOT / "migrations"
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        app.state.database_path = resolved_database
+        app.state.evidence_root = resolved_evidence
+        app.state.migrations_root = resolved_migrations
+        resolved_evidence.mkdir(parents=True, exist_ok=True)
+        run_guarded_upgrade(
+            resolved_database,
+            resolved_migrations,
+            operation_id=f"startup-{uuid4()}",
+        )
+        yield
+
+    app = FastAPI(title="The Discrepancy Desk Control Room", lifespan=lifespan)
+
+    @app.exception_handler(ValueError)
+    async def value_error_handler(request: Request, exc: ValueError) -> HTMLResponse:
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="error.html",
+            context={"message": str(exc)},
+            status_code=400,
+        )
+
+    @app.exception_handler(sqlite3.IntegrityError)
+    async def integrity_error_handler(request: Request, exc: sqlite3.IntegrityError) -> HTMLResponse:
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="error.html",
+            context={"message": f"Persistence conflict: {exc}"},
+            status_code=409,
+        )
+
+    @app.get("/health", response_class=HTMLResponse)
+    async def health(request: Request) -> HTMLResponse:
+        connection = _connection(request)
+        try:
+            integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+            version = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        finally:
+            connection.close()
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="health.html",
+            context={"integrity": integrity, "version": version},
+        )
+
+    @app.get("/", response_class=HTMLResponse)
+    async def index(request: Request) -> HTMLResponse:
+        connection = _connection(request)
+        try:
+            items = _list_items(connection)
+            accounts = [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT id, platform, external_account_id, username FROM owned_accounts ORDER BY id"
+                )
+            ]
+        finally:
+            connection.close()
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="index.html",
+            context={"items": items, "accounts": accounts},
+        )
+
+    @app.post("/accounts")
+    async def create_account_route(
+        request: Request,
+        platform: Annotated[str, Form()],
+        external_account_id: Annotated[str, Form()],
+        username: Annotated[str | None, Form()] = None,
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            create_owned_account(
+                connection,
+                account_id=_id("account"),
+                platform=platform,
+                external_account_id=external_account_id,
+                username=username or None,
+                operation_key=_operation("account"),
+                actor_id="owner-local",
+            )
+        finally:
+            connection.close()
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/work-items")
+    async def capture_route(
+        request: Request,
+        title: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        work_item_id = _id("work")
+        connection = _connection(request)
+        try:
+            capture_work_item(
+                connection,
+                work_item_id=work_item_id,
+                title=title,
+                operation_key=_operation("capture"),
+                actor_id="owner-local",
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.get("/work-items/{work_item_id}", response_class=HTMLResponse)
+    async def work_item_view(request: Request, work_item_id: str) -> HTMLResponse:
+        connection = _connection(request)
+        try:
+            item = get_control_room_item(connection, work_item_id)
+            accounts = [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT id, platform, username FROM owned_accounts ORDER BY id"
+                )
+            ]
+            approvals = [
+                dict(row)
+                for row in connection.execute(
+                    """SELECT a.id, a.revision_id, a.binding_sha256, a.decision, a.decided_at
+                    FROM approvals a JOIN revisions r ON r.id=a.revision_id
+                    WHERE r.work_item_id=? ORDER BY a.decided_at DESC""",
+                    (work_item_id,),
+                )
+            ]
+        finally:
+            connection.close()
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="work_item.html",
+            context={"item": item, "accounts": accounts, "approvals": approvals},
+        )
+
+    @app.post("/work-items/{work_item_id}/sources")
+    async def add_source_route(
+        request: Request,
+        work_item_id: str,
+        source_kind: Annotated[str, Form()],
+        locator: Annotated[str | None, Form()] = None,
+        note_text: Annotated[str | None, Form()] = None,
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            add_source_record(
+                connection,
+                source_id=_id("source"),
+                work_item_id=work_item_id,
+                source_kind=source_kind,
+                locator=locator or None,
+                note_text=note_text or None,
+                operation_key=_operation("source"),
+                actor_id="owner-local",
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.post("/work-items/{work_item_id}/evidence")
+    async def register_evidence_route(
+        request: Request,
+        work_item_id: str,
+        relative_path: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        candidate = (request.app.state.evidence_root / relative_path).resolve()
+        root = request.app.state.evidence_root.resolve()
+        if root not in candidate.parents and candidate != root:
+            raise ValueError("evidence path escapes governed root")
+        if not candidate.is_file():
+            raise ValueError("evidence file does not exist")
+        digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        connection = _connection(request)
+        try:
+            register_evidence(
+                connection,
+                request.app.state.evidence_root,
+                evidence_id=_id("evidence"),
+                work_item_id=work_item_id,
+                relative_path=relative_path,
+                expected_sha256=digest,
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.post("/work-items/{work_item_id}/draft")
+    async def draft_route(
+        request: Request,
+        work_item_id: str,
+        owned_account_id: Annotated[str, Form()],
+        authored_text: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            state = connection.execute(
+                "SELECT state FROM work_items WHERE id=?", (work_item_id,)
+            ).fetchone()
+            if state is None:
+                raise ValueError("unknown work item")
+            if state[0] in {"captured", "research_ready", "rejected", "withdrawn"}:
+                transition_work_item(connection, work_item_id, "drafting", actor_id="owner-local")
+            elif state[0] != "drafting":
+                raise ValueError("draft creation requires captured, research_ready, rejected, withdrawn, or drafting state")
+            account = connection.execute(
+                "SELECT platform FROM owned_accounts WHERE id=?", (owned_account_id,)
+            ).fetchone()
+            if account is None:
+                raise ValueError("unknown owned account")
+            create_revision(
+                connection,
+                revision_id=_id("revision"),
+                work_item_id=work_item_id,
+                owned_account_id=owned_account_id,
+                bundle=RevisionBundle(str(account[0]), owned_account_id, authored_text),
+            )
+            transition_work_item(
+                connection, work_item_id, "human_review_needed", actor_id="owner-local"
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.post("/work-items/{work_item_id}/approve")
+    async def approve_route(
+        request: Request,
+        work_item_id: str,
+        revision_id: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            row = connection.execute(
+                "SELECT binding_sha256, work_item_id FROM revisions WHERE id=?", (revision_id,)
+            ).fetchone()
+            if row is None or row[1] != work_item_id:
+                raise ValueError("revision does not belong to work item")
+            approve_revision(
+                connection,
+                approval_id=_id("approval"),
+                revision_id=revision_id,
+                binding_sha256=str(row[0]),
+                actor_id="owner-local",
+                action_id=_operation("approve"),
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.post("/work-items/{work_item_id}/reject")
+    async def reject_route(
+        request: Request,
+        work_item_id: str,
+        reason: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            reject_review(
+                connection,
+                work_item_id=work_item_id,
+                reason=reason,
+                actor_id="owner-local",
+                operation_key=_operation("reject"),
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.post("/work-items/{work_item_id}/manual-ready")
+    async def manual_ready_route(
+        request: Request,
+        work_item_id: str,
+        approval_id: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            mark_manual_ready(
+                connection,
+                work_item_id=work_item_id,
+                approval_id=approval_id,
+                actor_id="owner-local",
+                operation_key=_operation("manual-ready"),
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.post("/work-items/{work_item_id}/publication")
+    async def publication_route(
+        request: Request,
+        work_item_id: str,
+        revision_id: Annotated[str, Form()],
+        approval_id: Annotated[str, Form()],
+        external_post_id: Annotated[str, Form()],
+        canonical_url: Annotated[str, Form()],
+        mismatch_reason: Annotated[str | None, Form()] = None,
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            revision = connection.execute(
+                "SELECT platform, owned_account_id, work_item_id FROM revisions WHERE id=?",
+                (revision_id,),
+            ).fetchone()
+            if revision is None or revision[2] != work_item_id:
+                raise ValueError("revision does not belong to work item")
+            common = dict(
+                connection=connection,
+                publication_id=_id("publication"),
+                revision_id=revision_id,
+                approval_id=approval_id,
+                platform=str(revision[0]),
+                owned_account_id=str(revision[1]),
+                external_post_id=external_post_id,
+                canonical_url=canonical_url,
+                actor_id="owner-local",
+                operation_key=_operation("publication"),
+            )
+            if mismatch_reason and mismatch_reason.strip():
+                record_publication_mismatch(
+                    **common,
+                    mismatch_reason=mismatch_reason,
+                )
+            else:
+                record_publication(**common)
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.post("/work-items/{work_item_id}/metrics")
+    async def metric_route(
+        request: Request,
+        work_item_id: str,
+        observation_method: Annotated[str, Form()],
+        observation_state: Annotated[str, Form()],
+        metrics_json: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        try:
+            metrics = json.loads(metrics_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("metrics must be valid JSON") from exc
+        connection = _connection(request)
+        try:
+            publication = connection.execute(
+                """SELECT p.id FROM publications p JOIN revisions r ON r.id=p.revision_id
+                WHERE r.work_item_id=? ORDER BY p.observed_at DESC LIMIT 1""",
+                (work_item_id,),
+            ).fetchone()
+            if publication is None:
+                raise ValueError("metrics require a publication")
+            record_metric_snapshot(
+                connection,
+                snapshot_id=_id("metric"),
+                publication_id=str(publication[0]),
+                observation_method=observation_method,
+                capture_session_id=_operation("metric-session"),
+                metric_set_version=1,
+                metrics=metrics,
+                observation_state=observation_state,
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    return app
+
+
+app = create_app()

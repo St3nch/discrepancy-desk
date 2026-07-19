@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Discrepancy Desk{% endblock %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 0 auto; padding: 1rem; }
+    nav { display: flex; gap: 1rem; margin-bottom: 1rem; }
+    section { border: 1px solid #bbb; padding: 1rem; margin: 1rem 0; }
+    form { display: grid; gap: .6rem; margin: .75rem 0; }
+    input, select, textarea, button { font: inherit; padding: .5rem; }
+    textarea { min-height: 6rem; }
+    .muted { opacity: .72; }
+    .state { font-weight: 700; }
+    code, pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+<nav><a href="/">Control Room</a><a href="/health">Health</a></nav>
+<h1>The Discrepancy Desk</h1>
+<p class="muted">AI drafts. Human clears. Database remembers. Metrics judge.</p>
+{% block content %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Control Room{% endblock %}
+{% block content %}
+<section><h2>Owned account</h2><form method="post" action="/accounts"><select name="platform"><option value="x">X</option><option value="truth_social">Truth Social</option></select><input name="external_account_id" placeholder="Stable external account ID" required><input name="username" placeholder="Username"><button type="submit">Register owned account</button></form><ul>{% for account in accounts %}<li>{{ account.platform }} — {{ account.username or account.external_account_id }}</li>{% else %}<li>No account registered.</li>{% endfor %}</ul></section>
+<section><h2>Capture work</h2><form method="post" action="/work-items"><input name="title" placeholder="Working title" required><button type="submit">Capture</button></form></section>
+<section><h2>Work items</h2><ul>{% for item in items %}<li><a href="/work-items/{{ item.id }}">{{ item.title }}</a> <span class="state">{{ item.state }}</span></li>{% else %}<li>No work items.</li>{% endfor %}</ul></section>
+{% endblock %}

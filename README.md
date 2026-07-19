@@ -14,6 +14,7 @@ No autonomous posting, replies, likes, follows, reposts, or direct messages.
 uv sync --extra dev
 uv run alembic upgrade head
 uv run pytest
+uv run uvicorn discrepancy_desk.web:app --host 127.0.0.1 --port 8000
 ```
 
 Runtime databases, backups, credentials, and raw evidence are excluded from Git.
