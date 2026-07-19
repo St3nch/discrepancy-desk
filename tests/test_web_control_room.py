@@ -245,18 +245,24 @@ def test_account_form_retry_reuses_stable_identity_without_raw_constraint_error(
         assert scalar(database, "SELECT count(*) FROM owned_accounts") == 1
 
 
-def test_account_form_metadata_conflict_is_plain_language(tmp_path: Path) -> None:
+def test_account_form_updates_username_and_blank_does_not_clear_it(tmp_path: Path) -> None:
     client, database, _ = client_for(tmp_path)
     with client:
         client.post(
             "/accounts",
             data={"platform": "x", "external_account_id": "stable-123", "username": "Desk"},
         )
-        conflict = client.post(
+        updated = client.post(
             "/accounts",
             data={"platform": "x", "external_account_id": "stable-123", "username": "OtherDesk"},
+            follow_redirects=False,
         )
-        assert conflict.status_code == 400
-        assert "different username metadata" in conflict.text
-        assert "UNIQUE constraint failed" not in conflict.text
+        preserved = client.post(
+            "/accounts",
+            data={"platform": "x", "external_account_id": "stable-123", "username": ""},
+            follow_redirects=False,
+        )
+        assert updated.status_code == 303
+        assert preserved.status_code == 303
         assert scalar(database, "SELECT count(*) FROM owned_accounts") == 1
+        assert scalar(database, "SELECT username FROM owned_accounts") == "OtherDesk"

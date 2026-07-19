@@ -266,8 +266,8 @@ def test_owned_account_stable_identity_replay_uses_existing_record(tmp_path: Pat
         connection.close()
 
 
-def test_owned_account_stable_identity_metadata_conflict_is_plain_and_atomic(tmp_path: Path) -> None:
-    connection = migrate(tmp_path / "stable-account-conflict.sqlite3")
+def test_owned_account_stable_identity_updates_mutable_username_metadata(tmp_path: Path) -> None:
+    connection = migrate(tmp_path / "stable-account-update.sqlite3")
     try:
         create_owned_account(
             connection,
@@ -278,19 +278,32 @@ def test_owned_account_stable_identity_metadata_conflict_is_plain_and_atomic(tmp
             operation_key="account-first",
             actor_id="owner",
         )
-        with pytest.raises(ValueError, match="different username metadata"):
-            create_owned_account(
-                connection,
-                account_id="acct-second",
-                platform="x",
-                external_account_id="external-stable",
-                username="OtherDesk",
-                operation_key="account-second",
-                actor_id="owner",
-            )
+        updated = create_owned_account(
+            connection,
+            account_id="acct-second",
+            platform="x",
+            external_account_id="external-stable",
+            username="OtherDesk",
+            operation_key="account-second",
+            actor_id="owner",
+        )
+        preserved = create_owned_account(
+            connection,
+            account_id="acct-third",
+            platform="x",
+            external_account_id="external-stable",
+            username=None,
+            operation_key="account-third",
+            actor_id="owner",
+        )
+        assert updated == preserved == "acct-first"
         assert connection.execute("SELECT count(*) FROM owned_accounts").fetchone()[0] == 1
+        assert connection.execute("SELECT username FROM owned_accounts").fetchone()[0] == "OtherDesk"
         assert connection.execute(
-            "SELECT count(*) FROM operation_keys WHERE operation_key='account-second'"
-        ).fetchone()[0] == 0
+            "SELECT count(*) FROM audit_events WHERE operation='update_owned_account_metadata'"
+        ).fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT count(*) FROM operation_keys WHERE operation_key IN ('account-second','account-third')"
+        ).fetchone()[0] == 2
     finally:
         connection.close()

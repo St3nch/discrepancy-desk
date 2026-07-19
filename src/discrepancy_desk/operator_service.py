@@ -65,12 +65,28 @@ def create_owned_account(
             (platform, external_account_id),
         ).fetchone()
         if stable_identity is not None:
-            existing_username = stable_identity["username"]
-            if existing_username != username:
-                raise ValueError(
-                    "owned account identity already exists with different username metadata"
-                )
             existing_account_id = str(stable_identity["id"])
+            existing_username = stable_identity["username"]
+            resolved_username = username if username is not None else existing_username
+            if resolved_username != existing_username:
+                connection.execute(
+                    "UPDATE owned_accounts SET username=? WHERE id=?",
+                    (resolved_username, existing_account_id),
+                )
+                append_audit(
+                    connection,
+                    actor_type="human",
+                    actor_id=actor_id,
+                    operation="update_owned_account_metadata",
+                    record_type="owned_account",
+                    record_id=existing_account_id,
+                    payload={
+                        "platform": platform,
+                        "external_account_id": external_account_id,
+                        "previous_username": existing_username,
+                        "username": resolved_username,
+                    },
+                )
             record_operation(
                 connection,
                 operation_type="create_owned_account",
