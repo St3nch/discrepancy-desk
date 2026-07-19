@@ -23,7 +23,7 @@ def test_guarded_migration_success_clears_dirty_marker(tmp_path: Path) -> None:
     assert not dirty_marker_path(database).exists()
     raw = sqlite3.connect(database)
     try:
-        assert raw.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0001"
+        assert raw.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0002"
     finally:
         raw.close()
 

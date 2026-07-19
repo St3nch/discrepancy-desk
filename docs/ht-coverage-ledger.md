@@ -9,7 +9,7 @@ Active M03 implementation ledger. A row marked `partial` is not a satisfied exit
 | HT-01 | Exact authored-text approval binding | whitespace, CRLF/LF, zero-width, platform mutations | partial |
 | HT-02 | Approval freshness and exact revision | stale binding rejection, wrong-state approval rollback | partial |
 | HT-03 | Lifecycle legality and invalidation | legal/illegal transitions, dedicated approval gate, manual-ready/publication and mismatch gates | substantial |
-| HT-04 | Stable external identity | fabricated FK and cross-platform publication rejection | partial |
+| HT-04 | Stable external identity | fabricated FK, governed owned-account creation, unique external identity, and cross-platform publication rejection | substantial |
 | HT-05 | Canonical evidence integrity | path escape, missing, hash mismatch | partial |
 | HT-06 | Database/filesystem reconciliation | missing, orphan, hash and size disagreement on restore | substantial |
 | HT-07 | Connection foreign-key enforcement | connection pragma verification and fabricated identity rejection | substantial |

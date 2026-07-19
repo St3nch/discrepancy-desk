@@ -285,11 +285,11 @@ def approve_revision(
         raise
 
 
-def _request_hash(value: object) -> str:
+def request_hash(value: object) -> str:
     return _hash(_json_bytes(value))
 
 
-def _existing_operation(
+def existing_operation(
     connection: sqlite3.Connection, operation_type: str, operation_key: str, request_sha256: str
 ) -> str | None:
     row = connection.execute(
@@ -303,7 +303,7 @@ def _existing_operation(
     return str(row[1])
 
 
-def _record_operation(
+def record_operation(
     connection: sqlite3.Connection,
     *,
     operation_type: str,
@@ -326,10 +326,10 @@ def mark_manual_ready(
     operation_key: str,
 ) -> str:
     request = {"work_item_id": work_item_id, "approval_id": approval_id, "actor_id": actor_id}
-    request_sha256 = _request_hash(request)
+    request_sha256 = request_hash(request)
     begin_write(connection)
     try:
-        existing = _existing_operation(connection, "manual_ready", operation_key, request_sha256)
+        existing = existing_operation(connection, "manual_ready", operation_key, request_sha256)
         if existing is not None:
             connection.commit()
             return existing
@@ -350,7 +350,7 @@ def mark_manual_ready(
             connection, actor_type="human", actor_id=actor_id, operation="manual_ready",
             record_type="work_item", record_id=work_item_id, payload={"approval_id": approval_id},
         )
-        _record_operation(
+        record_operation(
             connection, operation_type="manual_ready", operation_key=operation_key,
             request_sha256=request_sha256, result_ref=work_item_id,
         )
@@ -379,10 +379,10 @@ def record_publication(
         "platform": platform, "owned_account_id": owned_account_id,
         "external_post_id": external_post_id, "canonical_url": canonical_url,
     }
-    request_sha256 = _request_hash(request)
+    request_sha256 = request_hash(request)
     begin_write(connection)
     try:
-        existing = _existing_operation(connection, "record_publication", operation_key, request_sha256)
+        existing = existing_operation(connection, "record_publication", operation_key, request_sha256)
         if existing is not None:
             connection.commit()
             return existing
@@ -413,7 +413,7 @@ def record_publication(
             record_type="publication", record_id=publication_id,
             payload={"revision_id": revision_id, "approval_id": approval_id, "external_post_id": external_post_id},
         )
-        _record_operation(
+        record_operation(
             connection, operation_type="record_publication", operation_key=operation_key,
             request_sha256=request_sha256, result_ref=publication_id,
         )
@@ -442,11 +442,11 @@ def record_metric_snapshot(
         "metric_set_version": metric_set_version, "metrics": metrics,
         "observation_state": observation_state, "corrects_snapshot_id": corrects_snapshot_id,
     }
-    request_sha256 = _request_hash(request)
+    request_sha256 = request_hash(request)
     operation_key = f"{publication_id}:{observation_method}:{capture_session_id}"
     begin_write(connection)
     try:
-        existing = _existing_operation(connection, "metric_snapshot", operation_key, request_sha256)
+        existing = existing_operation(connection, "metric_snapshot", operation_key, request_sha256)
         if existing is not None:
             connection.commit()
             return existing
@@ -470,7 +470,7 @@ def record_metric_snapshot(
             payload={"publication_id": publication_id, "observation_method": observation_method,
                      "capture_session_id": capture_session_id, "observation_state": observation_state},
         )
-        _record_operation(
+        record_operation(
             connection, operation_type="metric_snapshot", operation_key=operation_key,
             request_sha256=request_sha256, result_ref=snapshot_id,
         )
@@ -528,10 +528,10 @@ def record_publication_mismatch(
         "owned_account_id": owned_account_id, "external_post_id": external_post_id,
         "canonical_url": canonical_url, "mismatch_reason": mismatch_reason,
     }
-    request_sha256 = _request_hash(request)
+    request_sha256 = request_hash(request)
     begin_write(connection)
     try:
-        existing = _existing_operation(
+        existing = existing_operation(
             connection, "record_publication_mismatch", operation_key, request_sha256
         )
         if existing is not None:
@@ -574,7 +574,7 @@ def record_publication_mismatch(
                 "external_post_id": external_post_id, "mismatch_reason": mismatch_reason,
             },
         )
-        _record_operation(
+        record_operation(
             connection, operation_type="record_publication_mismatch",
             operation_key=operation_key, request_sha256=request_sha256,
             result_ref=publication_id,

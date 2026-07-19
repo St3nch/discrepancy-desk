@@ -17,3 +17,9 @@ uv run pytest
 ```
 
 Runtime databases, backups, credentials, and raw evidence are excluded from Git.
+
+## Current M03 service boundary
+
+The minimal operator service loop supports governed account setup, work capture, bounded source records, evidence registration, exact revision approval, manual-ready designation, matched or mismatched publication recording, metric observations, and control-room reads.
+
+The production dashboard and all autonomous platform actions remain out of scope.
