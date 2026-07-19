@@ -28,9 +28,11 @@ def run_migrations_online() -> None:
         connection.exec_driver_sql("PRAGMA foreign_keys = ON")
         connection.exec_driver_sql("PRAGMA journal_mode = WAL")
         connection.exec_driver_sql("PRAGMA busy_timeout = 5000")
+        connection.commit()
         context.configure(connection=connection, render_as_batch=True)
         with context.begin_transaction():
             context.run_migrations()
+        connection.commit()
 
 
 if context.is_offline_mode():
