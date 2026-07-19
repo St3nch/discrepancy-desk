@@ -131,6 +131,10 @@ def transition_work_item(
         if row is None:
             raise ValueError("unknown work item")
         source_state = row[0]
+        if target_state in {"approved", "manual_ready", "published", "publication_mismatch"}:
+            raise ValueError(
+                f"illegal transition: {target_state} requires dedicated governed operation"
+            )
         if target_state not in LEGAL_TRANSITIONS.get(source_state, set()):
             raise ValueError(f"illegal transition: {source_state} -> {target_state}")
         now = utc_now()
@@ -475,3 +479,122 @@ def record_metric_snapshot(
     except Exception:
         connection.rollback()
         raise
+
+
+OBSERVATION_STATES = frozenset({
+    "observed_value", "observed_empty", "not_requested", "not_returned",
+    "unavailable", "withheld", "malformed", "errored", "unsupported",
+})
+
+
+def query_metric_snapshots_by_state(
+    connection: sqlite3.Connection, *, publication_id: str, states: set[str]
+) -> list[sqlite3.Row]:
+    if not states:
+        raise ValueError("at least one explicit observation state is required")
+    unknown = states - OBSERVATION_STATES
+    if unknown:
+        raise ValueError(f"unsupported observation states: {sorted(unknown)}")
+    placeholders = ",".join("?" for _ in sorted(states))
+    return list(
+        connection.execute(
+            f"""SELECT * FROM metric_snapshots
+            WHERE publication_id=? AND observation_state IN ({placeholders})
+            ORDER BY captured_at, id""",
+            (publication_id, *sorted(states)),
+        )
+    )
+
+
+def record_publication_mismatch(
+    connection: sqlite3.Connection,
+    *,
+    publication_id: str,
+    revision_id: str,
+    approval_id: str,
+    platform: str,
+    owned_account_id: str,
+    external_post_id: str,
+    canonical_url: str,
+    mismatch_reason: str,
+    actor_id: str,
+    operation_key: str,
+) -> str:
+    if not mismatch_reason.strip():
+        raise ValueError("publication mismatch reason is required")
+    request = {
+        "publication_id": publication_id, "revision_id": revision_id,
+        "approval_id": approval_id, "platform": platform,
+        "owned_account_id": owned_account_id, "external_post_id": external_post_id,
+        "canonical_url": canonical_url, "mismatch_reason": mismatch_reason,
+    }
+    request_sha256 = _request_hash(request)
+    begin_write(connection)
+    try:
+        existing = _existing_operation(
+            connection, "record_publication_mismatch", operation_key, request_sha256
+        )
+        if existing is not None:
+            connection.commit()
+            return existing
+        row = connection.execute(
+            """SELECT r.work_item_id, r.platform, r.owned_account_id, r.binding_sha256,
+                      a.binding_sha256, a.decision
+               FROM revisions r JOIN approvals a ON a.revision_id=r.id
+               WHERE r.id=? AND a.id=?""",
+            (revision_id, approval_id),
+        ).fetchone()
+        if row is None:
+            raise ValueError("publication mismatch requires linked revision and approval")
+        if row[1] != platform or row[2] != owned_account_id or row[3] != row[4] or row[5] != "approved":
+            raise ValueError("publication mismatch identity or approval binding mismatch")
+        state = connection.execute(
+            "SELECT state FROM work_items WHERE id=?", (row[0],)
+        ).fetchone()
+        if state is None or state[0] != "manual_ready":
+            raise ValueError("publication mismatch requires manual_ready state")
+        connection.execute(
+            """INSERT INTO publications
+            (id, revision_id, approval_id, platform, owned_account_id, external_post_id,
+             canonical_url, verification_state, observed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'verified_mismatch', ?)""",
+            (publication_id, revision_id, approval_id, platform, owned_account_id,
+             external_post_id, canonical_url, utc_now()),
+        )
+        connection.execute("UPDATE approvals SET decision='consumed' WHERE id=?", (approval_id,))
+        connection.execute(
+            "UPDATE work_items SET state='publication_mismatch', updated_at=? WHERE id=?",
+            (utc_now(), row[0]),
+        )
+        append_audit(
+            connection, actor_type="human", actor_id=actor_id,
+            operation="record_publication_mismatch", record_type="publication",
+            record_id=publication_id, payload={
+                "revision_id": revision_id, "approval_id": approval_id,
+                "external_post_id": external_post_id, "mismatch_reason": mismatch_reason,
+            },
+        )
+        _record_operation(
+            connection, operation_type="record_publication_mismatch",
+            operation_key=operation_key, request_sha256=request_sha256,
+            result_ref=publication_id,
+        )
+        connection.commit()
+        return publication_id
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def detector_advice(
+    *, work_item_id: str, detector_name: str, outcome: str, detail: str | None = None
+) -> dict[str, str | None]:
+    if outcome not in {"flagged", "not_detected", "errored"}:
+        raise ValueError("unsupported detector outcome")
+    return {
+        "work_item_id": work_item_id,
+        "detector_name": detector_name,
+        "outcome": outcome,
+        "detail": detail,
+        "authority": "advisory_only",
+    }
