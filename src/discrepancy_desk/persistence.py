@@ -403,7 +403,8 @@ def record_publication(
         connection.execute(
             """INSERT INTO publications
             (id, revision_id, approval_id, platform, owned_account_id, external_post_id, canonical_url,
-             verification_state, observed_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'owner_confirmed', ?)""",
+             verification_state, observed_at, resolution_kind)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'owner_confirmed', ?, 'initial')""",
             (publication_id, revision_id, approval_id, platform, owned_account_id, external_post_id, canonical_url, utc_now()),
         )
         connection.execute("UPDATE approvals SET decision='consumed' WHERE id=?", (approval_id,))
@@ -556,8 +557,8 @@ def record_publication_mismatch(
         connection.execute(
             """INSERT INTO publications
             (id, revision_id, approval_id, platform, owned_account_id, external_post_id,
-             canonical_url, verification_state, observed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'verified_mismatch', ?)""",
+             canonical_url, verification_state, observed_at, resolution_kind)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'verified_mismatch', ?, 'initial')""",
             (publication_id, revision_id, approval_id, platform, owned_account_id,
              external_post_id, canonical_url, utc_now()),
         )
@@ -598,3 +599,163 @@ def detector_advice(
         "detail": detail,
         "authority": "advisory_only",
     }
+
+
+def create_successor_revision(
+    connection: sqlite3.Connection,
+    *,
+    revision_id: str,
+    predecessor_revision_id: str,
+    work_item_id: str,
+    owned_account_id: str,
+    bundle: RevisionBundle,
+    actor_id: str,
+) -> str:
+    binding = revision_binding(bundle)
+    begin_write(connection)
+    try:
+        predecessor = connection.execute(
+            """SELECT work_item_id, platform, owned_account_id
+            FROM revisions WHERE id=?""",
+            (predecessor_revision_id,),
+        ).fetchone()
+        if predecessor is None or predecessor[0] != work_item_id:
+            raise ValueError("successor revision requires a predecessor for this work item")
+        if predecessor[1] != bundle.platform or owned_account_id != bundle.owned_account_id:
+            raise ValueError("successor revision platform or account mismatch")
+        account = connection.execute(
+            "SELECT platform FROM owned_accounts WHERE id=?", (owned_account_id,)
+        ).fetchone()
+        if account is None or account[0] != bundle.platform:
+            raise ValueError("successor revision requires the governed owned account")
+        state = connection.execute(
+            "SELECT state FROM work_items WHERE id=?", (work_item_id,)
+        ).fetchone()
+        allowed = {"human_review_needed", "approved", "manual_ready", "rejected", "publication_mismatch"}
+        if state is None or state[0] not in allowed:
+            raise ValueError("successor revision requires review, approved, manual-ready, rejected, or publication-mismatch state")
+        superseded = [
+            str(row[0])
+            for row in connection.execute(
+                """SELECT a.id FROM approvals a JOIN revisions r ON r.id=a.revision_id
+                WHERE r.work_item_id=? AND a.decision='approved'""",
+                (work_item_id,),
+            )
+        ]
+        connection.execute(
+            """UPDATE approvals SET decision='superseded'
+            WHERE id IN (SELECT a.id FROM approvals a JOIN revisions r ON r.id=a.revision_id
+                         WHERE r.work_item_id=? AND a.decision='approved')""",
+            (work_item_id,),
+        )
+        connection.execute(
+            """INSERT INTO revisions
+            (id, work_item_id, platform, owned_account_id, authored_text, component_json,
+             binding_version, binding_sha256, created_at, supersedes_revision_id)
+            VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+            (revision_id, work_item_id, bundle.platform, owned_account_id,
+             bundle.authored_text.encode("utf-8"), binding_bytes(bundle), binding, utc_now(),
+             predecessor_revision_id),
+        )
+        connection.execute(
+            "UPDATE work_items SET state='human_review_needed', updated_at=? WHERE id=?",
+            (utc_now(), work_item_id),
+        )
+        append_audit(
+            connection, actor_type="human", actor_id=actor_id,
+            operation="create_successor_revision", record_type="revision",
+            record_id=revision_id, payload={
+                "predecessor_revision_id": predecessor_revision_id,
+                "binding_sha256": binding, "superseded_approval_ids": superseded,
+            },
+        )
+        connection.commit()
+        return binding
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def record_replacement_publication(
+    connection: sqlite3.Connection,
+    *,
+    publication_id: str,
+    replaces_publication_id: str,
+    revision_id: str,
+    approval_id: str,
+    platform: str,
+    owned_account_id: str,
+    external_post_id: str,
+    canonical_url: str,
+    actor_id: str,
+    operation_key: str,
+) -> str:
+    request = {
+        "publication_id": publication_id, "replaces_publication_id": replaces_publication_id,
+        "revision_id": revision_id, "approval_id": approval_id, "platform": platform,
+        "owned_account_id": owned_account_id, "external_post_id": external_post_id,
+        "canonical_url": canonical_url,
+    }
+    request_sha256 = request_hash(request)
+    begin_write(connection)
+    try:
+        existing = existing_operation(connection, "record_replacement_publication", operation_key, request_sha256)
+        if existing is not None:
+            connection.commit()
+            return existing
+        replacement = connection.execute(
+            """SELECT p.id FROM publications p JOIN revisions r ON r.id=p.revision_id
+            WHERE p.replaces_publication_id=?""", (replaces_publication_id,)
+        ).fetchone()
+        if replacement is not None:
+            raise ValueError("mismatched publication already has a replacement")
+        original = connection.execute(
+            """SELECT r.work_item_id, p.verification_state
+            FROM publications p JOIN revisions r ON r.id=p.revision_id WHERE p.id=?""",
+            (replaces_publication_id,),
+        ).fetchone()
+        row = connection.execute(
+            """SELECT r.work_item_id, r.platform, r.owned_account_id, r.binding_sha256,
+                      a.binding_sha256, a.decision, r.supersedes_revision_id
+               FROM revisions r JOIN approvals a ON a.revision_id=r.id
+               WHERE r.id=? AND a.id=?""",
+            (revision_id, approval_id),
+        ).fetchone()
+        if original is None or original[1] != "verified_mismatch":
+            raise ValueError("replacement requires a preserved mismatched publication")
+        if row is None or row[0] != original[0] or row[6] is None:
+            raise ValueError("replacement requires an approved successor revision for the same work item")
+        if row[1] != platform or row[2] != owned_account_id or row[3] != row[4] or row[5] != "approved":
+            raise ValueError("replacement publication identity or approval binding mismatch")
+        state = connection.execute("SELECT state FROM work_items WHERE id=?", (row[0],)).fetchone()
+        if state is None or state[0] != "manual_ready":
+            raise ValueError("replacement publication requires manual_ready state")
+        connection.execute(
+            """INSERT INTO publications
+            (id, revision_id, approval_id, platform, owned_account_id, external_post_id, canonical_url,
+             verification_state, observed_at, replaces_publication_id, resolution_kind)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'owner_confirmed', ?, ?, 'replacement')""",
+            (publication_id, revision_id, approval_id, platform, owned_account_id, external_post_id,
+             canonical_url, utc_now(), replaces_publication_id),
+        )
+        connection.execute("UPDATE approvals SET decision='consumed' WHERE id=?", (approval_id,))
+        connection.execute("UPDATE work_items SET state='published', updated_at=? WHERE id=?",
+                           (utc_now(), row[0]))
+        append_audit(
+            connection, actor_type="human", actor_id=actor_id,
+            operation="record_replacement_publication", record_type="publication",
+            record_id=publication_id, payload={
+                "replaces_publication_id": replaces_publication_id,
+                "revision_id": revision_id, "approval_id": approval_id,
+                "external_post_id": external_post_id,
+            },
+        )
+        record_operation(
+            connection, operation_type="record_replacement_publication",
+            operation_key=operation_key, request_sha256=request_sha256, result_ref=publication_id,
+        )
+        connection.commit()
+        return publication_id
+    except Exception:
+        connection.rollback()
+        raise

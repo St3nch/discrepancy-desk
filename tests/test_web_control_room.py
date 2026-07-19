@@ -34,7 +34,7 @@ def test_health_and_empty_control_room(tmp_path: Path) -> None:
         health = client.get("/health")
         assert health.status_code == 200
         assert "SQLite integrity" in health.text
-        assert "0002" in health.text
+        assert "0003" in health.text
         index = client.get("/")
         assert index.status_code == 200
         assert "No work items" in index.text
@@ -266,3 +266,79 @@ def test_account_form_updates_username_and_blank_does_not_clear_it(tmp_path: Pat
         assert preserved.status_code == 303
         assert scalar(database, "SELECT count(*) FROM owned_accounts") == 1
         assert scalar(database, "SELECT username FROM owned_accounts") == "OtherDesk"
+
+
+def test_http_successor_and_replacement_publication_flow(tmp_path: Path) -> None:
+    client, database, _ = client_for(tmp_path)
+    with client:
+        client.post(
+            "/accounts",
+            data={"platform": "x", "external_account_id": "account-1", "username": "Desk"},
+        )
+        account_id = str(scalar(database, "SELECT id FROM owned_accounts"))
+        captured = client.post(
+            "/work-items", data={"title": "Replacement fixture"}, follow_redirects=False
+        )
+        work_item_id = captured.headers["location"].rsplit("/", 1)[-1]
+        client.post(
+            f"/work-items/{work_item_id}/draft",
+            data={"owned_account_id": account_id, "authored_text": "Original approved text"},
+        )
+        revision_1 = str(scalar(database, "SELECT id FROM revisions"))
+        client.post(f"/work-items/{work_item_id}/approve", data={"revision_id": revision_1})
+        approval_1 = str(scalar(database, "SELECT id FROM approvals"))
+        client.post(f"/work-items/{work_item_id}/manual-ready", data={"approval_id": approval_1})
+        client.post(
+            f"/work-items/{work_item_id}/publication",
+            data={
+                "revision_id": revision_1,
+                "approval_id": approval_1,
+                "external_post_id": "wrong-post",
+                "canonical_url": "https://x.invalid/wrong-post",
+                "mismatch_reason": "Manual post omitted a line",
+                "replaces_publication_id": "",
+            },
+        )
+        mismatched_publication = str(scalar(database, "SELECT id FROM publications"))
+        revised = client.post(
+            f"/work-items/{work_item_id}/revise",
+            data={
+                "predecessor_revision_id": revision_1,
+                "authored_text": "Corrected exact text",
+            },
+            follow_redirects=False,
+        )
+        assert revised.status_code == 303
+        revision_2 = str(
+            scalar(
+                database,
+                "SELECT id FROM revisions WHERE supersedes_revision_id=?",
+                (revision_1,),
+            )
+        )
+        client.post(f"/work-items/{work_item_id}/approve", data={"revision_id": revision_2})
+        approval_2 = str(
+            scalar(database, "SELECT id FROM approvals WHERE revision_id=?", (revision_2,))
+        )
+        client.post(f"/work-items/{work_item_id}/manual-ready", data={"approval_id": approval_2})
+        replacement = client.post(
+            f"/work-items/{work_item_id}/publication",
+            data={
+                "revision_id": revision_2,
+                "approval_id": approval_2,
+                "external_post_id": "corrected-post",
+                "canonical_url": "https://x.invalid/corrected-post",
+                "mismatch_reason": "",
+                "replaces_publication_id": mismatched_publication,
+            },
+            follow_redirects=False,
+        )
+        assert replacement.status_code == 303
+        assert scalar(database, "SELECT state FROM work_items") == "published"
+        assert scalar(
+            database,
+            "SELECT replaces_publication_id FROM publications WHERE resolution_kind='replacement'",
+        ) == mismatched_publication
+        view = client.get(f"/work-items/{work_item_id}")
+        assert "replaces" in view.text
+        assert "corrected-post" in view.text

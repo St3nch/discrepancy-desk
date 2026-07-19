@@ -25,10 +25,12 @@ from .operator_service import (
 from .persistence import (
     approve_revision,
     create_revision,
+    create_successor_revision,
     mark_manual_ready,
     record_metric_snapshot,
     record_publication,
     record_publication_mismatch,
+    record_replacement_publication,
     register_evidence,
     transition_work_item,
 )
@@ -291,6 +293,35 @@ def create_app(
             connection.close()
         return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
 
+
+    @app.post("/work-items/{work_item_id}/revise")
+    async def revise_route(
+        request: Request,
+        work_item_id: str,
+        predecessor_revision_id: Annotated[str, Form()],
+        authored_text: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            predecessor = connection.execute(
+                "SELECT platform, owned_account_id, work_item_id FROM revisions WHERE id=?",
+                (predecessor_revision_id,),
+            ).fetchone()
+            if predecessor is None or predecessor[2] != work_item_id:
+                raise ValueError("predecessor revision does not belong to work item")
+            create_successor_revision(
+                connection,
+                revision_id=_id("revision"),
+                predecessor_revision_id=predecessor_revision_id,
+                work_item_id=work_item_id,
+                owned_account_id=str(predecessor[1]),
+                bundle=RevisionBundle(str(predecessor[0]), str(predecessor[1]), authored_text),
+                actor_id="owner-local",
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
     @app.post("/work-items/{work_item_id}/approve")
     async def approve_route(
         request: Request,
@@ -363,6 +394,7 @@ def create_app(
         external_post_id: Annotated[str, Form()],
         canonical_url: Annotated[str, Form()],
         mismatch_reason: Annotated[str | None, Form()] = None,
+        replaces_publication_id: Annotated[str | None, Form()] = None,
     ) -> RedirectResponse:
         connection = _connection(request)
         try:
@@ -384,11 +416,12 @@ def create_app(
                 actor_id="owner-local",
                 operation_key=_operation("publication"),
             )
-            if mismatch_reason and mismatch_reason.strip():
-                record_publication_mismatch(
-                    **common,
-                    mismatch_reason=mismatch_reason,
+            if replaces_publication_id and replaces_publication_id.strip():
+                record_replacement_publication(
+                    **common, replaces_publication_id=replaces_publication_id
                 )
+            elif mismatch_reason and mismatch_reason.strip():
+                record_publication_mismatch(**common, mismatch_reason=mismatch_reason)
             else:
                 record_publication(**common)
         finally:

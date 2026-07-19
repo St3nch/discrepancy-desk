@@ -305,15 +305,16 @@ def get_control_room_item(connection: sqlite3.Connection, work_item_id: str) -> 
         (work_item_id,),
     ).fetchall()
     revisions = connection.execute(
-        "SELECT id, platform, owned_account_id, binding_sha256, created_at FROM revisions WHERE work_item_id=? ORDER BY created_at, id",
+        "SELECT id, platform, owned_account_id, binding_sha256, created_at, supersedes_revision_id FROM revisions WHERE work_item_id=? ORDER BY created_at, id",
         (work_item_id,),
     ).fetchall()
-    publication = connection.execute(
+    publications = connection.execute(
         """SELECT p.* FROM publications p
         JOIN revisions r ON r.id=p.revision_id
-        WHERE r.work_item_id=? ORDER BY p.observed_at DESC LIMIT 1""",
+        WHERE r.work_item_id=? ORDER BY p.observed_at, p.id""",
         (work_item_id,),
-    ).fetchone()
+    ).fetchall()
+    publication = publications[-1] if publications else None
     metrics: list[dict[str, object]] = []
     if publication is not None:
         rows = query_metric_snapshots_by_state(
@@ -359,6 +360,7 @@ def get_control_room_item(connection: sqlite3.Connection, work_item_id: str) -> 
         "evidence": [dict(row) for row in evidence],
         "revisions": [dict(row) for row in revisions],
         "publication": dict(publication) if publication is not None else None,
+        "publications": [dict(row) for row in publications],
         "metrics": metrics,
     }
 
