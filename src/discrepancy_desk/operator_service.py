@@ -59,6 +59,27 @@ def create_owned_account(
         if existing is not None:
             connection.commit()
             return existing
+        stable_identity = connection.execute(
+            """SELECT id, username FROM owned_accounts
+            WHERE platform=? AND external_account_id=?""",
+            (platform, external_account_id),
+        ).fetchone()
+        if stable_identity is not None:
+            existing_username = stable_identity["username"]
+            if existing_username != username:
+                raise ValueError(
+                    "owned account identity already exists with different username metadata"
+                )
+            existing_account_id = str(stable_identity["id"])
+            record_operation(
+                connection,
+                operation_type="create_owned_account",
+                operation_key=operation_key,
+                request_sha256=request_sha256,
+                result_ref=existing_account_id,
+            )
+            connection.commit()
+            return existing_account_id
         connection.execute(
             "INSERT INTO owned_accounts VALUES (?, ?, ?, ?, 1)",
             (account_id, platform, external_account_id, username),

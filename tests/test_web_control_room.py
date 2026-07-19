@@ -225,3 +225,38 @@ def test_startup_refuses_dirty_migration_state(tmp_path: Path) -> None:
     with pytest.raises(Exception, match="dirty"):
         with TestClient(app):
             pass
+
+
+def test_account_form_retry_reuses_stable_identity_without_raw_constraint_error(tmp_path: Path) -> None:
+    client, database, _ = client_for(tmp_path)
+    with client:
+        first = client.post(
+            "/accounts",
+            data={"platform": "x", "external_account_id": "stable-123", "username": "Desk"},
+            follow_redirects=False,
+        )
+        retry = client.post(
+            "/accounts",
+            data={"platform": "x", "external_account_id": "stable-123", "username": "Desk"},
+            follow_redirects=False,
+        )
+        assert first.status_code == 303
+        assert retry.status_code == 303
+        assert scalar(database, "SELECT count(*) FROM owned_accounts") == 1
+
+
+def test_account_form_metadata_conflict_is_plain_language(tmp_path: Path) -> None:
+    client, database, _ = client_for(tmp_path)
+    with client:
+        client.post(
+            "/accounts",
+            data={"platform": "x", "external_account_id": "stable-123", "username": "Desk"},
+        )
+        conflict = client.post(
+            "/accounts",
+            data={"platform": "x", "external_account_id": "stable-123", "username": "OtherDesk"},
+        )
+        assert conflict.status_code == 400
+        assert "different username metadata" in conflict.text
+        assert "UNIQUE constraint failed" not in conflict.text
+        assert scalar(database, "SELECT count(*) FROM owned_accounts") == 1

@@ -233,3 +233,64 @@ def test_control_room_read_rejects_unknown_item(tmp_path: Path) -> None:
             get_control_room_item(connection, "missing")
     finally:
         connection.close()
+
+
+def test_owned_account_stable_identity_replay_uses_existing_record(tmp_path: Path) -> None:
+    connection = migrate(tmp_path / "stable-account.sqlite3")
+    try:
+        first = create_owned_account(
+            connection,
+            account_id="acct-first",
+            platform="x",
+            external_account_id="external-stable",
+            username="Desk",
+            operation_key="account-first",
+            actor_id="owner",
+        )
+        replay = create_owned_account(
+            connection,
+            account_id="acct-random-form-retry",
+            platform="x",
+            external_account_id="external-stable",
+            username="Desk",
+            operation_key="account-second",
+            actor_id="owner",
+        )
+        assert first == "acct-first"
+        assert replay == "acct-first"
+        assert connection.execute("SELECT count(*) FROM owned_accounts").fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT result_ref FROM operation_keys WHERE operation_key='account-second'"
+        ).fetchone()[0] == "acct-first"
+    finally:
+        connection.close()
+
+
+def test_owned_account_stable_identity_metadata_conflict_is_plain_and_atomic(tmp_path: Path) -> None:
+    connection = migrate(tmp_path / "stable-account-conflict.sqlite3")
+    try:
+        create_owned_account(
+            connection,
+            account_id="acct-first",
+            platform="x",
+            external_account_id="external-stable",
+            username="Desk",
+            operation_key="account-first",
+            actor_id="owner",
+        )
+        with pytest.raises(ValueError, match="different username metadata"):
+            create_owned_account(
+                connection,
+                account_id="acct-second",
+                platform="x",
+                external_account_id="external-stable",
+                username="OtherDesk",
+                operation_key="account-second",
+                actor_id="owner",
+            )
+        assert connection.execute("SELECT count(*) FROM owned_accounts").fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT count(*) FROM operation_keys WHERE operation_key='account-second'"
+        ).fetchone()[0] == 0
+    finally:
+        connection.close()
