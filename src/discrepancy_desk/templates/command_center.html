@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Command Center{% endblock %}
+{% block content %}
+<section><h2>Account scope</h2><form method="get" action="/"><select name="account_id">{% for account in accounts %}<option value="{{ account.id }}" {% if account.id == selected_account_id %}selected{% endif %}>{{ account.platform }} — {{ account.username or account.id }}</option>{% endfor %}</select><button>Open account</button></form>{% if selected_account_id %}<p><a href="/schedule?account_id={{ selected_account_id }}">Schedule</a> · <a href="/pipeline?account_id={{ selected_account_id }}&view=needs_my_review">Pipeline</a></p>{% endif %}</section>
+<section><h2>Work inventory</h2>{% if not items %}<p>No work items.</p>{% endif %}</section>
+<section><h2>Capture work</h2><form method="post" action="/work-items"><input name="title" placeholder="Working title" required><button>Capture</button></form></section>
+{% if center %}{% for label, rows in center.items() %}<section><h2>{{ label.replace('_',' ')|title }}</h2><ul>{% for item in rows %}<li><a href="/work-items/{{ item.id }}">{{ item.title }}</a> — {{ item.state }}</li>{% else %}<li>None.</li>{% endfor %}</ul></section>{% endfor %}{% endif %}
+<section><h2>Need-a-Post</h2>{% if recommendation %}<p>{{ recommendation.rationale }}</p><ul>{% for item in recommendation.candidates %}<li><a href="/work-items/{{ item.id }}">{{ item.title }}</a> — {{ item.rationale }}</li>{% else %}<li>Leave the slot empty.</li>{% endfor %}</ul>{% else %}<p>Register an account to evaluate inventory.</p>{% endif %}</section>
+<section><h2>Owned accounts</h2><form method="post" action="/accounts"><select name="platform"><option value="x">X</option><option value="truth_social">Truth Social</option></select><input name="external_account_id" placeholder="Stable external account ID" required><input name="username" placeholder="Current username"><button>Register or update</button></form></section>
+{% endblock %}

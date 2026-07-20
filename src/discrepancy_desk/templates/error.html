@@ -1,1 +1,11 @@
-{% extends "base.html" %}{% block title %}Request refused{% endblock %}{% block content %}<section><h2>Request refused</h2><p>{{ message }}</p></section>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Request refused{% endblock %}
+{% block content %}
+<section>
+  <h2>Request refused</h2>
+  <p><strong>What happened:</strong> {{ message }}</p>
+  <p><strong>What was preserved:</strong> Existing records, approvals, schedules, publications, metrics, and audit history remain preserved.</p>
+  <p><strong>What was not changed:</strong> The refused operation did not receive authority to alter project state.</p>
+  <p><strong>Safe next action:</strong> Return to the relevant work item, verify the account, state, identifiers, and entered values, then submit a corrected request.</p>
+</section>
+{% endblock %}

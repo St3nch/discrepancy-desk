@@ -5,14 +5,22 @@ import json
 import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .binding import RevisionBundle
+from .editorial_queries import (
+    evaluate_ready_to_post,
+    get_command_center,
+    list_pipeline_view,
+    list_schedule,
+    recommend_need_a_post,
+)
 from .db import connect
 from .migration_runner import run_guarded_upgrade
 from .operator_service import (
@@ -20,7 +28,12 @@ from .operator_service import (
     capture_work_item,
     create_owned_account,
     get_control_room_item,
+    organize_work_item,
     reject_review,
+    reschedule_work_item,
+    schedule_work_item,
+    set_work_item_tags,
+    unschedule_work_item,
 )
 from .persistence import (
     approve_revision,
@@ -118,7 +131,10 @@ def create_app(
         )
 
     @app.get("/", response_class=HTMLResponse)
-    async def index(request: Request) -> HTMLResponse:
+    async def index(
+        request: Request,
+        account_id: Annotated[str | None, Query()] = None,
+    ) -> HTMLResponse:
         connection = _connection(request)
         try:
             items = _list_items(connection)
@@ -128,12 +144,83 @@ def create_app(
                     "SELECT id, platform, external_account_id, username FROM owned_accounts ORDER BY id"
                 )
             ]
+            selected_account_id = account_id or (str(accounts[0]["id"]) if accounts else None)
+            now = datetime.now(timezone.utc).isoformat()
+            center = (
+                get_command_center(connection, account_id=selected_account_id, now=now)
+                if selected_account_id is not None
+                else None
+            )
+            recommendation = (
+                recommend_need_a_post(
+                    connection,
+                    account_id=selected_account_id,
+                    slot_start=now,
+                    slot_end=(datetime.now(timezone.utc) + timedelta(hours=2)).isoformat(),
+                    now=now,
+                )
+                if selected_account_id is not None
+                else None
+            )
         finally:
             connection.close()
         return TEMPLATES.TemplateResponse(
             request=request,
-            name="index.html",
-            context={"items": items, "accounts": accounts},
+            name="command_center.html",
+            context={
+                "items": items,
+                "accounts": accounts,
+                "selected_account_id": selected_account_id,
+                "center": center,
+                "recommendation": recommendation,
+            },
+        )
+
+    @app.get("/schedule", response_class=HTMLResponse)
+    async def schedule_view(
+        request: Request,
+        account_id: Annotated[str, Query()],
+    ) -> HTMLResponse:
+        now_dt = datetime.now(timezone.utc)
+        connection = _connection(request)
+        try:
+            accounts = [dict(row) for row in connection.execute(
+                "SELECT id, platform, external_account_id, username FROM owned_accounts ORDER BY id"
+            )]
+            rows = list_schedule(
+                connection, account_id=account_id, start=now_dt.isoformat(),
+                end=(now_dt + timedelta(days=90)).isoformat(),
+            )
+        finally:
+            connection.close()
+        return TEMPLATES.TemplateResponse(
+            request=request, name="schedule.html",
+            context={"accounts": accounts, "selected_account_id": account_id, "rows": rows},
+        )
+
+    @app.get("/pipeline", response_class=HTMLResponse)
+    async def pipeline_view(
+        request: Request,
+        account_id: Annotated[str, Query()],
+        view: Annotated[str, Query()] = "needs_my_review",
+    ) -> HTMLResponse:
+        connection = _connection(request)
+        try:
+            accounts = [dict(row) for row in connection.execute(
+                "SELECT id, platform, external_account_id, username FROM owned_accounts ORDER BY id"
+            )]
+            rows = list_pipeline_view(
+                connection, account_id=account_id, view_name=view,
+                now=datetime.now(timezone.utc).isoformat(),
+            )
+        finally:
+            connection.close()
+        return TEMPLATES.TemplateResponse(
+            request=request, name="pipeline.html",
+            context={
+                "accounts": accounts, "selected_account_id": account_id,
+                "view_name": view, "rows": rows,
+            },
         )
 
     @app.post("/accounts")
@@ -197,13 +284,135 @@ def create_app(
                     (work_item_id,),
                 )
             ]
+            profile_row = connection.execute(
+                "SELECT * FROM editorial_profiles WHERE work_item_id=?", (work_item_id,)
+            ).fetchone()
+            profile = dict(profile_row) if profile_row is not None else None
+            tags = [row[0] for row in connection.execute(
+                "SELECT tag FROM work_item_tags WHERE work_item_id=? ORDER BY tag", (work_item_id,)
+            )]
+            schedule_history = [dict(row) for row in connection.execute(
+                "SELECT * FROM schedule_slots WHERE work_item_id=? ORDER BY created_at DESC, id DESC",
+                (work_item_id,),
+            )]
+            ready = (
+                evaluate_ready_to_post(
+                    connection, work_item_id=work_item_id,
+                    account_id=str(profile["account_id"]),
+                    now=datetime.now(timezone.utc).isoformat(),
+                )
+                if profile is not None else None
+            )
         finally:
             connection.close()
         return TEMPLATES.TemplateResponse(
             request=request,
             name="work_item.html",
-            context={"item": item, "accounts": accounts, "approvals": approvals},
+            context={"item": item, "accounts": accounts, "approvals": approvals, "profile": profile, "tags": tags, "schedule_history": schedule_history, "ready": ready},
         )
+
+    @app.post("/work-items/{work_item_id}/organize")
+    async def organize_route(
+        request: Request,
+        work_item_id: str,
+        account_id: Annotated[str, Form()],
+        lane: Annotated[str, Form()],
+        topic: Annotated[str | None, Form()] = None,
+        priority: Annotated[int, Form()] = 3,
+        operator_notes: Annotated[str | None, Form()] = None,
+        is_dormant: Annotated[bool, Form()] = False,
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            organize_work_item(
+                connection, work_item_id=work_item_id, account_id=account_id, lane=lane,
+                topic=topic or None, priority=priority, operator_notes=operator_notes or None,
+                is_dormant=is_dormant, actor_id="owner-local",
+                operation_key=_operation("organize"),
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.post("/work-items/{work_item_id}/tags")
+    async def tags_route(
+        request: Request,
+        work_item_id: str,
+        account_id: Annotated[str, Form()],
+        tags_text: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            set_work_item_tags(
+                connection, work_item_id=work_item_id, account_id=account_id,
+                tags=[value for value in tags_text.split(",")],
+                actor_id="owner-local", operation_key=_operation("tags"),
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.post("/work-items/{work_item_id}/schedule")
+    async def schedule_route(
+        request: Request,
+        work_item_id: str,
+        account_id: Annotated[str, Form()],
+        scheduled_for: Annotated[str | None, Form()] = None,
+        stale_after: Annotated[str | None, Form()] = None,
+        is_evergreen: Annotated[bool, Form()] = False,
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            schedule_work_item(
+                connection, schedule_id=_id("schedule"), work_item_id=work_item_id,
+                account_id=account_id, scheduled_for=scheduled_for or None,
+                preferred_window_start=None, preferred_window_end=None,
+                earliest_useful_at=None, stale_after=stale_after or None,
+                hard_deadline_at=None, is_evergreen=is_evergreen, actor_id="owner-local",
+                operation_key=_operation("schedule"),
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.post("/work-items/{work_item_id}/reschedule")
+    async def reschedule_route(
+        request: Request,
+        work_item_id: str,
+        account_id: Annotated[str, Form()],
+        prior_schedule_id: Annotated[str, Form()],
+        scheduled_for: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            reschedule_work_item(
+                connection, schedule_id=_id("schedule"), prior_schedule_id=prior_schedule_id,
+                account_id=account_id, scheduled_for=scheduled_for,
+                preferred_window_start=None, preferred_window_end=None, earliest_useful_at=None,
+                stale_after=None, hard_deadline_at=None, is_evergreen=False,
+                actor_id="owner-local", operation_key=_operation("reschedule"),
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
+
+    @app.post("/work-items/{work_item_id}/unschedule")
+    async def unschedule_route(
+        request: Request,
+        work_item_id: str,
+        account_id: Annotated[str, Form()],
+        prior_schedule_id: Annotated[str, Form()],
+    ) -> RedirectResponse:
+        connection = _connection(request)
+        try:
+            unschedule_work_item(
+                connection, schedule_id=_id("schedule"), prior_schedule_id=prior_schedule_id,
+                account_id=account_id, actor_id="owner-local",
+                operation_key=_operation("unschedule"),
+            )
+        finally:
+            connection.close()
+        return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
 
     @app.post("/work-items/{work_item_id}/sources")
     async def add_source_route(
