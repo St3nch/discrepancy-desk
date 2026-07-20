@@ -2,7 +2,7 @@
 
 ## Status
 
-M05 Packages A through C are technically implemented and validated. This record remains provisional until the implementation batch is committed, validation and executable hammer evidence are rerun against that exact commit, and the final commit/evidence bindings are recorded.
+M05 Packages A through C are technically implemented and validated. The executable evidence is bound to the exact accepted implementation commit below. M05 is technically complete and awaits explicit owner closure acceptance.
 
 ## Delivered Desktop Foundation
 
@@ -95,13 +95,27 @@ npm package-lock audit                                   0 reported vulnerabilit
 - The produced development installer is unsigned and is not claimed as a production release.
 - Generated binaries, package directories, Cargo output, and secondary lockfiles are excluded from source control.
 
-## Final Binding Required
+## Final Evidence Binding
 
-After the implementation commit:
+Implementation commit:
 
-1. rerun Ruff and the full Python suite;
-2. rerun executable hammer evidence;
-3. record the exact implementation commit SHA and final hammer evidence SHA-256 here;
-4. commit the binding update;
-5. synchronize the docs repository;
-6. request explicit owner acceptance to close M05 and authorize M06 planning.
+```text
+31d7a7001e72e7477e6a38cb2e7c3ee9d099197c
+```
+
+Executable hammer evidence:
+
+```text
+runtime/ht-evidence/latest-ht-evidence.json
+SHA-256: e3c59481d3fd7b8163828e5cc97f6f26ac359d086c481e41ec5cfb5bc2c6fc20
+Executed: 29
+Passed: 29
+Failed: 0
+Inherited scope deferral: 1
+```
+
+The evidence payload records the same exact implementation commit SHA.
+
+## Remaining Milestone Gate
+
+The only remaining action is explicit owner acceptance to close M05 and authorize M06 planning. No M06 work is authorized by this technical completion record alone.
