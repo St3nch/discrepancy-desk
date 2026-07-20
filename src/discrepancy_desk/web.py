@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import FastAPI, Form, Query, Request
+from fastapi import Body, FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -205,6 +205,137 @@ def create_app(
         finally:
             connection.close()
         return JSONResponse({"api_version": desktop_api_version, "data": result})
+
+    @app.post("/desktop-api/v1/work-items")
+    async def desktop_capture_work_item(
+        request: Request, payload: Annotated[dict[str, object], Body()]
+    ) -> JSONResponse:
+        title = str(payload.get("title", "")).strip()
+        operation_key = str(payload.get("operation_key", "")).strip()
+        if not title or not operation_key:
+            return desktop_error("title and operation_key are required")
+        connection = _connection(request)
+        try:
+            try:
+                work_item_id = capture_work_item(
+                    connection,
+                    work_item_id=_id("work"),
+                    title=title,
+                    operation_key=operation_key,
+                    actor_id="owner-desktop",
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse(
+            status_code=201,
+            content={"api_version": desktop_api_version, "work_item_id": work_item_id},
+        )
+
+    @app.post("/desktop-api/v1/work-items/{work_item_id}/organize")
+    async def desktop_organize_work_item(
+        request: Request,
+        work_item_id: str,
+        payload: Annotated[dict[str, object], Body()],
+    ) -> JSONResponse:
+        required = ("account_id", "lane", "operation_key")
+        if any(not str(payload.get(name, "")).strip() for name in required):
+            return desktop_error("account_id, lane, and operation_key are required")
+        connection = _connection(request)
+        try:
+            try:
+                result = organize_work_item(
+                    connection,
+                    work_item_id=work_item_id,
+                    account_id=str(payload["account_id"]),
+                    lane=str(payload["lane"]),
+                    topic=(str(payload["topic"]).strip() if payload.get("topic") else None),
+                    priority=int(payload.get("priority", 3)),
+                    operator_notes=(
+                        str(payload["operator_notes"]).strip()
+                        if payload.get("operator_notes")
+                        else None
+                    ),
+                    is_dormant=bool(payload.get("is_dormant", False)),
+                    actor_id="owner-desktop",
+                    operation_key=str(payload["operation_key"]),
+                )
+            except (TypeError, ValueError) as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "work_item_id": result})
+
+    @app.put("/desktop-api/v1/work-items/{work_item_id}/tags")
+    async def desktop_set_tags(
+        request: Request,
+        work_item_id: str,
+        payload: Annotated[dict[str, object], Body()],
+    ) -> JSONResponse:
+        account_id = str(payload.get("account_id", "")).strip()
+        operation_key = str(payload.get("operation_key", "")).strip()
+        tags = payload.get("tags")
+        if not account_id or not operation_key or not isinstance(tags, list):
+            return desktop_error("account_id, operation_key, and tags are required")
+        connection = _connection(request)
+        try:
+            try:
+                result = set_work_item_tags(
+                    connection,
+                    work_item_id=work_item_id,
+                    account_id=account_id,
+                    tags=[str(value) for value in tags],
+                    actor_id="owner-desktop",
+                    operation_key=operation_key,
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "work_item_id": result})
+
+    @app.post("/desktop-api/v1/work-items/{work_item_id}/schedule")
+    async def desktop_schedule_work_item(
+        request: Request,
+        work_item_id: str,
+        payload: Annotated[dict[str, object], Body()],
+    ) -> JSONResponse:
+        account_id = str(payload.get("account_id", "")).strip()
+        operation_key = str(payload.get("operation_key", "")).strip()
+        if not account_id or not operation_key:
+            return desktop_error("account_id and operation_key are required")
+        connection = _connection(request)
+        try:
+            try:
+                schedule_id = schedule_work_item(
+                    connection,
+                    schedule_id=_id("schedule"),
+                    work_item_id=work_item_id,
+                    account_id=account_id,
+                    scheduled_for=(
+                        str(payload["scheduled_for"]).strip()
+                        if payload.get("scheduled_for")
+                        else None
+                    ),
+                    preferred_window_start=None,
+                    preferred_window_end=None,
+                    earliest_useful_at=None,
+                    stale_after=(
+                        str(payload["stale_after"]).strip()
+                        if payload.get("stale_after")
+                        else None
+                    ),
+                    hard_deadline_at=None,
+                    is_evergreen=bool(payload.get("is_evergreen", False)),
+                    actor_id="owner-desktop",
+                    operation_key=operation_key,
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "schedule_id": schedule_id})
 
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> HTMLResponse:

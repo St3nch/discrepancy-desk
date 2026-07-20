@@ -148,3 +148,82 @@ def test_desktop_runtime_config_rejects_non_loopback_and_bad_values(monkeypatch)
     monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_PORT", "70000")
     with pytest.raises(ValueError, match="valid range"):
         desktop_runtime_config_from_env()
+
+
+def test_desktop_mutation_parity_capture_organize_tags_and_schedule(tmp_path: Path) -> None:
+    client, database = client_for(tmp_path)
+    with client:
+        connection = sqlite3.connect(database)
+        try:
+            connection.execute(
+                "INSERT INTO owned_accounts VALUES ('acct-1','x','one','Desk',1)"
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        headers = {"x-discrepancy-desk-token": TOKEN}
+        capture = client.post(
+            "/desktop-api/v1/work-items",
+            headers=headers,
+            json={"title": "Desktop parity item", "operation_key": "desktop:capture:1"},
+        )
+        assert capture.status_code == 201
+        work_item_id = capture.json()["work_item_id"]
+        organize = client.post(
+            f"/desktop-api/v1/work-items/{work_item_id}/organize",
+            headers=headers,
+            json={
+                "account_id": "acct-1",
+                "lane": "archive",
+                "topic": "History",
+                "priority": 4,
+                "operation_key": "desktop:organize:1",
+            },
+        )
+        assert organize.status_code == 200
+        tags = client.put(
+            f"/desktop-api/v1/work-items/{work_item_id}/tags",
+            headers=headers,
+            json={
+                "account_id": "acct-1",
+                "tags": [" FOIA ", "history"],
+                "operation_key": "desktop:tags:1",
+            },
+        )
+        assert tags.status_code == 200
+        schedule = client.post(
+            f"/desktop-api/v1/work-items/{work_item_id}/schedule",
+            headers=headers,
+            json={
+                "account_id": "acct-1",
+                "is_evergreen": True,
+                "operation_key": "desktop:schedule:1",
+            },
+        )
+        assert schedule.status_code == 200
+        connection = sqlite3.connect(database)
+        try:
+            assert connection.execute(
+                "SELECT lane FROM editorial_profiles WHERE work_item_id=?", (work_item_id,)
+            ).fetchone()[0] == "archive"
+            assert [row[0] for row in connection.execute(
+                "SELECT tag FROM work_item_tags WHERE work_item_id=? ORDER BY tag",
+                (work_item_id,),
+            )] == ["foia", "history"]
+            assert connection.execute(
+                "SELECT status FROM schedule_slots WHERE work_item_id=?", (work_item_id,)
+            ).fetchone()[0] == "active"
+        finally:
+            connection.close()
+
+
+def test_desktop_mutations_fail_closed_without_required_scope(tmp_path: Path) -> None:
+    client, _ = client_for(tmp_path)
+    with client:
+        response = client.post(
+            "/desktop-api/v1/work-items/missing/organize",
+            headers={"x-discrepancy-desk-token": TOKEN},
+            json={"lane": "archive"},
+        )
+        assert response.status_code == 400
+        assert response.json()["changed"] is False
