@@ -160,3 +160,16 @@ fn health_request(session: &BackendSession) -> Result<(), String> {
         Err("backend health response was not successful".into())
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::BackendSupervisor;
+
+    #[test]
+    fn reserved_port_is_nonzero_and_available_for_loopback() {
+        let port = BackendSupervisor::reserve_loopback_port()
+            .expect("loopback port reservation should succeed");
+        assert!(port > 0);
+    }
+}

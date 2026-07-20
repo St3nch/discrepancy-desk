@@ -73,20 +73,22 @@ uv run ruff check .                                      passed
 uv run pytest tests/test_m05_desktop_api_contract.py     passed
 uv run pytest tests/test_m05_desktop_security.py         passed
 uv run pytest tests/test_m05_sidecar_lifecycle.py        passed
-uv run pytest -o addopts= --disable-warnings -q          84 passed
+uv run pytest tests/test_m05_packaging_contract.py       passed
+uv run pytest -o addopts= --disable-warnings -q          88 passed
 pnpm --dir desktop build                                 passed
+pnpm --dir desktop tauri info                            Rust/Cargo/MSVC/WebView2 verified
+pnpm --dir desktop tauri build --no-bundle               passed
+pnpm --dir desktop exec cargo test ...                   3 passed
 npm package-lock-only resolution                         0 reported vulnerabilities
 ```
 
 The lifecycle proof now includes a real Python subprocess that starts the desktop backend with environment-only configuration, binds to a disposable loopback port, migrates a disposable database through Alembic `0004`, authenticates an API v1 health request, and terminates cleanly. The Rust source reserves a dynamic loopback port, supplies application-data and packaged-resource paths through environment variables, polls the authenticated health endpoint, rejects early child exit or timeout, and stops the child on desktop exit.
 
-## Explicit Validation Limitation
+The native toolchain is now directly proven through Tauri CLI execution. A Windows release executable compiled successfully with Rust 1.94.1, Cargo 1.94.1, MSVC Build Tools 2026, and the installed WebView2 runtime. Three Rust unit tests pass for launch-token quality, loopback URL construction, and dynamic loopback port reservation.
 
-The approved repository tool exposes Node and pnpm but does not expose Cargo or Rust compilation. Therefore:
+## Remaining Native Validation Boundary
 
-- Rust source and configuration are covered by static contract tests;
-- no successful `cargo check`, `cargo test`, `tauri build`, or native executable claim is made;
-- native compilation remains a mandatory gate before Package A can close.
+The successful `--no-bundle` build proves compilation but not installer behavior. Package C must still prove the NSIS installer, installed launch, packaged Python sidecar, migration resources, reinstall, uninstall preservation, and clean shutdown on the installed application.
 
 ## Stop Conditions Still Active
 
