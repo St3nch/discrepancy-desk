@@ -295,6 +295,141 @@ def create_app(
             connection.close()
         return JSONResponse({"api_version": desktop_api_version, "work_item_id": result})
 
+    @app.get("/desktop-api/v1/schedule")
+    async def desktop_schedule_view(
+        request: Request,
+        account_id: Annotated[str, Query()],
+        days: Annotated[int, Query()] = 90,
+    ) -> JSONResponse:
+        if days < 1 or days > 90:
+            return desktop_error("schedule days must be between 1 and 90")
+        now = datetime.now(timezone.utc)
+        connection = _connection(request)
+        try:
+            try:
+                rows = list_schedule(
+                    connection,
+                    account_id=account_id,
+                    start=now.isoformat(),
+                    end=(now + timedelta(days=days)).isoformat(),
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "account_id": account_id, "rows": rows})
+
+    @app.get("/desktop-api/v1/work-items/{work_item_id}")
+    async def desktop_work_item(request: Request, work_item_id: str) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            row = connection.execute(
+                "SELECT id, title, state, created_at, updated_at FROM work_items WHERE id=?",
+                (work_item_id,),
+            ).fetchone()
+            if row is None:
+                return desktop_error("unknown work item", status_code=404)
+            profile = connection.execute(
+                "SELECT account_id, lane, topic, priority, is_dormant FROM editorial_profiles WHERE work_item_id=?",
+                (work_item_id,),
+            ).fetchone()
+            tags = [value[0] for value in connection.execute(
+                "SELECT tag FROM work_item_tags WHERE work_item_id=? ORDER BY tag", (work_item_id,)
+            )]
+            schedules = [dict(value) for value in connection.execute(
+                "SELECT id, account_id, status, scheduled_for, stale_after, supersedes_schedule_id FROM schedule_slots WHERE work_item_id=? ORDER BY created_at DESC, id DESC",
+                (work_item_id,),
+            )]
+        finally:
+            connection.close()
+        return JSONResponse({
+            "api_version": desktop_api_version,
+            "work_item": dict(row),
+            "profile": dict(profile) if profile is not None else None,
+            "tags": tags,
+            "schedules": schedules,
+        })
+
+    @app.get("/desktop-api/v1/system")
+    async def desktop_system(request: Request) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+            migration = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+            counts = {
+                "accounts": connection.execute("SELECT count(*) FROM owned_accounts").fetchone()[0],
+                "work_items": connection.execute("SELECT count(*) FROM work_items").fetchone()[0],
+                "audit_events": connection.execute("SELECT count(*) FROM audit_events").fetchone()[0],
+            }
+        finally:
+            connection.close()
+        return JSONResponse({
+            "api_version": desktop_api_version,
+            "status": "healthy" if integrity == "ok" else "unhealthy",
+            "sqlite_integrity": integrity,
+            "migration": migration,
+            "counts": counts,
+        })
+
+    @app.post("/desktop-api/v1/work-items/{work_item_id}/reschedule")
+    async def desktop_reschedule_work_item(
+        request: Request,
+        work_item_id: str,
+        payload: Annotated[dict[str, object], Body()],
+    ) -> JSONResponse:
+        required = ("account_id", "prior_schedule_id", "scheduled_for", "operation_key")
+        if any(not str(payload.get(name, "")).strip() for name in required):
+            return desktop_error("account_id, prior_schedule_id, scheduled_for, and operation_key are required")
+        connection = _connection(request)
+        try:
+            try:
+                schedule_id = reschedule_work_item(
+                    connection,
+                    schedule_id=_id("schedule"),
+                    prior_schedule_id=str(payload["prior_schedule_id"]),
+                    account_id=str(payload["account_id"]),
+                    scheduled_for=str(payload["scheduled_for"]),
+                    preferred_window_start=None,
+                    preferred_window_end=None,
+                    earliest_useful_at=None,
+                    stale_after=None,
+                    hard_deadline_at=None,
+                    is_evergreen=False,
+                    actor_id="owner-desktop",
+                    operation_key=str(payload["operation_key"]),
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "schedule_id": schedule_id, "work_item_id": work_item_id})
+
+    @app.post("/desktop-api/v1/work-items/{work_item_id}/unschedule")
+    async def desktop_unschedule_work_item(
+        request: Request,
+        work_item_id: str,
+        payload: Annotated[dict[str, object], Body()],
+    ) -> JSONResponse:
+        required = ("account_id", "prior_schedule_id", "operation_key")
+        if any(not str(payload.get(name, "")).strip() for name in required):
+            return desktop_error("account_id, prior_schedule_id, and operation_key are required")
+        connection = _connection(request)
+        try:
+            try:
+                schedule_id = unschedule_work_item(
+                    connection,
+                    schedule_id=_id("schedule"),
+                    prior_schedule_id=str(payload["prior_schedule_id"]),
+                    account_id=str(payload["account_id"]),
+                    actor_id="owner-desktop",
+                    operation_key=str(payload["operation_key"]),
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "schedule_id": schedule_id, "work_item_id": work_item_id})
+
     @app.post("/desktop-api/v1/work-items/{work_item_id}/schedule")
     async def desktop_schedule_work_item(
         request: Request,

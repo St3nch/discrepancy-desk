@@ -2,3 +2,5 @@ export interface DesktopHealth { api_version: string; service: string; status: "
 export interface BackendSession { baseUrl: string; launchToken: string; apiVersion: string; }
 export interface OwnedAccount { id: string; platform: string; external_account_id: string; username: string | null; }
 export interface CommandCenterResponse { api_version: string; account_id: string; data: Record<string, Array<Record<string, unknown>>>; }
+export interface ScheduleRow { id: string; work_item_id: string; title: string; scheduled_for: string | null; lane: string; status: string; }
+export interface SystemStatus { api_version: string; status: string; sqlite_integrity: string; migration: string; counts: Record<string, number>; }

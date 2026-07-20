@@ -227,3 +227,64 @@ def test_desktop_mutations_fail_closed_without_required_scope(tmp_path: Path) ->
         )
         assert response.status_code == 400
         assert response.json()["changed"] is False
+
+
+def test_desktop_calendar_work_detail_system_and_schedule_lineage(tmp_path: Path) -> None:
+    client, database = client_for(tmp_path)
+    with client:
+        connection = sqlite3.connect(database)
+        try:
+            connection.execute("INSERT INTO owned_accounts VALUES ('acct-1','x','one','Desk',1)")
+            connection.execute("INSERT INTO work_items VALUES ('work-1','captured','Calendar item','2026-07-20T00:00:00+00:00','2026-07-20T00:00:00+00:00')")
+            connection.commit()
+        finally:
+            connection.close()
+        headers = {"x-discrepancy-desk-token": TOKEN}
+        client.post(
+            "/desktop-api/v1/work-items/work-1/organize",
+            headers=headers,
+            json={"account_id": "acct-1", "lane": "archive", "operation_key": "organize:1"},
+        )
+        future = "2099-01-01T12:00:00+00:00"
+        scheduled = client.post(
+            "/desktop-api/v1/work-items/work-1/schedule",
+            headers=headers,
+            json={"account_id": "acct-1", "scheduled_for": future, "operation_key": "schedule:1"},
+        )
+        assert scheduled.status_code == 400  # outside rolling horizon
+        reserve = client.post(
+            "/desktop-api/v1/work-items/work-1/schedule",
+            headers=headers,
+            json={"account_id": "acct-1", "is_evergreen": True, "operation_key": "schedule:2"},
+        )
+        assert reserve.status_code == 200
+        schedule_id = reserve.json()["schedule_id"]
+        detail = client.get("/desktop-api/v1/work-items/work-1", headers=headers)
+        assert detail.status_code == 200
+        assert detail.json()["profile"]["account_id"] == "acct-1"
+        system = client.get("/desktop-api/v1/system", headers=headers)
+        assert system.status_code == 200
+        assert system.json()["migration"] == "0004"
+        assert system.json()["counts"]["work_items"] == 1
+        unscheduled = client.post(
+            "/desktop-api/v1/work-items/work-1/unschedule",
+            headers=headers,
+            json={"account_id": "acct-1", "prior_schedule_id": schedule_id, "operation_key": "unschedule:1"},
+        )
+        assert unscheduled.status_code == 200
+        detail_after = client.get("/desktop-api/v1/work-items/work-1", headers=headers).json()
+        statuses = [row["status"] for row in detail_after["schedules"]]
+        assert "superseded" in statuses
+        assert "unscheduled" in statuses
+        assert "active" not in statuses
+
+
+def test_desktop_schedule_range_is_bounded(tmp_path: Path) -> None:
+    client, _ = client_for(tmp_path)
+    with client:
+        response = client.get(
+            "/desktop-api/v1/schedule?account_id=missing&days=91",
+            headers={"x-discrepancy-desk-token": TOKEN},
+        )
+        assert response.status_code == 400
+        assert response.json()["changed"] is False
