@@ -1,8 +1,8 @@
-# M04 Exit-Gate Review — Provisional Technical Record
+# M04 Exit-Gate Review — Final Technical Record
 
 ## Status
 
-Package C implementation and technical proof are prepared for owner review. M04 is not closed until the accepted implementation is committed, the executable evidence is rerun against that exact commit, documentation is synchronized, repositories are clean, and the owner explicitly accepts closure.
+Package C implementation is accepted, committed, pushed, and validated against the exact implementation commit. M04 remains open only for final documentation synchronization, clean-repository verification, and explicit owner closure acceptance.
 
 ## Implemented Capability
 
@@ -43,7 +43,7 @@ No real platform write occurs. All external IDs and URLs are synthetic fixtures.
 
 ## Validation
 
-Current pre-commit results:
+Final exact-commit results:
 
 ```text
 uv run ruff check .                         passed
@@ -52,25 +52,23 @@ uv run python scripts/run_ht_evidence.py    25 executed, 25 passed, 0 failed
 Inherited HT-14 scope deferral              1
 ```
 
-The provisional evidence file is:
+Final evidence file:
 
 ```text
 runtime/ht-evidence/latest-ht-evidence.json
 ```
 
-Provisional evidence SHA-256:
+Final evidence SHA-256:
 
 ```text
-9a3568b6b6e00efb0482c0fd997786e4a36a1c20d032aeb6902d1112fa1422b6
+fcf6842ab088fa99adc4e6cc3ad2f9fb0c1330dff3a95ff614c8df0c1c54729c
 ```
 
-That provisional run is bound to application commit:
+The final evidence run is bound to application commit:
 
 ```text
-55a276e34003508df0dd17687d09d68185ae6a21
+1455433ddee69d52b1dc67367a532b594a4a1a6c
 ```
-
-Because Package C changes are currently uncommitted, this hash is not final closure evidence. After owner acceptance and implementation commit, the hammer command must be rerun and the final evidence hash recorded against the new exact commit.
 
 ## Migration and Recovery
 
@@ -93,10 +91,7 @@ The implementation remains inside the accepted M04 change surface and the owner-
 
 ## Remaining Closure Actions
 
-1. Owner reviews and accepts the Package C batch.
-2. Stage and inspect the exact application diff.
-3. Commit and push the application batch.
-4. Rerun Ruff, the full test suite, and executable hammer evidence against the exact implementation commit.
-5. Record the final commit SHA and evidence SHA-256 here.
-6. Synchronize the docs repository and milestone status.
-7. Owner explicitly accepts M04 closure.
+1. Commit and push this final evidence-binding update.
+2. Synchronize the documentation repository and milestone status.
+3. Verify both repositories are clean and synchronized.
+4. Owner explicitly accepts M04 closure.
