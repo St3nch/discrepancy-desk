@@ -4,6 +4,7 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .binding import RevisionBundle
@@ -19,6 +20,7 @@ from .persistence import (
     query_metric_snapshots_by_state,
     record_metric_snapshot,
     record_publication,
+    record_publication_mismatch,
     register_evidence,
     transition_work_item,
     utc_now,
@@ -481,3 +483,609 @@ def run_matched_operator_loop(
         publication_id=publication_id,
         metric_snapshot_id=metric_snapshot_id,
     )
+
+
+M04_LANES = {"archive", "docket", "flash_release"}
+
+
+def _parse_utc(value: str | None, *, field: str) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"invalid {field}") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must include timezone")
+    return parsed.astimezone(timezone.utc)
+
+
+def _normalize_tags(tags: list[str]) -> list[str]:
+    normalized = sorted({tag.strip().lower() for tag in tags if tag.strip()})
+    if len(normalized) != len([tag for tag in tags if tag.strip()]):
+        # duplicates are accepted only through normalization into one durable value
+        pass
+    if any(len(tag) > 64 for tag in normalized):
+        raise ValueError("tag exceeds 64 characters")
+    return normalized
+
+
+def _require_profile_account(
+    connection: sqlite3.Connection, work_item_id: str, account_id: str
+) -> sqlite3.Row:
+    row = connection.execute(
+        "SELECT * FROM editorial_profiles WHERE work_item_id=?", (work_item_id,)
+    ).fetchone()
+    if row is None:
+        raise ValueError("work item must be organized before scheduling")
+    if str(row["account_id"]) != account_id:
+        raise ValueError("account scope mismatch")
+    return row
+
+
+def organize_work_item(
+    connection: sqlite3.Connection,
+    *,
+    work_item_id: str,
+    account_id: str,
+    lane: str,
+    topic: str | None,
+    priority: int,
+    operator_notes: str | None,
+    is_dormant: bool,
+    actor_id: str,
+    operation_key: str,
+) -> str:
+    if lane not in M04_LANES:
+        raise ValueError("invalid editorial lane")
+    if priority not in range(1, 6):
+        raise ValueError("priority must be between 1 and 5")
+    normalized_topic = topic.strip() if topic else None
+    if normalized_topic is not None and len(normalized_topic) > 200:
+        raise ValueError("topic exceeds 200 characters")
+    request = {
+        "work_item_id": work_item_id,
+        "account_id": account_id,
+        "lane": lane,
+        "topic": normalized_topic,
+        "priority": priority,
+        "operator_notes": operator_notes,
+        "is_dormant": is_dormant,
+    }
+    digest = request_hash(request)
+    begin_write(connection)
+    try:
+        existing = existing_operation(connection, "organize_work_item", operation_key, digest)
+        if existing is not None:
+            connection.commit()
+            return existing
+        if connection.execute("SELECT 1 FROM work_items WHERE id=?", (work_item_id,)).fetchone() is None:
+            raise ValueError("unknown work item")
+        if connection.execute("SELECT 1 FROM owned_accounts WHERE id=?", (account_id,)).fetchone() is None:
+            raise ValueError("unknown account")
+        current = connection.execute(
+            "SELECT account_id FROM editorial_profiles WHERE work_item_id=?", (work_item_id,)
+        ).fetchone()
+        if current is not None and str(current[0]) != account_id:
+            raise ValueError("organized account cannot be changed")
+        if is_dormant and connection.execute(
+            "SELECT 1 FROM schedule_slots WHERE work_item_id=? AND status='active'", (work_item_id,)
+        ).fetchone() is not None:
+            raise ValueError("unschedule work before marking it dormant")
+        now = utc_now()
+        connection.execute(
+            """INSERT INTO editorial_profiles
+            (work_item_id,account_id,lane,topic,priority,operator_notes,is_dormant,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(work_item_id) DO UPDATE SET lane=excluded.lane, topic=excluded.topic,
+            priority=excluded.priority, operator_notes=excluded.operator_notes,
+            is_dormant=excluded.is_dormant, updated_at=excluded.updated_at""",
+            (
+                work_item_id,
+                account_id,
+                lane,
+                normalized_topic,
+                priority,
+                operator_notes.encode("utf-8") if operator_notes is not None else None,
+                int(is_dormant),
+                now,
+                now,
+            ),
+        )
+        append_audit(
+            connection,
+            actor_type="human",
+            actor_id=actor_id,
+            operation="organize_work_item",
+            record_type="editorial_profile",
+            record_id=work_item_id,
+            payload=request,
+        )
+        record_operation(
+            connection,
+            operation_type="organize_work_item",
+            operation_key=operation_key,
+            request_sha256=digest,
+            result_ref=work_item_id,
+        )
+        connection.commit()
+        return work_item_id
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def set_work_item_tags(
+    connection: sqlite3.Connection,
+    *,
+    work_item_id: str,
+    account_id: str,
+    tags: list[str],
+    actor_id: str,
+    operation_key: str,
+) -> str:
+    normalized = _normalize_tags(tags)
+    request = {"work_item_id": work_item_id, "account_id": account_id, "tags": normalized}
+    digest = request_hash(request)
+    begin_write(connection)
+    try:
+        existing = existing_operation(connection, "set_work_item_tags", operation_key, digest)
+        if existing is not None:
+            connection.commit()
+            return existing
+        _require_profile_account(connection, work_item_id, account_id)
+        connection.execute("DELETE FROM work_item_tags WHERE work_item_id=?", (work_item_id,))
+        connection.executemany(
+            "INSERT INTO work_item_tags(work_item_id,tag) VALUES (?,?)",
+            [(work_item_id, tag) for tag in normalized],
+        )
+        append_audit(
+            connection,
+            actor_type="human",
+            actor_id=actor_id,
+            operation="set_work_item_tags",
+            record_type="work_item",
+            record_id=work_item_id,
+            payload={"account_id": account_id, "tags": normalized},
+        )
+        record_operation(
+            connection,
+            operation_type="set_work_item_tags",
+            operation_key=operation_key,
+            request_sha256=digest,
+            result_ref=work_item_id,
+        )
+        connection.commit()
+        return work_item_id
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def _validate_schedule_dates(
+    *,
+    scheduled_for: str | None,
+    preferred_window_start: str | None,
+    preferred_window_end: str | None,
+    earliest_useful_at: str | None,
+    stale_after: str | None,
+    hard_deadline_at: str | None,
+    now: datetime,
+) -> None:
+    scheduled = _parse_utc(scheduled_for, field="scheduled_for")
+    window_start = _parse_utc(preferred_window_start, field="preferred_window_start")
+    window_end = _parse_utc(preferred_window_end, field="preferred_window_end")
+    earliest = _parse_utc(earliest_useful_at, field="earliest_useful_at")
+    stale = _parse_utc(stale_after, field="stale_after")
+    deadline = _parse_utc(hard_deadline_at, field="hard_deadline_at")
+    if scheduled is not None and scheduled > now + timedelta(days=90):
+        raise ValueError("scheduled time exceeds rolling 90-day horizon")
+    if window_start and window_end and window_end < window_start:
+        raise ValueError("preferred window end precedes start")
+    if earliest and stale and stale < earliest:
+        raise ValueError("stale-after precedes earliest useful time")
+    if earliest and deadline and deadline < earliest:
+        raise ValueError("hard deadline precedes earliest useful time")
+
+
+def schedule_work_item(
+    connection: sqlite3.Connection,
+    *,
+    schedule_id: str,
+    work_item_id: str,
+    account_id: str,
+    scheduled_for: str | None,
+    preferred_window_start: str | None,
+    preferred_window_end: str | None,
+    earliest_useful_at: str | None,
+    stale_after: str | None,
+    hard_deadline_at: str | None,
+    is_evergreen: bool,
+    actor_id: str,
+    operation_key: str,
+    now: datetime | None = None,
+) -> str:
+    current_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    _validate_schedule_dates(
+        scheduled_for=scheduled_for,
+        preferred_window_start=preferred_window_start,
+        preferred_window_end=preferred_window_end,
+        earliest_useful_at=earliest_useful_at,
+        stale_after=stale_after,
+        hard_deadline_at=hard_deadline_at,
+        now=current_time,
+    )
+    request = {
+        "schedule_id": schedule_id,
+        "work_item_id": work_item_id,
+        "account_id": account_id,
+        "scheduled_for": scheduled_for,
+        "preferred_window_start": preferred_window_start,
+        "preferred_window_end": preferred_window_end,
+        "earliest_useful_at": earliest_useful_at,
+        "stale_after": stale_after,
+        "hard_deadline_at": hard_deadline_at,
+        "is_evergreen": is_evergreen,
+    }
+    digest = request_hash(request)
+    begin_write(connection)
+    try:
+        existing = existing_operation(connection, "schedule_work_item", operation_key, digest)
+        if existing is not None:
+            connection.commit()
+            return existing
+        profile = _require_profile_account(connection, work_item_id, account_id)
+        if int(profile["is_dormant"]):
+            raise ValueError("dormant work cannot be actively scheduled")
+        if connection.execute(
+            "SELECT 1 FROM schedule_slots WHERE work_item_id=? AND status='active'", (work_item_id,)
+        ).fetchone() is not None:
+            raise ValueError("work item already has an active schedule")
+        approval = connection.execute(
+            """SELECT r.id FROM revisions r JOIN approvals a ON a.revision_id=r.id
+            WHERE r.work_item_id=? AND r.owned_account_id=? AND a.decision='approved'
+            ORDER BY a.decided_at DESC LIMIT 1""",
+            (work_item_id, account_id),
+        ).fetchone()
+        approved_revision_id = str(approval[0]) if approval else None
+        connection.execute(
+            """INSERT INTO schedule_slots
+            (id,work_item_id,account_id,approved_revision_id,scheduled_for,preferred_window_start,
+             preferred_window_end,earliest_useful_at,stale_after,hard_deadline_at,is_evergreen,
+             status,supersedes_schedule_id,created_at,created_by,operation_key)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,'active',NULL,?,?,?)""",
+            (
+                schedule_id, work_item_id, account_id, approved_revision_id, scheduled_for,
+                preferred_window_start, preferred_window_end, earliest_useful_at, stale_after,
+                hard_deadline_at, int(is_evergreen), current_time.isoformat(), actor_id, operation_key,
+            ),
+        )
+        append_audit(
+            connection, actor_type="human", actor_id=actor_id, operation="schedule_work_item",
+            record_type="schedule_slot", record_id=schedule_id,
+            payload={**request, "approved_revision_id": approved_revision_id},
+        )
+        record_operation(
+            connection, operation_type="schedule_work_item", operation_key=operation_key,
+            request_sha256=digest, result_ref=schedule_id,
+        )
+        connection.commit()
+        return schedule_id
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def _replace_schedule(
+    connection: sqlite3.Connection,
+    *,
+    operation_type: str,
+    schedule_id: str,
+    prior_schedule_id: str,
+    account_id: str,
+    actor_id: str,
+    operation_key: str,
+    fields: dict[str, object],
+) -> str:
+    request = {"schedule_id": schedule_id, "prior_schedule_id": prior_schedule_id,
+               "account_id": account_id, **fields}
+    digest = request_hash(request)
+    begin_write(connection)
+    try:
+        existing = existing_operation(connection, operation_type, operation_key, digest)
+        if existing is not None:
+            connection.commit()
+            return existing
+        prior = connection.execute(
+            "SELECT * FROM schedule_slots WHERE id=? AND status='active'", (prior_schedule_id,)
+        ).fetchone()
+        if prior is None:
+            raise ValueError("active prior schedule not found")
+        if str(prior["account_id"]) != account_id:
+            raise ValueError("account scope mismatch")
+        connection.execute("UPDATE schedule_slots SET status='superseded' WHERE id=?", (prior_schedule_id,))
+        values = {
+            "work_item_id": prior["work_item_id"],
+            "approved_revision_id": prior["approved_revision_id"],
+            "scheduled_for": prior["scheduled_for"],
+            "preferred_window_start": prior["preferred_window_start"],
+            "preferred_window_end": prior["preferred_window_end"],
+            "earliest_useful_at": prior["earliest_useful_at"],
+            "stale_after": prior["stale_after"],
+            "hard_deadline_at": prior["hard_deadline_at"],
+            "is_evergreen": prior["is_evergreen"],
+        }
+        values.update(fields)
+        status = "unscheduled" if operation_type == "unschedule_work_item" else "active"
+        connection.execute(
+            """INSERT INTO schedule_slots
+            (id,work_item_id,account_id,approved_revision_id,scheduled_for,preferred_window_start,
+             preferred_window_end,earliest_useful_at,stale_after,hard_deadline_at,is_evergreen,
+             status,supersedes_schedule_id,created_at,created_by,operation_key)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                schedule_id, values["work_item_id"], account_id, values["approved_revision_id"],
+                values["scheduled_for"], values["preferred_window_start"], values["preferred_window_end"],
+                values["earliest_useful_at"], values["stale_after"], values["hard_deadline_at"],
+                values["is_evergreen"], status, prior_schedule_id, utc_now(), actor_id, operation_key,
+            ),
+        )
+        append_audit(
+            connection, actor_type="human", actor_id=actor_id, operation=operation_type,
+            record_type="schedule_slot", record_id=schedule_id, payload=request,
+        )
+        record_operation(
+            connection, operation_type=operation_type, operation_key=operation_key,
+            request_sha256=digest, result_ref=schedule_id,
+        )
+        connection.commit()
+        return schedule_id
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def reschedule_work_item(
+    connection: sqlite3.Connection,
+    *, schedule_id: str, prior_schedule_id: str, account_id: str,
+    scheduled_for: str | None, preferred_window_start: str | None,
+    preferred_window_end: str | None, earliest_useful_at: str | None,
+    stale_after: str | None, hard_deadline_at: str | None, is_evergreen: bool,
+    actor_id: str, operation_key: str, now: datetime | None = None,
+) -> str:
+    current_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    _validate_schedule_dates(
+        scheduled_for=scheduled_for, preferred_window_start=preferred_window_start,
+        preferred_window_end=preferred_window_end, earliest_useful_at=earliest_useful_at,
+        stale_after=stale_after, hard_deadline_at=hard_deadline_at, now=current_time,
+    )
+    return _replace_schedule(
+        connection, operation_type="reschedule_work_item", schedule_id=schedule_id,
+        prior_schedule_id=prior_schedule_id, account_id=account_id, actor_id=actor_id,
+        operation_key=operation_key, fields={
+            "scheduled_for": scheduled_for, "preferred_window_start": preferred_window_start,
+            "preferred_window_end": preferred_window_end, "earliest_useful_at": earliest_useful_at,
+            "stale_after": stale_after, "hard_deadline_at": hard_deadline_at,
+            "is_evergreen": int(is_evergreen),
+        },
+    )
+
+
+def unschedule_work_item(
+    connection: sqlite3.Connection,
+    *, schedule_id: str, prior_schedule_id: str, account_id: str,
+    actor_id: str, operation_key: str,
+) -> str:
+    return _replace_schedule(
+        connection, operation_type="unschedule_work_item", schedule_id=schedule_id,
+        prior_schedule_id=prior_schedule_id, account_id=account_id, actor_id=actor_id,
+        operation_key=operation_key, fields={"scheduled_for": None},
+    )
+
+
+def set_editorial_target(
+    connection: sqlite3.Connection,
+    *, target_id: str, account_id: str, target_kind: str, window_days: int,
+    target_value: int, effective_from: str, effective_until: str | None,
+    source_note: str, actor_id: str, operation_key: str,
+) -> str:
+    if not target_kind.strip() or not source_note.strip():
+        raise ValueError("target kind and source note are required")
+    if not 1 <= window_days <= 366 or target_value < 0:
+        raise ValueError("invalid editorial target")
+    start = _parse_utc(effective_from, field="effective_from")
+    end = _parse_utc(effective_until, field="effective_until")
+    if end is not None and start is not None and end < start:
+        raise ValueError("effective-until precedes effective-from")
+    request = {"target_id": target_id, "account_id": account_id, "target_kind": target_kind,
+               "window_days": window_days, "target_value": target_value,
+               "effective_from": effective_from, "effective_until": effective_until,
+               "source_note": source_note}
+    digest = request_hash(request)
+    begin_write(connection)
+    try:
+        existing = existing_operation(connection, "set_editorial_target", operation_key, digest)
+        if existing is not None:
+            connection.commit()
+            return existing
+        if connection.execute("SELECT 1 FROM owned_accounts WHERE id=?", (account_id,)).fetchone() is None:
+            raise ValueError("unknown account")
+        connection.execute(
+            "INSERT INTO editorial_targets VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (target_id, account_id, target_kind.strip(), window_days, target_value,
+             effective_from, effective_until, source_note.strip(), utc_now(), actor_id),
+        )
+        append_audit(connection, actor_type="human", actor_id=actor_id,
+                     operation="set_editorial_target", record_type="editorial_target",
+                     record_id=target_id, payload=request)
+        record_operation(connection, operation_type="set_editorial_target",
+                         operation_key=operation_key, request_sha256=digest, result_ref=target_id)
+        connection.commit()
+        return target_id
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def record_manual_metric_observation(
+    connection: sqlite3.Connection,
+    *,
+    snapshot_id: str,
+    publication_id: str,
+    account_id: str,
+    capture_session_id: str,
+    metric_set_version: int,
+    metrics: object,
+    observation_state: str,
+    actor_id: str,
+    operation_key: str,
+    corrects_snapshot_id: str | None = None,
+) -> str:
+    publication = connection.execute(
+        "SELECT owned_account_id FROM publications WHERE id=?", (publication_id,)
+    ).fetchone()
+    if publication is None:
+        raise ValueError("unknown publication")
+    if publication[0] != account_id:
+        raise ValueError("publication account mismatch")
+    return record_metric_snapshot(
+        connection,
+        snapshot_id=snapshot_id,
+        publication_id=publication_id,
+        observation_method="manual",
+        capture_session_id=capture_session_id,
+        metric_set_version=metric_set_version,
+        metrics=metrics,
+        observation_state=observation_state,
+        corrects_snapshot_id=corrects_snapshot_id,
+        actor_id=actor_id,
+        operation_key=operation_key,
+    )
+
+
+def record_manual_publication_result(
+    connection: sqlite3.Connection,
+    *,
+    publication_id: str,
+    revision_id: str,
+    approval_id: str,
+    platform: str,
+    account_id: str,
+    external_post_id: str,
+    canonical_url: str,
+    matched: bool,
+    mismatch_reason: str | None,
+    actor_id: str,
+    operation_key: str,
+) -> str:
+    if matched:
+        if mismatch_reason is not None and mismatch_reason.strip():
+            raise ValueError("matched publication cannot include mismatch reason")
+        return record_publication(
+            connection,
+            publication_id=publication_id,
+            revision_id=revision_id,
+            approval_id=approval_id,
+            platform=platform,
+            owned_account_id=account_id,
+            external_post_id=external_post_id,
+            canonical_url=canonical_url,
+            actor_id=actor_id,
+            operation_key=operation_key,
+        )
+    if mismatch_reason is None or not mismatch_reason.strip():
+        raise ValueError("mismatched publication requires reason")
+    return record_publication_mismatch(
+        connection,
+        publication_id=publication_id,
+        revision_id=revision_id,
+        approval_id=approval_id,
+        platform=platform,
+        owned_account_id=account_id,
+        external_post_id=external_post_id,
+        canonical_url=canonical_url,
+        mismatch_reason=mismatch_reason,
+        actor_id=actor_id,
+        operation_key=operation_key,
+    )
+
+
+def reconcile_publication_result(
+    connection: sqlite3.Connection,
+    *,
+    publication_id: str,
+    account_id: str,
+    matched: bool,
+    mismatch_reason: str | None,
+    actor_id: str,
+    operation_key: str,
+) -> str:
+    request = {
+        "publication_id": publication_id,
+        "account_id": account_id,
+        "matched": matched,
+        "mismatch_reason": mismatch_reason,
+    }
+    digest = request_hash(request)
+    begin_write(connection)
+    try:
+        existing = existing_operation(
+            connection, "reconcile_publication_result", operation_key, digest
+        )
+        if existing is not None:
+            connection.commit()
+            return existing
+        row = connection.execute(
+            """SELECT p.owned_account_id, p.verification_state, r.work_item_id
+            FROM publications p JOIN revisions r ON r.id=p.revision_id
+            WHERE p.id=?""",
+            (publication_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("unknown publication")
+        if row[0] != account_id:
+            raise ValueError("publication account mismatch")
+        if row[1] not in {"owner_confirmed", "platform_observed"}:
+            raise ValueError("publication already reconciled")
+        if matched:
+            if mismatch_reason is not None and mismatch_reason.strip():
+                raise ValueError("matched publication cannot include mismatch reason")
+            verification_state = "verified_match"
+            work_state = "published"
+        else:
+            if mismatch_reason is None or not mismatch_reason.strip():
+                raise ValueError("mismatched publication requires reason")
+            verification_state = "verified_mismatch"
+            work_state = "publication_mismatch"
+        connection.execute(
+            "UPDATE publications SET verification_state=? WHERE id=?",
+            (verification_state, publication_id),
+        )
+        connection.execute(
+            "UPDATE work_items SET state=?, updated_at=? WHERE id=?",
+            (work_state, utc_now(), row[2]),
+        )
+        append_audit(
+            connection,
+            actor_type="human",
+            actor_id=actor_id,
+            operation="reconcile_publication_result",
+            record_type="publication",
+            record_id=publication_id,
+            payload={
+                "verification_state": verification_state,
+                "mismatch_reason": mismatch_reason,
+            },
+        )
+        record_operation(
+            connection,
+            operation_type="reconcile_publication_result",
+            operation_key=operation_key,
+            request_sha256=digest,
+            result_ref=publication_id,
+        )
+        connection.commit()
+        return publication_id
+    except Exception:
+        connection.rollback()
+        raise

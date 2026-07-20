@@ -436,6 +436,8 @@ def record_metric_snapshot(
     metrics: object,
     observation_state: str,
     corrects_snapshot_id: str | None = None,
+    actor_id: str = "metric-recorder",
+    operation_key: str | None = None,
 ) -> str:
     request = {
         "snapshot_id": snapshot_id, "publication_id": publication_id,
@@ -444,10 +446,12 @@ def record_metric_snapshot(
         "observation_state": observation_state, "corrects_snapshot_id": corrects_snapshot_id,
     }
     request_sha256 = request_hash(request)
-    operation_key = f"{publication_id}:{observation_method}:{capture_session_id}"
+    resolved_operation_key = operation_key or f"{publication_id}:{observation_method}:{capture_session_id}"
     begin_write(connection)
     try:
-        existing = existing_operation(connection, "metric_snapshot", operation_key, request_sha256)
+        existing = existing_operation(
+            connection, "metric_snapshot", resolved_operation_key, request_sha256
+        )
         if existing is not None:
             connection.commit()
             return existing
@@ -466,14 +470,17 @@ def record_metric_snapshot(
         )
         append_audit(
             connection, actor_type="human" if observation_method == "manual" else "system",
-            actor_id="metric-recorder", operation="record_metric_snapshot",
+            actor_id=actor_id, operation="record_metric_snapshot",
             record_type="metric_snapshot", record_id=snapshot_id,
             payload={"publication_id": publication_id, "observation_method": observation_method,
                      "capture_session_id": capture_session_id, "observation_state": observation_state},
         )
         record_operation(
-            connection, operation_type="metric_snapshot", operation_key=operation_key,
-            request_sha256=request_sha256, result_ref=snapshot_id,
+            connection,
+            operation_type="metric_snapshot",
+            operation_key=resolved_operation_key,
+            request_sha256=request_sha256,
+            result_ref=snapshot_id,
         )
         connection.commit()
         return snapshot_id

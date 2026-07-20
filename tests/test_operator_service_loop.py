@@ -50,7 +50,7 @@ def test_migration_0002_adds_source_records_without_losing_0001_data(tmp_path: P
     connection = connect(database)
     try:
         assert connection.execute("SELECT title FROM work_items WHERE id='work-1'").fetchone()[0] == "Existing"
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0003"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0004"
         table = connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='source_records'"
         ).fetchone()
