@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -780,6 +781,55 @@ def create_app(
         return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
 
     return app
+
+
+def desktop_runtime_config_from_env() -> dict[str, object]:
+    token = os.environ.get("DISCREPANCY_DESK_DESKTOP_TOKEN", "")
+    host = os.environ.get("DISCREPANCY_DESK_DESKTOP_HOST", "")
+    port_text = os.environ.get("DISCREPANCY_DESK_DESKTOP_PORT", "")
+    if host != "127.0.0.1":
+        raise ValueError("desktop backend host must be 127.0.0.1")
+    if len(token) < 32:
+        raise ValueError("desktop launch token is missing or too short")
+    try:
+        port = int(port_text)
+    except ValueError as exc:
+        raise ValueError("desktop backend port must be an integer") from exc
+    if not 1 <= port <= 65535:
+        raise ValueError("desktop backend port is outside the valid range")
+    database = os.environ.get("DISCREPANCY_DESK_DESKTOP_DATABASE", "")
+    evidence = os.environ.get("DISCREPANCY_DESK_DESKTOP_EVIDENCE_ROOT", "")
+    migrations = os.environ.get("DISCREPANCY_DESK_DESKTOP_MIGRATIONS_ROOT", "")
+    if not database or not evidence or not migrations:
+        raise ValueError("desktop database, evidence root, and migrations root are required")
+    return {
+        "host": host,
+        "port": port,
+        "token": token,
+        "database_path": Path(database),
+        "evidence_root": Path(evidence),
+        "migrations_root": Path(migrations),
+    }
+
+
+def desktop_main() -> None:
+    import uvicorn
+
+    config = desktop_runtime_config_from_env()
+    app = create_app(
+        database_path=config["database_path"],
+        evidence_root=config["evidence_root"],
+        migrations_root=config["migrations_root"],
+        desktop_token=str(config["token"]),
+        desktop_api_version="1",
+    )
+    uvicorn.run(
+        app,
+        host=str(config["host"]),
+        port=int(config["port"]),
+        access_log=False,
+        log_level="warning",
+    )
 
 
 app = create_app()

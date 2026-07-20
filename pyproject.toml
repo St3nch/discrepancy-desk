@@ -16,6 +16,9 @@ dependencies = [
   "uvicorn>=0.34",
 ]
 
+[project.scripts]
+discrepancy-desk-desktop-backend = "discrepancy_desk.web:desktop_main"
+
 [project.optional-dependencies]
 dev = [
   "httpx2>=2.7",

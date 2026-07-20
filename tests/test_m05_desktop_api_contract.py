@@ -3,9 +3,10 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
-from discrepancy_desk.web import create_app
+from discrepancy_desk.web import create_app, desktop_runtime_config_from_env
 
 
 TOKEN = "test-launch-token"
@@ -108,3 +109,42 @@ def test_web_harness_remains_available_without_desktop_token(tmp_path: Path) -> 
         response = client.get("/health")
         assert response.status_code == 200
         assert "SQLite integrity" in response.text
+
+
+def test_desktop_runtime_config_requires_loopback_token_and_valid_port(monkeypatch) -> None:
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_TOKEN", "x" * 64)
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_HOST", "127.0.0.1")
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_PORT", "43127")
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_DATABASE", "runtime/desktop.sqlite3")
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_EVIDENCE_ROOT", "evidence")
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_MIGRATIONS_ROOT", "migrations")
+    assert desktop_runtime_config_from_env() == {
+        "host": "127.0.0.1",
+        "port": 43127,
+        "token": "x" * 64,
+        "database_path": Path("runtime/desktop.sqlite3"),
+        "evidence_root": Path("evidence"),
+        "migrations_root": Path("migrations"),
+    }
+
+
+def test_desktop_runtime_config_rejects_non_loopback_and_bad_values(monkeypatch) -> None:
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_TOKEN", "x" * 64)
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_HOST", "0.0.0.0")
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_PORT", "43127")
+    with pytest.raises(ValueError, match="127.0.0.1"):
+        desktop_runtime_config_from_env()
+
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_HOST", "127.0.0.1")
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_TOKEN", "short")
+    with pytest.raises(ValueError, match="too short"):
+        desktop_runtime_config_from_env()
+
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_TOKEN", "x" * 64)
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_PORT", "not-a-port")
+    with pytest.raises(ValueError, match="integer"):
+        desktop_runtime_config_from_env()
+
+    monkeypatch.setenv("DISCREPANCY_DESK_DESKTOP_PORT", "70000")
+    with pytest.raises(ValueError, match="valid range"):
+        desktop_runtime_config_from_env()
