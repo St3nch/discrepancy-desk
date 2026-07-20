@@ -10,7 +10,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from fastapi import FastAPI, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from .binding import RevisionBundle
@@ -78,6 +78,8 @@ def create_app(
     database_path: Path | None = None,
     evidence_root: Path | None = None,
     migrations_root: Path | None = None,
+    desktop_token: str | None = None,
+    desktop_api_version: str = "1",
 ) -> FastAPI:
     resolved_database = database_path or PROJECT_ROOT / "runtime" / "discrepancy-desk.sqlite3"
     resolved_evidence = evidence_root or PROJECT_ROOT / "evidence"
@@ -88,6 +90,8 @@ def create_app(
         app.state.database_path = resolved_database
         app.state.evidence_root = resolved_evidence
         app.state.migrations_root = resolved_migrations
+        app.state.desktop_token = desktop_token
+        app.state.desktop_api_version = desktop_api_version
         resolved_evidence.mkdir(parents=True, exist_ok=True)
         run_guarded_upgrade(
             resolved_database,
@@ -97,6 +101,109 @@ def create_app(
         yield
 
     app = FastAPI(title="The Discrepancy Desk Control Room", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def desktop_api_boundary(request: Request, call_next):
+        if request.url.path.startswith("/desktop-api/"):
+            if desktop_token is None:
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "error": "desktop_api_disabled",
+                        "message": "Desktop API mode is not enabled.",
+                        "preserved": True,
+                        "changed": False,
+                    },
+                )
+            supplied = request.headers.get("x-discrepancy-desk-token")
+            if supplied != desktop_token:
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "error": "desktop_auth_refused",
+                        "message": "Desktop launch token is missing or incorrect.",
+                        "preserved": True,
+                        "changed": False,
+                    },
+                )
+        return await call_next(request)
+
+    def desktop_error(message: str, *, status_code: int = 400) -> JSONResponse:
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "error": "desktop_request_refused",
+                "message": message,
+                "preserved": True,
+                "changed": False,
+                "safe_next_action": "Refresh governed state and submit a corrected request.",
+            },
+        )
+
+    @app.get("/desktop-api/v1/health")
+    async def desktop_health(request: Request) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
+            migration = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+        finally:
+            connection.close()
+        return JSONResponse(
+            {
+                "api_version": desktop_api_version,
+                "service": "discrepancy-desk-desktop-backend",
+                "status": "healthy" if integrity == "ok" else "unhealthy",
+                "sqlite_integrity": integrity,
+                "migration": migration,
+            }
+        )
+
+    @app.get("/desktop-api/v1/accounts")
+    async def desktop_accounts(request: Request) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            rows = [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT id, platform, external_account_id, username FROM owned_accounts ORDER BY id"
+                )
+            ]
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "accounts": rows})
+
+    @app.get("/desktop-api/v1/command-center")
+    async def desktop_command_center(
+        request: Request, account_id: Annotated[str, Query()]
+    ) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            try:
+                center = get_command_center(
+                    connection, account_id=account_id, now=datetime.now(timezone.utc).isoformat()
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "account_id": account_id, "data": center})
+
+    @app.get("/desktop-api/v1/ready/{work_item_id}")
+    async def desktop_ready(
+        request: Request, work_item_id: str, account_id: Annotated[str, Query()]
+    ) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            try:
+                result = evaluate_ready_to_post(
+                    connection, work_item_id=work_item_id, account_id=account_id,
+                    now=datetime.now(timezone.utc).isoformat(),
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "data": result})
 
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> HTMLResponse:

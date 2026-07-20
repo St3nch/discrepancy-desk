@@ -1,0 +1,1 @@
+body { margin: 0; font-family: system-ui, sans-serif; background: #171817; color: #ece8dc; } main { max-width: 1100px; margin: auto; padding: 2rem; } header, section { border: 1px solid #666156; padding: 1rem 1.25rem; margin-bottom: 1rem; background: #22231f; } h1, h2 { margin-top: .25rem; } p { line-height: 1.5; }
