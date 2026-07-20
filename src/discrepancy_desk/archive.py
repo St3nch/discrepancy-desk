@@ -45,12 +45,18 @@ def encrypt_with_age(
     if not recipient.strip():
         raise ValueError("age recipient is required")
     encrypted_path.parent.mkdir(parents=True, exist_ok=True)
-    completed = subprocess.run(
-        [age_executable, "-r", recipient, "-o", str(encrypted_path), str(zip_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            [age_executable, "-r", recipient, "-o", str(encrypted_path), str(zip_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        encrypted_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            "age encryption requires the external age CLI on PATH or an explicit executable path"
+        ) from exc
     if completed.returncode != 0:
         encrypted_path.unlink(missing_ok=True)
         detail = completed.stderr.strip() or completed.stdout.strip() or "unknown age failure"

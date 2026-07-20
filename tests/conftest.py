@@ -4,7 +4,8 @@ import json
 import sqlite3
 import subprocess
 import sys
-from pathlib import Path
+
+from discrepancy_desk.test_evidence import pytest_evidence_destination as evidence_destination
 
 
 def _git_sha() -> str:
@@ -29,7 +30,7 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
         "exit_status": exitstatus,
         "counts": counts,
     }
-    destination = Path("runtime/test-evidence/latest-pytest-session.json")
+    destination = evidence_destination(session.config.invocation_params.args)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import sqlite3
 import subprocess
@@ -278,6 +279,22 @@ INVARIANTS = (
             "tests/test_m05_packaging_contract.py",
         ),
     ),
+    Invariant(
+        "AC01-G01",
+        "Lifecycle doctrine correction",
+        "The accepted implemented transition table is exact and contains no dead mismatch-to-published path.",
+        (
+            "tests/test_lifecycle_contract.py",
+        ),
+    ),
+    Invariant(
+        "AC01-G02",
+        "Durable test evidence separation",
+        "Full-suite, focused, and hammer sessions resolve to distinct evidence paths.",
+        (
+            "tests/test_test_evidence_paths.py",
+        ),
+    ),
 )
 
 
@@ -302,7 +319,13 @@ def run_invariant(invariant: Invariant) -> dict[str, object]:
             "stderr": "",
         }
     command = [sys.executable, "-m", "pytest", "-q", *invariant.tests]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    environment = os.environ.copy()
+    environment["DISCREPANCY_DESK_PYTEST_EVIDENCE_PATH"] = str(
+        Path("runtime/test-evidence/hammer") / f"{invariant.invariant_id}.json"
+    )
+    completed = subprocess.run(
+        command, capture_output=True, text=True, check=False, env=environment
+    )
     return {
         "invariant_id": invariant.invariant_id,
         "title": invariant.title,

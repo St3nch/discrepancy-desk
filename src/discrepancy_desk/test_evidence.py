@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable, Mapping
+
+EVIDENCE_PATH_ENV = "DISCREPANCY_DESK_PYTEST_EVIDENCE_PATH"
 
 
 @dataclass(frozen=True)
@@ -57,3 +62,29 @@ def write_test_evidence(
         newline="\n",
     )
     return destination
+
+
+def _slug(parts: Iterable[str]) -> str:
+    joined = "-".join(parts)
+    value = re.sub(r"[^A-Za-z0-9_.-]+", "-", joined).strip("-.")
+    return value[:120] or "session"
+
+
+def pytest_evidence_destination(
+    invocation_args: Iterable[str], env: Mapping[str, str] | None = None
+) -> Path:
+    environment = os.environ if env is None else env
+    explicit = environment.get(EVIDENCE_PATH_ENV, "").strip()
+    if explicit:
+        return Path(explicit)
+    test_targets = []
+    for arg in invocation_args:
+        if arg.startswith("-"):
+            continue
+        base = arg.split("::", 1)[0]
+        candidate = Path(base)
+        if "::" in arg or candidate.suffix == ".py" or candidate.exists():
+            test_targets.append(arg)
+    if not test_targets:
+        return Path("runtime/test-evidence/full-suite.json")
+    return Path("runtime/test-evidence/focused") / f"{_slug(test_targets)}.json"

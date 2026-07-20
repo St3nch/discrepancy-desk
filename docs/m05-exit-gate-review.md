@@ -74,13 +74,17 @@ Current pre-commit results:
 ```text
 uv run ruff check .                                      passed
 uv run pytest -o addopts= --disable-warnings -q          97 passed
-pnpm --dir desktop build                                 passed
+npm --prefix desktop run build                           passed
 cargo test --manifest-path desktop/src-tauri/Cargo.toml  3 passed
-pnpm --dir desktop tauri build --bundles nsis            passed
+npm --prefix desktop run tauri -- build --bundles nsis   passed
 uv run python scripts/run_ht_evidence.py                 29 executed, 29 passed, 0 failed
 Inherited HT-14 scope deferral                           1
 npm package-lock audit                                   0 reported vulnerabilities
 ```
+
+## Build and Encryption Prerequisites
+
+Canonical desktop dependency commands and lock authority are defined in `docs/desktop-build-tooling.md`. Encrypted archive prerequisites and the M15 packaged-backup boundary are defined in `docs/backup-encryption-prerequisites.md`.
 
 ## Security and Distribution Findings
 

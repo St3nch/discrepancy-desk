@@ -30,7 +30,6 @@ Thumbs.db
 desktop/node_modules/
 desktop/dist/
 desktop/pnpm-lock.yaml
-desktop/src-tauri/Cargo.lock
 desktop/src-tauri/binaries/
 desktop/src-tauri/gen/
 desktop/src-tauri/target/

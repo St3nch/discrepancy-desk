@@ -2,7 +2,7 @@
 
 ## Status
 
-Package A first implementation batch prepared for owner review.
+M05 owner-accepted and closed. This contract reflects the final admitted desktop boundary after Package C and the post-M05 independent-audit correction pass.
 
 ## Authority Boundary
 
@@ -40,17 +40,18 @@ The Rust supervisor contract:
 - rejects a second child while one backend owns the desktop database;
 - clears the process and session on stop.
 
-The packaged sidecar entrypoint, dynamic port allocation, health polling, restart policy, and exact executable resolution remain to be completed in the next Package A batch.
+The packaged sidecar uses a PyInstaller on-directory runtime so Rust owns the actual backend process. Dynamic loopback allocation, authenticated health polling, exact resource resolution, installed restart, and child cleanup are proven.
 
 ## Tauri Capability Boundary
 
-The current capability file assigns only:
+The capability file assigns only:
 
 ```text
 core:default
+dialog:allow-open
 ```
 
-to the bundled `main` window. It grants no shell, filesystem, updater, global-shortcut, remote-origin, or arbitrary-window capability.
+to the bundled `main` window. `dialog:allow-open` supports explicit human file selection; Rust copies the selected file into the governed evidence inbox. It grants no shell, broad filesystem, updater, global-shortcut, remote-origin, or arbitrary-window capability.
 
 The Tauri configuration:
 
@@ -75,10 +76,10 @@ uv run pytest tests/test_m05_desktop_security.py         passed
 uv run pytest tests/test_m05_sidecar_lifecycle.py        passed
 uv run pytest tests/test_m05_packaging_contract.py       passed
 uv run pytest -o addopts= --disable-warnings -q          88 passed
-pnpm --dir desktop build                                 passed
-pnpm --dir desktop tauri info                            Rust/Cargo/MSVC/WebView2 verified
-pnpm --dir desktop tauri build --no-bundle               passed
-pnpm --dir desktop exec cargo test ...                   3 passed
+npm --prefix desktop run build                           passed
+npm --prefix desktop run tauri -- info                   Rust/Cargo/MSVC/WebView2 verified
+npm --prefix desktop run tauri -- build --bundles nsis   passed
+cargo test via the admitted Tauri toolchain               3 passed
 npm package-lock-only resolution                         0 reported vulnerabilities
 ```
 
@@ -86,9 +87,9 @@ The lifecycle proof now includes a real Python subprocess that starts the deskto
 
 The native toolchain is now directly proven through Tauri CLI execution. A Windows release executable compiled successfully with Rust 1.94.1, Cargo 1.94.1, MSVC Build Tools 2026, and the installed WebView2 runtime. Three Rust unit tests pass for launch-token quality, loopback URL construction, and dynamic loopback port reservation.
 
-## Remaining Native Validation Boundary
+## Final Native Validation Boundary
 
-The successful `--no-bundle` build proves compilation but not installer behavior. Package C must still prove the NSIS installer, installed launch, packaged Python sidecar, migration resources, reinstall, uninstall preservation, and clean shutdown on the installed application.
+The NSIS current-user installer, installed first launch, restart, packaged Python sidecar, migration resources, database preservation on uninstall, and clean backend shutdown were proven during M05 closure. The installer remains unsigned and is not represented as a production distribution release.
 
 ## Stop Conditions Still Active
 

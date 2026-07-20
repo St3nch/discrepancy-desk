@@ -22,7 +22,7 @@ LEGAL_TRANSITIONS: dict[str, set[str]] = {
     "published": set(),
     "rejected": {"drafting"},
     "withdrawn": {"drafting"},
-    "publication_mismatch": {"human_review_needed", "published"},
+    "publication_mismatch": {"human_review_needed"},
     "evidence_blocked": {"human_review_needed", "drafting"},
 }
 

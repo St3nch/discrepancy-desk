@@ -88,6 +88,20 @@ def test_age_encryption_and_manifest(tmp_path: Path) -> None:
     assert decrypted.read_bytes() == result.zip_path.read_bytes()
 
 
+def test_missing_age_executable_fails_with_prerequisite_message(tmp_path: Path) -> None:
+    generation = tmp_path / "generation"
+    generation.mkdir()
+    (generation / "data.txt").write_text("data", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="requires the external age CLI"):
+        package_and_encrypt_generation(
+            generation,
+            tmp_path / "archives",
+            recipient="age1example",
+            age_executable=str(tmp_path / "missing-age"),
+        )
+    assert not any((tmp_path / "archives").glob("*.age"))
+
+
 def test_age_failure_removes_partial_output(tmp_path: Path) -> None:
     generation = tmp_path / "generation"
     generation.mkdir()
