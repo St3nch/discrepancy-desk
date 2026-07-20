@@ -53,3 +53,27 @@ Deferred by approved scope: 1
 The M03 persistence, authority, recovery, service-loop, and thin-interface technical gates pass. HT-14 does not block M03 because mention classification was not admitted into this milestone and no classifier implementation exists to test.
 
 The remaining M03 gate is owner acceptance of the workflow boundary and closure package. The thin web interface remains a disposable contract harness and is not accepted as the future product UI.
+
+# M04 Grouped Executable Coverage
+
+M04 retains the accepted 60-row adversarial matrix in the documentation repository. The executable runner adds six grouped M04 proof records without replacing the row-level planning matrix.
+
+| Evidence ID | Coverage | Named test surface | Current result |
+|---|---|---|---|
+| M04-G01 | editorial organization, tags, schedule authority, horizon, lineage, replay, dormancy, targets | `tests/test_m04_editorial_schedule_contract.py` | passed |
+| M04-G02 | account-isolated derived queries, Ready-to-Post, Need-a-Post, Reserve, empty-slot behavior | `tests/test_m04_operator_queries.py` | passed |
+| M04-G03 | Command Center, schedule, pipeline, state-aware web actions, refusal behavior | `tests/test_m04_web_workflow.py`; `tests/test_web_control_room.py` | passed |
+| M04-G04 | two-account editorial week, all lanes, schedule-only approval preservation, content invalidation, publication match/mismatch/replacement, honest metrics, replay | `tests/test_m04_editorial_week_scenario.py` | passed |
+| M04-G05 | migration `0004`, dirty/interrupted recovery, manifest, archive, backup, restore | migration/recovery/restore test modules | passed |
+| M04-G06 | inherited lifecycle, exact approval, publication, metric, idempotency, concurrency, and audit contracts | persistence/operator/lineage test modules | passed |
+
+## Current M04-inclusive execution result
+
+```text
+Executed: 25
+Passed: 25
+Failed: 0
+Deferred by inherited scope: 1
+```
+
+The runtime JSON is provisional until rerun against the accepted Package C implementation commit. The final evidence SHA-256 and exact commit binding belong in `docs/m04-exit-gate-review.md`.

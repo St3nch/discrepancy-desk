@@ -192,6 +192,60 @@ INVARIANTS = (
             "tests/test_recovery_authority_and_mismatch.py::test_detector_results_are_advisory_and_do_not_change_state",
         ),
     ),
+    Invariant(
+        "M04-G01",
+        "Editorial organization and schedule authority",
+        "Account scope, closed lanes, normalized tags, horizon checks, lineage, replay, dormancy, and dated targets pass on real SQLite.",
+        (
+            "tests/test_m04_editorial_schedule_contract.py",
+        ),
+    ),
+    Invariant(
+        "M04-G02",
+        "Derived query isolation and anti-filler behavior",
+        "Command Center, schedule, Reserve, Ready-to-Post, and Need-a-Post remain account-scoped and deterministic.",
+        (
+            "tests/test_m04_operator_queries.py",
+        ),
+    ),
+    Invariant(
+        "M04-G03",
+        "Functional web control room",
+        "Account-scoped organization, scheduling, pipeline, and refusal behavior work through admitted routes.",
+        (
+            "tests/test_m04_web_workflow.py",
+            "tests/test_web_control_room.py",
+        ),
+    ),
+    Invariant(
+        "M04-G04",
+        "Realistic editorial week and correction lineage",
+        "Two accounts, all three lanes, reschedule, Reserve, approval preservation/invalidation, match, mismatch, replacement, honest metrics, empty-slot, and replay proof pass.",
+        (
+            "tests/test_m04_editorial_week_scenario.py",
+        ),
+    ),
+    Invariant(
+        "M04-G05",
+        "Migration and recovery compatibility through 0004",
+        "Fresh and upgraded databases, dirty migration handling, archive evidence, backup, and restore proofs remain green at head 0004.",
+        (
+            "tests/test_migration_archive_evidence.py",
+            "tests/test_integrity_and_restore.py",
+            "tests/test_recovery_authority_and_mismatch.py",
+        ),
+    ),
+    Invariant(
+        "M04-G06",
+        "Authority and publication regression",
+        "M03 lifecycle, revision, approval, publication, metric, idempotency, concurrency, and audit contracts remain intact under M04.",
+        (
+            "tests/test_persistence_hammer.py",
+            "tests/test_persistence_operations_hammer.py",
+            "tests/test_operator_service_loop.py",
+            "tests/test_revision_and_publication_lineage.py",
+        ),
+    ),
 )
 
 
