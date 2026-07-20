@@ -3,7 +3,42 @@
   "productName": "The Discrepancy Desk",
   "version": "0.1.0",
   "identifier": "com.discrepancydesk.controlroom",
-  "build": { "beforeDevCommand": "pnpm dev", "devUrl": "http://127.0.0.1:1420", "beforeBuildCommand": "pnpm build", "frontendDist": "../dist" },
-  "app": { "security": { "csp": "default-src 'self'; connect-src http://127.0.0.1:*; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'" }, "windows": [{ "label": "main", "title": "The Discrepancy Desk — B1-L7", "width": 1280, "height": 820, "minWidth": 900, "minHeight": 600, "resizable": true }] },
-  "bundle": { "active": true, "targets": ["nsis"], "windows": { "nsis": { "installMode": "currentUser" } } }
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; connect-src http://127.0.0.1:*; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "The Discrepancy Desk \u2014 B1-L7",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "resources": {
+      "../../migrations/": "migrations/",
+      "../../alembic.ini": "alembic.ini",
+      "binaries/discrepancy-desk-backend/": "backend/"
+    }
+  }
 }

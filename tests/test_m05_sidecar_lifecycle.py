@@ -38,7 +38,8 @@ def test_rust_command_surface_exposes_session_not_business_mutations() -> None:
     commands = (RUST_ROOT / "commands.rs").read_text(encoding="utf-8")
     library = (RUST_ROOT / "lib.rs").read_text(encoding="utf-8")
     assert "backend_session" in commands
-    assert "generate_handler![commands::backend_session]" in library
+    assert "commands::backend_session" in library
+    assert "commands::import_evidence_file" in library
     for forbidden in (
         "approve_revision",
         "record_publication",
@@ -63,6 +64,8 @@ def test_supervisor_reserves_dynamic_loopback_port_and_polls_health() -> None:
 def test_tauri_setup_starts_fixed_executable_and_exit_stops_child() -> None:
     library = (RUST_ROOT / "lib.rs").read_text(encoding="utf-8")
     assert 'std::env::var("DISCREPANCY_DESK_BACKEND_EXECUTABLE")' in library
+    assert 'resource_dir.join("backend").join("discrepancy-desk-backend.exe")' in library
+    assert "current_exe()" in library
     assert ".start(" in library
     assert "&database_path.to_string_lossy()" in library
     assert "&evidence_root.to_string_lossy()" in library
@@ -130,3 +133,18 @@ def test_real_python_desktop_backend_starts_authenticates_and_stops(tmp_path: Pa
             process.kill()
             process.wait(timeout=5)
     assert process.poll() is not None
+
+
+def test_packaged_proof_auto_exit_is_bounded_and_disabled_by_default() -> None:
+    library = (RUST_ROOT / "lib.rs").read_text(encoding="utf-8")
+    assert "DISCREPANCY_DESK_DESKTOP_PROOF_AUTO_EXIT_MS" in library
+    assert "100..=60_000" in library
+    assert "let _ = supervisor.stop();" in library
+    assert "handle.exit(0)" in library
+    assert "if let Ok(value)" in library
+
+
+def test_supervisor_drop_is_last_resort_cleanup() -> None:
+    backend = (RUST_ROOT / "backend.rs").read_text(encoding="utf-8")
+    assert "impl Drop for BackendSupervisor" in backend
+    assert "let _ = self.stop();" in backend

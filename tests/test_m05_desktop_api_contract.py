@@ -288,3 +288,109 @@ def test_desktop_schedule_range_is_bounded(tmp_path: Path) -> None:
         )
         assert response.status_code == 400
         assert response.json()["changed"] is False
+
+
+def test_desktop_full_manual_publication_and_metrics_loop(tmp_path: Path) -> None:
+    client, database = client_for(tmp_path)
+    with client:
+        connection = sqlite3.connect(database)
+        try:
+            connection.execute("INSERT INTO owned_accounts VALUES ('acct-1','x','one','Desk',1)")
+            connection.commit()
+        finally:
+            connection.close()
+        headers = {"x-discrepancy-desk-token": TOKEN}
+        capture = client.post(
+            "/desktop-api/v1/work-items", headers=headers,
+            json={"title": "Full desktop loop", "operation_key": "loop:capture"},
+        )
+        work_item_id = capture.json()["work_item_id"]
+        draft = client.post(
+            f"/desktop-api/v1/work-items/{work_item_id}/draft", headers=headers,
+            json={"account_id": "acct-1", "authored_text": "Exact approved desktop text"},
+        )
+        assert draft.status_code == 200
+        revision_id = draft.json()["revision_id"]
+        approval = client.post(
+            f"/desktop-api/v1/work-items/{work_item_id}/approve", headers=headers,
+            json={"revision_id": revision_id, "operation_key": "loop:approve"},
+        )
+        assert approval.status_code == 200
+        approval_id = approval.json()["approval_id"]
+        ready = client.post(
+            f"/desktop-api/v1/work-items/{work_item_id}/manual-ready", headers=headers,
+            json={"approval_id": approval_id, "operation_key": "loop:ready"},
+        )
+        assert ready.status_code == 200
+        publication = client.post(
+            f"/desktop-api/v1/work-items/{work_item_id}/publication", headers=headers,
+            json={
+                "revision_id": revision_id, "approval_id": approval_id,
+                "external_post_id": "desktop-post-1",
+                "canonical_url": "https://x.com/Desk/status/desktop-post-1",
+                "operation_key": "loop:publication",
+            },
+        )
+        assert publication.status_code == 200
+        metric = client.post(
+            f"/desktop-api/v1/work-items/{work_item_id}/metrics", headers=headers,
+            json={"observation_state": "observed_value", "metrics": {"likes": 5}, "operation_key": "loop:metric"},
+        )
+        assert metric.status_code == 200
+        metrics = client.get("/desktop-api/v1/metrics?account_id=acct-1", headers=headers)
+        assert metrics.status_code == 200
+        assert len(metrics.json()["rows"]) == 1
+        connection = sqlite3.connect(database)
+        try:
+            assert connection.execute("SELECT state FROM work_items WHERE id=?", (work_item_id,)).fetchone()[0] == "published"
+            assert connection.execute("SELECT count(*) FROM metric_snapshots").fetchone()[0] == 1
+        finally:
+            connection.close()
+
+
+def test_desktop_source_and_evidence_records_are_account_scoped(tmp_path: Path) -> None:
+    client, database = client_for(tmp_path)
+    evidence_root = tmp_path / "evidence"
+    evidence_root.mkdir(parents=True, exist_ok=True)
+    (evidence_root / "capture.txt").write_text("captured evidence", encoding="utf-8")
+    with client:
+        connection = sqlite3.connect(database)
+        try:
+            connection.execute("INSERT INTO owned_accounts VALUES ('acct-1','x','one','Desk',1)")
+            connection.commit()
+        finally:
+            connection.close()
+        headers = {"x-discrepancy-desk-token": TOKEN}
+        capture = client.post(
+            "/desktop-api/v1/work-items", headers=headers,
+            json={"title": "Evidence record", "operation_key": "records:capture"},
+        )
+        work_item_id = capture.json()["work_item_id"]
+        assert client.post(
+            f"/desktop-api/v1/work-items/{work_item_id}/organize", headers=headers,
+            json={"account_id": "acct-1", "lane": "archive", "operation_key": "records:organize"},
+        ).status_code == 200
+        source = client.post(
+            f"/desktop-api/v1/work-items/{work_item_id}/sources", headers=headers,
+            json={
+                "source_kind": "url",
+                "locator": "https://example.invalid/record",
+                "operation_key": "records:source",
+            },
+        )
+        assert source.status_code == 200
+        evidence = client.post(
+            f"/desktop-api/v1/work-items/{work_item_id}/evidence", headers=headers,
+            json={"relative_path": "capture.txt", "operation_key": "records:evidence"},
+        )
+        assert evidence.status_code == 200
+        assert len(evidence.json()["sha256"]) == 64
+        records = client.get("/desktop-api/v1/records?account_id=acct-1", headers=headers)
+        assert records.status_code == 200
+        assert records.json()["rows"][0]["locator"] == "https://example.invalid/record"
+        refused = client.post(
+            f"/desktop-api/v1/work-items/{work_item_id}/evidence", headers=headers,
+            json={"relative_path": "../escape.txt", "operation_key": "records:escape"},
+        )
+        assert refused.status_code == 400
+        assert refused.json()["changed"] is False

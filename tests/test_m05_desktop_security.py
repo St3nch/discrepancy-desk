@@ -12,7 +12,7 @@ def test_capability_is_deny_by_default() -> None:
         (ROOT / "src-tauri/capabilities/main.json").read_text(encoding="utf-8")
     )
     assert capability["windows"] == ["main"]
-    assert capability["permissions"] == ["core:default"]
+    assert capability["permissions"] == ["core:default", "dialog:allow-open"]
     rendered = json.dumps(capability).lower()
     for forbidden in ("shell", "filesystem", "updater", "global-shortcut", "remote"):
         assert forbidden not in rendered
@@ -49,3 +49,15 @@ def test_launch_token_is_not_passed_as_command_line_argument() -> None:
     assert ".arg(&token)" not in backend
     assert "127.0.0.1" in backend
     assert "backend already owns the desktop database" in backend
+
+
+def test_native_evidence_import_is_bounded() -> None:
+    commands = Path("desktop/src-tauri/src/commands.rs").read_text(encoding="utf-8")
+    library = Path("desktop/src-tauri/src/lib.rs").read_text(encoding="utf-8")
+    assert "import_evidence_file" in commands
+    assert "100 * 1024 * 1024" in commands
+    assert '.join("evidence")' in commands
+    assert '.join("inbox")' in commands
+    assert "std::fs::copy" in commands
+    assert "tauri_plugin_dialog::init()" in library
+    assert "execute_sql" not in commands

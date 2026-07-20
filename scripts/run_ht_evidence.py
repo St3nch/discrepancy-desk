@@ -246,6 +246,38 @@ INVARIANTS = (
             "tests/test_revision_and_publication_lineage.py",
         ),
     ),
+    Invariant(
+        "M05-G01",
+        "Desktop API authority and parity",
+        "Token-gated account-scoped desktop reads and mutations preserve the M04 authority contract through the full manual workflow.",
+        (
+            "tests/test_m05_desktop_api_contract.py",
+        ),
+    ),
+    Invariant(
+        "M05-G02",
+        "Native lifecycle and process ownership",
+        "Loopback startup, environment-only launch configuration, bounded proof exit, child cleanup, and supervisor fallback remain enforced.",
+        (
+            "tests/test_m05_sidecar_lifecycle.py",
+        ),
+    ),
+    Invariant(
+        "M05-G03",
+        "Desktop capability and evidence-import boundary",
+        "Tauri capabilities remain deny-by-default and native evidence import is bounded without direct database authority.",
+        (
+            "tests/test_m05_desktop_security.py",
+        ),
+    ),
+    Invariant(
+        "M05-G04",
+        "Packaging and distribution boundary",
+        "Current-user NSIS, no updater, admitted dependency locks, icons, and generated-output exclusions remain enforced.",
+        (
+            "tests/test_m05_packaging_contract.py",
+        ),
+    ),
 )
 
 

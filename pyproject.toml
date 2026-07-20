@@ -35,3 +35,8 @@ line-length = 100
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/discrepancy_desk"]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.0",
+]

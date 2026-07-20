@@ -173,3 +173,9 @@ mod tests {
         assert!(port > 0);
     }
 }
+
+impl Drop for BackendSupervisor {
+    fn drop(&mut self) {
+        let _ = self.stop();
+    }
+}

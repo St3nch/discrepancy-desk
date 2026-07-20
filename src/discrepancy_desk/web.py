@@ -839,6 +839,262 @@ def create_app(
             connection.close()
         return RedirectResponse(f"/work-items/{work_item_id}", status_code=303)
 
+    @app.post("/desktop-api/v1/work-items/{work_item_id}/sources")
+    async def desktop_add_source(
+        request: Request, work_item_id: str, payload: Annotated[dict[str, object], Body()]
+    ) -> JSONResponse:
+        source_kind = str(payload.get("source_kind", "")).strip()
+        operation_key = str(payload.get("operation_key", "")).strip()
+        if not source_kind or not operation_key:
+            return desktop_error("source_kind and operation_key are required")
+        connection = _connection(request)
+        try:
+            try:
+                source_id = _id("source")
+                add_source_record(
+                    connection,
+                    source_id=source_id,
+                    work_item_id=work_item_id,
+                    source_kind=source_kind,
+                    locator=(str(payload["locator"]).strip() if payload.get("locator") else None),
+                    note_text=(str(payload["note_text"]).strip() if payload.get("note_text") else None),
+                    operation_key=operation_key,
+                    actor_id="owner-desktop",
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "source_id": source_id})
+
+    @app.post("/desktop-api/v1/work-items/{work_item_id}/evidence")
+    async def desktop_register_evidence(
+        request: Request, work_item_id: str, payload: Annotated[dict[str, object], Body()]
+    ) -> JSONResponse:
+        relative_path = str(payload.get("relative_path", "")).strip()
+        operation_key = str(payload.get("operation_key", "")).strip()
+        if not relative_path or not operation_key:
+            return desktop_error("relative_path and operation_key are required")
+        candidate = (request.app.state.evidence_root / relative_path).resolve()
+        root = request.app.state.evidence_root.resolve()
+        if root not in candidate.parents and candidate != root:
+            return desktop_error("evidence path escapes governed root")
+        if not candidate.is_file():
+            return desktop_error("evidence file does not exist")
+        digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        connection = _connection(request)
+        try:
+            try:
+                evidence_id = _id("evidence")
+                register_evidence(
+                    connection,
+                    request.app.state.evidence_root,
+                    evidence_id=evidence_id,
+                    work_item_id=work_item_id,
+                    relative_path=relative_path,
+                    expected_sha256=digest,
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "evidence_id": evidence_id, "sha256": digest})
+
+    @app.post("/desktop-api/v1/work-items/{work_item_id}/draft")
+    async def desktop_draft(
+        request: Request, work_item_id: str, payload: Annotated[dict[str, object], Body()]
+    ) -> JSONResponse:
+        account_id = str(payload.get("account_id", "")).strip()
+        authored_text = str(payload.get("authored_text", ""))
+        if not account_id or not authored_text:
+            return desktop_error("account_id and authored_text are required")
+        connection = _connection(request)
+        try:
+            try:
+                state = connection.execute("SELECT state FROM work_items WHERE id=?", (work_item_id,)).fetchone()
+                if state is None:
+                    raise ValueError("unknown work item")
+                if state[0] in {"captured", "research_ready", "rejected", "withdrawn"}:
+                    transition_work_item(connection, work_item_id, "drafting", actor_id="owner-desktop")
+                elif state[0] != "drafting":
+                    raise ValueError("draft creation requires captured, research_ready, rejected, withdrawn, or drafting state")
+                account = connection.execute("SELECT platform FROM owned_accounts WHERE id=?", (account_id,)).fetchone()
+                if account is None:
+                    raise ValueError("unknown owned account")
+                revision_id = _id("revision")
+                create_revision(
+                    connection,
+                    revision_id=revision_id,
+                    work_item_id=work_item_id,
+                    owned_account_id=account_id,
+                    bundle=RevisionBundle(str(account[0]), account_id, authored_text),
+                )
+                transition_work_item(connection, work_item_id, "human_review_needed", actor_id="owner-desktop")
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "revision_id": revision_id})
+
+    @app.post("/desktop-api/v1/work-items/{work_item_id}/approve")
+    async def desktop_approve(
+        request: Request, work_item_id: str, payload: Annotated[dict[str, object], Body()]
+    ) -> JSONResponse:
+        revision_id = str(payload.get("revision_id", "")).strip()
+        operation_key = str(payload.get("operation_key", "")).strip()
+        if not revision_id or not operation_key:
+            return desktop_error("revision_id and operation_key are required")
+        connection = _connection(request)
+        try:
+            try:
+                row = connection.execute("SELECT binding_sha256, work_item_id FROM revisions WHERE id=?", (revision_id,)).fetchone()
+                if row is None or row[1] != work_item_id:
+                    raise ValueError("revision does not belong to work item")
+                approval_id = _id("approval")
+                approve_revision(
+                    connection,
+                    approval_id=approval_id,
+                    revision_id=revision_id,
+                    binding_sha256=str(row[0]),
+                    actor_id="owner-desktop",
+                    action_id=operation_key,
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "approval_id": approval_id})
+
+    @app.post("/desktop-api/v1/work-items/{work_item_id}/manual-ready")
+    async def desktop_manual_ready(
+        request: Request, work_item_id: str, payload: Annotated[dict[str, object], Body()]
+    ) -> JSONResponse:
+        approval_id = str(payload.get("approval_id", "")).strip()
+        operation_key = str(payload.get("operation_key", "")).strip()
+        if not approval_id or not operation_key:
+            return desktop_error("approval_id and operation_key are required")
+        connection = _connection(request)
+        try:
+            try:
+                mark_manual_ready(connection, work_item_id=work_item_id, approval_id=approval_id, actor_id="owner-desktop", operation_key=operation_key)
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "work_item_id": work_item_id})
+
+    @app.post("/desktop-api/v1/work-items/{work_item_id}/publication")
+    async def desktop_publication(
+        request: Request, work_item_id: str, payload: Annotated[dict[str, object], Body()]
+    ) -> JSONResponse:
+        required = ("revision_id", "approval_id", "external_post_id", "canonical_url", "operation_key")
+        if any(not str(payload.get(name, "")).strip() for name in required):
+            return desktop_error("revision_id, approval_id, external_post_id, canonical_url, and operation_key are required")
+        connection = _connection(request)
+        try:
+            try:
+                revision = connection.execute("SELECT platform, owned_account_id, work_item_id FROM revisions WHERE id=?", (str(payload["revision_id"]),)).fetchone()
+                if revision is None or revision[2] != work_item_id:
+                    raise ValueError("revision does not belong to work item")
+                publication_id = _id("publication")
+                common = dict(
+                    connection=connection,
+                    publication_id=publication_id,
+                    revision_id=str(payload["revision_id"]),
+                    approval_id=str(payload["approval_id"]),
+                    platform=str(revision[0]),
+                    owned_account_id=str(revision[1]),
+                    external_post_id=str(payload["external_post_id"]),
+                    canonical_url=str(payload["canonical_url"]),
+                    actor_id="owner-desktop",
+                    operation_key=str(payload["operation_key"]),
+                )
+                mismatch_reason = str(payload.get("mismatch_reason", "")).strip()
+                replaces = str(payload.get("replaces_publication_id", "")).strip()
+                if replaces:
+                    record_replacement_publication(**common, replaces_publication_id=replaces)
+                elif mismatch_reason:
+                    record_publication_mismatch(**common, mismatch_reason=mismatch_reason)
+                else:
+                    record_publication(**common)
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "publication_id": publication_id})
+
+    @app.post("/desktop-api/v1/work-items/{work_item_id}/metrics")
+    async def desktop_metrics(
+        request: Request, work_item_id: str, payload: Annotated[dict[str, object], Body()]
+    ) -> JSONResponse:
+        operation_key = str(payload.get("operation_key", "")).strip()
+        observation_state = str(payload.get("observation_state", "")).strip()
+        metrics = payload.get("metrics")
+        if not operation_key or not observation_state or metrics is None:
+            return desktop_error("operation_key, observation_state, and metrics are required")
+        connection = _connection(request)
+        try:
+            try:
+                publication = connection.execute("SELECT p.id FROM publications p JOIN revisions r ON r.id=p.revision_id WHERE r.work_item_id=? ORDER BY p.observed_at DESC LIMIT 1", (work_item_id,)).fetchone()
+                if publication is None:
+                    raise ValueError("metrics require a publication")
+                snapshot_id = _id("metric")
+                record_metric_snapshot(
+                    connection,
+                    snapshot_id=snapshot_id,
+                    publication_id=str(publication[0]),
+                    observation_method="manual",
+                    capture_session_id=operation_key,
+                    metric_set_version=1,
+                    metrics=metrics,
+                    observation_state=observation_state,
+                    actor_id="owner-desktop",
+                    operation_key=operation_key,
+                )
+            except ValueError as exc:
+                return desktop_error(str(exc))
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "snapshot_id": snapshot_id})
+
+    @app.get("/desktop-api/v1/records")
+    async def desktop_records(request: Request, account_id: Annotated[str, Query()]) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            rows = []
+            for row in connection.execute(
+                "SELECT s.id, s.work_item_id, s.source_kind, s.locator, s.note_text FROM source_records s JOIN editorial_profiles ep ON ep.work_item_id=s.work_item_id WHERE ep.account_id=? ORDER BY s.created_at DESC, s.id",
+                (account_id,),
+            ):
+                item = dict(row)
+                if isinstance(item["note_text"], bytes):
+                    item["note_text"] = item["note_text"].decode("utf-8")
+                rows.append(item)
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "account_id": account_id, "rows": rows})
+
+    @app.get("/desktop-api/v1/metrics")
+    async def desktop_metrics_view(request: Request, account_id: Annotated[str, Query()]) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            rows = []
+            for row in connection.execute(
+                "SELECT ms.id, ms.publication_id, ms.captured_at, ms.observation_state, ms.metrics_json FROM metric_snapshots ms JOIN publications p ON p.id=ms.publication_id WHERE p.owned_account_id=? ORDER BY ms.captured_at DESC, ms.id",
+                (account_id,),
+            ):
+                item = dict(row)
+                raw_metrics = item["metrics_json"]
+                if isinstance(raw_metrics, bytes):
+                    item["metrics"] = json.loads(raw_metrics.decode("utf-8"))
+                else:
+                    item["metrics"] = json.loads(str(raw_metrics))
+                del item["metrics_json"]
+                rows.append(item)
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "account_id": account_id, "rows": rows})
+
     @app.post("/work-items/{work_item_id}/draft")
     async def draft_route(
         request: Request,

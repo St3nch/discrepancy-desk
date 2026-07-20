@@ -77,3 +77,14 @@ Deferred by inherited scope: 1
 ```
 
 The runtime JSON is provisional until rerun against the accepted Package C implementation commit. The final evidence SHA-256 and exact commit binding belong in `docs/m04-exit-gate-review.md`.
+
+# M05 Grouped Executable Coverage
+
+| Evidence ID | Coverage | Named test surface | Current result |
+|---|---|---|---|
+| M05-G01 | token-gated desktop API, account isolation, full manual workflow parity | `tests/test_m05_desktop_api_contract.py` | passed |
+| M05-G02 | loopback lifecycle, launch token, child ownership, shutdown cleanup | `tests/test_m05_sidecar_lifecycle.py` | passed |
+| M05-G03 | deny-by-default capabilities and bounded native evidence import | `tests/test_m05_desktop_security.py` | passed |
+| M05-G04 | NSIS/current-user/no-updater/dependency and generated-output boundary | `tests/test_m05_packaging_contract.py` | passed |
+
+Package C also produced runtime-only proof for packaged sidecar build, installed first launch, restart, backend cleanup, silent uninstall, and data preservation. Final commit and SHA bindings are recorded in `docs/m05-exit-gate-review.md`.
