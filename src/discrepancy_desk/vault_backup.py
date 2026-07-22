@@ -507,7 +507,9 @@ def verify_vault_generation(
     actual = {
         path.relative_to(generation_root).as_posix()
         for path in generation_root.rglob("*")
-        if path.is_file() and path.name not in {"manifest.json", "COMPLETE"}
+        if path.is_file()
+        and path.relative_to(generation_root).as_posix()
+        not in {"manifest.json", "COMPLETE"}
     }
     if actual != expected_paths:
         raise ValueError("backup generation contains unmanifested or missing files")

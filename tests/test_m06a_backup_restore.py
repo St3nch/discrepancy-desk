@@ -304,3 +304,34 @@ def test_m06a_ht_096_backup_restore_is_per_vault(
             for path in generation.generation_root.rglob("*")
             if path.is_file()
         )
+
+
+@pytest.mark.parametrize("control_name", ["manifest.json", "COMPLETE"])
+def test_nested_backup_control_names_are_unmanifested_tamper(
+    m06a_phase2_vault, tmp_path: Path, control_name: str
+) -> None:
+    _, opened = m06a_phase2_vault
+    _seed_artifact(opened, f"nested-{control_name}")
+    generation = _generation(opened, f"nested-{control_name}")
+    injected = generation.generation_root / "objects" / "unmanifested" / control_name
+    injected.parent.mkdir(parents=True, exist_ok=True)
+    injected.write_text("unmanifested nested control-name file", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unmanifested or missing files"):
+        verify_vault_generation(
+            generation.generation_root,
+            expected_vault_account_id=opened.identity.vault_account_id,
+            expected_vault_instance_id=opened.identity.vault_instance_id,
+            authority_connection=opened.connection,
+        )
+
+    proof_root = tmp_path / f"proof-{control_name}"
+    with pytest.raises(ValueError, match="unmanifested or missing files"):
+        restore_generation_disposable(
+            generation.generation_root,
+            proof_root,
+            expected_vault_account_id=opened.identity.vault_account_id,
+            expected_vault_instance_id=opened.identity.vault_instance_id,
+            authority_connection=opened.connection,
+        )
+    assert not proof_root.exists()

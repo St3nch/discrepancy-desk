@@ -305,3 +305,37 @@ def test_phase2_vault_upgrade_rejects_disabled_human_actor(
         ).fetchone()[0] == 0
     finally:
         connection.close()
+
+
+def test_empty_v0002_downgrade_preserves_exact_v0001_schema(
+    tmp_path: Path, m06a_vault_spec
+) -> None:
+    v0001_database = tmp_path / "expected-v0001.sqlite3"
+    downgraded_database = tmp_path / "downgraded-v0001.sqlite3"
+
+    def config_for(database: Path) -> Config:
+        config = Config(str(m06a_vault_spec.config_path))
+        config.set_main_option("script_location", str(m06a_vault_spec.migrations_root))
+        config.set_main_option("sqlalchemy.url", f"sqlite:///{database.as_posix()}")
+        return config
+
+    command.upgrade(config_for(v0001_database), "V0001")
+    command.upgrade(config_for(downgraded_database), "V0002")
+    command.downgrade(config_for(downgraded_database), "V0001")
+
+    def schema(database: Path) -> list[tuple[str, str, str]]:
+        connection = connect_existing(database)
+        try:
+            return [
+                (str(row[0]), str(row[1]), str(row[2]))
+                for row in connection.execute(
+                    """SELECT type, name, sql
+                    FROM sqlite_master
+                    WHERE name NOT LIKE 'sqlite_%'
+                    ORDER BY type, name"""
+                )
+            ]
+        finally:
+            connection.close()
+
+    assert schema(downgraded_database) == schema(v0001_database)

@@ -425,6 +425,7 @@ def downgrade() -> None:
         "source_items",
         "sources",
     )
+    phase2_tables = governed[1:]
     for table in governed:
         if connection.exec_driver_sql(f"SELECT 1 FROM {table} LIMIT 1").fetchone() is not None:
             raise RuntimeError("refusing to downgrade V0002 with governed Phase 2 rows")
@@ -437,5 +438,5 @@ def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS intake_upload_authorizations_update_guard")
     op.execute("DROP TRIGGER IF EXISTS backup_generations_update_guard")
     op.execute("DROP TRIGGER IF EXISTS artifact_policy_binding_lineage_guard")
-    for table in governed:
+    for table in phase2_tables:
         op.execute(f"DROP TABLE IF EXISTS {table}")
