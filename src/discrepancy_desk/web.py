@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -10,10 +11,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import Body, FastAPI, Form, Query, Request
+from fastapi import Body, FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from .actor_context import ActorContext
 from .binding import RevisionBundle
 from .editorial_queries import (
     evaluate_ready_to_post,
@@ -37,7 +39,15 @@ from .operator_service import (
     set_work_item_tags,
     unschedule_work_item,
 )
-from .vault_router import registry_snapshot, selected_vault_health
+from .vault_backup import create_vault_generation, verify_and_restore_generation
+from .vault_filesystem import ArtifactIntegrityError, ArtifactLimitExceeded
+from .vault_ingestion import admit_artifact, list_intake_records, start_intake
+from .vault_router import (
+    open_registered_vault,
+    registry_snapshot,
+    selected_vault_health,
+    upgrade_registered_vault,
+)
 from .vault_service import provision_vault
 from .persistence import (
     approve_revision,
@@ -160,6 +170,16 @@ def create_app(
             },
         )
 
+    def desktop_vault_actor(vault_id: str, operation_key: str) -> ActorContext:
+        return ActorContext(
+            actor_id=vault_owner_actor_id,
+            actor_class="human",
+            vault_account_id=vault_id,
+            correlation_id=operation_key,
+            authentication_source="desktop-launch-token",
+            allowed_operation_class="vault_admin",
+        )
+
     @app.get("/desktop-api/v1/health")
     async def desktop_health(request: Request) -> JSONResponse:
         connection = _connection(request)
@@ -250,6 +270,275 @@ def create_app(
         return JSONResponse(
             status_code=status_code,
             content={"api_version": desktop_api_version, **health},
+        )
+
+    @app.post("/desktop-api/v1/vaults/{vault_id}/migrate")
+    async def desktop_migrate_vault(
+        request: Request,
+        vault_id: str,
+        payload: Annotated[dict[str, object], Body()],
+    ) -> JSONResponse:
+        operation_key = str(payload.get("operation_key", "")).strip()
+        if not operation_key:
+            return desktop_error("operation_key is required")
+        connection = _connection(request)
+        try:
+            try:
+                with upgrade_registered_vault(
+                    connection,
+                    vault_base=request.app.state.vault_base,
+                    vault_id=vault_id,
+                    migration_spec=request.app.state.vault_migration_spec,
+                    operation_id=operation_key,
+                    actor_id=request.app.state.vault_owner_actor_id,
+                ) as opened:
+                    migration = opened.connection.execute(
+                        "SELECT version_num FROM alembic_version"
+                    ).fetchone()[0]
+            except (FileNotFoundError, PermissionError, RuntimeError, ValueError, sqlite3.DatabaseError):
+                return desktop_error("Vault migration was refused or requires reconciliation.", status_code=409)
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "vault_id": vault_id, "migration": migration})
+
+    @app.post("/desktop-api/v1/vaults/{vault_id}/intake")
+    async def desktop_start_vault_intake(
+        request: Request,
+        vault_id: str,
+        payload: Annotated[dict[str, object], Body()],
+    ) -> JSONResponse:
+        operation_key = str(payload.get("operation_key", "")).strip()
+        client_nonce = str(payload.get("client_nonce", "")).strip()
+        expects_bytes = payload.get("expects_bytes")
+        advisory_byte_size = payload.get("advisory_byte_size")
+        if not operation_key or not client_nonce:
+            return desktop_error("operation_key and client_nonce are required")
+        if type(expects_bytes) is not bool:
+            return desktop_error("expects_bytes must be a boolean")
+        if advisory_byte_size is not None and type(advisory_byte_size) is not int:
+            return desktop_error("advisory_byte_size must be an integer")
+        connection = _connection(request)
+        try:
+            try:
+                with open_registered_vault(
+                    connection,
+                    vault_base=request.app.state.vault_base,
+                    vault_id=vault_id,
+                    migration_spec=request.app.state.vault_migration_spec,
+                ) as opened:
+                    result = start_intake(
+                        opened.connection,
+                        actor=desktop_vault_actor(vault_id, operation_key),
+                        source_kind=str(payload.get("source_kind", "")).strip(),
+                        descriptor_class=str(payload.get("descriptor_class", "none")).strip(),
+                        display_label=str(payload.get("display_label", "")).strip(),
+                        locator=(str(payload["locator"]).strip() if payload.get("locator") else None),
+                        platform_label=(
+                            str(payload["platform_label"]).strip()
+                            if payload.get("platform_label")
+                            else None
+                        ),
+                        retention_classification=str(
+                            payload.get("retention_classification", "missing")
+                        ).strip(),
+                        policy_basis_reference=str(
+                            payload.get("policy_basis_reference", "")
+                        ).strip(),
+                        human_classification_note=str(
+                            payload.get("human_classification_note", "")
+                        ).strip(),
+                        client_nonce=client_nonce,
+                        operation_key=operation_key,
+                        expects_bytes=expects_bytes,
+                        supplied_filename=(
+                            str(payload["supplied_filename"]).strip()
+                            if payload.get("supplied_filename")
+                            else None
+                        ),
+                        supplied_media_type=(
+                            str(payload["supplied_media_type"]).strip()
+                            if payload.get("supplied_media_type")
+                            else None
+                        ),
+                        advisory_byte_size=advisory_byte_size,
+                    )
+            except FileNotFoundError:
+                return desktop_error("Vault resources are unavailable.", status_code=404)
+            except PermissionError:
+                return desktop_error("Vault intake authority was refused.", status_code=403)
+            except (RuntimeError, ValueError, sqlite3.DatabaseError):
+                return desktop_error("Vault intake request violates the governed contract.", status_code=409)
+        finally:
+            connection.close()
+        return JSONResponse(
+            status_code=201 if result.status != "rejected" else 422,
+            content={
+                "api_version": desktop_api_version,
+                "status": result.status,
+                "result_id": result.result_id,
+                "acquisition_id": result.acquisition_id,
+                "upload_authorization_id": result.upload_authorization_id,
+                "reason_code": result.reason_code,
+            },
+        )
+
+    @app.post("/desktop-api/v1/vaults/{vault_id}/acquisitions/{acquisition_id}/artifact")
+    async def desktop_admit_vault_artifact(
+        request: Request,
+        vault_id: str,
+        acquisition_id: str,
+        upload_authorization_id: Annotated[str, Form()],
+        operation_key: Annotated[str, Form()],
+        artifact: Annotated[UploadFile, File()],
+    ) -> JSONResponse:
+        if not upload_authorization_id.strip() or not operation_key.strip():
+            return desktop_error("upload_authorization_id and operation_key are required")
+        connection = _connection(request)
+        try:
+            try:
+                with open_registered_vault(
+                    connection,
+                    vault_base=request.app.state.vault_base,
+                    vault_id=vault_id,
+                    migration_spec=request.app.state.vault_migration_spec,
+                ) as opened:
+                    result = admit_artifact(
+                        opened.connection,
+                        vault_root=opened.root,
+                        actor=desktop_vault_actor(vault_id, operation_key),
+                        acquisition_id=acquisition_id,
+                        upload_authorization_id=upload_authorization_id,
+                        operation_key=operation_key,
+                        stream=artifact.file,
+                        supplied_filename=artifact.filename,
+                        supplied_media_type=artifact.content_type,
+                    )
+            except ArtifactLimitExceeded:
+                return desktop_error("Artifact exceeds the 64 MiB intake ceiling.", status_code=413)
+            except ArtifactIntegrityError:
+                return desktop_error("Artifact integrity verification failed.", status_code=409)
+            except FileNotFoundError:
+                return desktop_error("Vault resources are unavailable.", status_code=404)
+            except PermissionError:
+                return desktop_error("Artifact admission authority was refused.", status_code=403)
+            except (RuntimeError, ValueError, sqlite3.DatabaseError):
+                return desktop_error("Artifact admission requires reconciliation or corrected input.", status_code=409)
+        finally:
+            await artifact.close()
+            connection.close()
+        return JSONResponse(
+            status_code=201,
+            content={
+                "api_version": desktop_api_version,
+                "acquisition_id": result.acquisition_id,
+                "artifact_id": result.artifact_id,
+                "sha256": result.sha256,
+                "byte_size": result.byte_size,
+                "storage_relative_path": result.storage_relative_path,
+                "reused_existing": result.reused_existing,
+            },
+        )
+
+    @app.get("/desktop-api/v1/vaults/{vault_id}/intake")
+    async def desktop_vault_intake_records(request: Request, vault_id: str) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            try:
+                with open_registered_vault(
+                    connection,
+                    vault_base=request.app.state.vault_base,
+                    vault_id=vault_id,
+                    migration_spec=request.app.state.vault_migration_spec,
+                ) as opened:
+                    rows = list_intake_records(
+                        opened.connection, vault_account_id=vault_id
+                    )
+            except (FileNotFoundError, PermissionError, RuntimeError, ValueError, sqlite3.DatabaseError):
+                return desktop_error("Vault intake records are unavailable.", status_code=409)
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "vault_id": vault_id, **rows})
+
+    @app.post("/desktop-api/v1/vaults/{vault_id}/backups")
+    async def desktop_create_vault_backup(
+        request: Request,
+        vault_id: str,
+        payload: Annotated[dict[str, object], Body()],
+    ) -> JSONResponse:
+        operation_key = str(payload.get("operation_key", "")).strip()
+        if not operation_key:
+            return desktop_error("operation_key is required")
+        connection = _connection(request)
+        try:
+            try:
+                with open_registered_vault(
+                    connection,
+                    vault_base=request.app.state.vault_base,
+                    vault_id=vault_id,
+                    migration_spec=request.app.state.vault_migration_spec,
+                ) as opened:
+                    result = create_vault_generation(
+                        opened.connection,
+                        vault_root=opened.root,
+                        actor=desktop_vault_actor(vault_id, operation_key),
+                        migration_head=request.app.state.vault_migration_spec.expected_head,
+                    )
+            except (FileNotFoundError, PermissionError, RuntimeError, ValueError, sqlite3.DatabaseError):
+                return desktop_error("Vault backup could not be completed.", status_code=409)
+        finally:
+            connection.close()
+        return JSONResponse(
+            status_code=201,
+            content={
+                "api_version": desktop_api_version,
+                "vault_id": vault_id,
+                "generation_id": result.generation_id,
+                "manifest_sha256": result.manifest_sha256,
+            },
+        )
+
+    @app.post("/desktop-api/v1/vaults/{vault_id}/backups/{generation_id}/verify")
+    async def desktop_verify_vault_backup(
+        request: Request,
+        vault_id: str,
+        generation_id: str,
+        payload: Annotated[dict[str, object], Body()],
+    ) -> JSONResponse:
+        operation_key = str(payload.get("operation_key", "")).strip()
+        if not operation_key:
+            return desktop_error("operation_key is required")
+        connection = _connection(request)
+        proof_root = request.app.state.database_path.parent / "restore-proofs" / f"proof-{uuid4()}"
+        try:
+            try:
+                with open_registered_vault(
+                    connection,
+                    vault_base=request.app.state.vault_base,
+                    vault_id=vault_id,
+                    migration_spec=request.app.state.vault_migration_spec,
+                ) as opened:
+                    proof = verify_and_restore_generation(
+                        opened.connection,
+                        vault_root=opened.root,
+                        actor=desktop_vault_actor(vault_id, operation_key),
+                        generation_id=generation_id,
+                        proof_root=proof_root,
+                        expected_migration_head=request.app.state.vault_migration_spec.expected_head,
+                    )
+            except (FileNotFoundError, PermissionError, RuntimeError, ValueError, sqlite3.DatabaseError):
+                return desktop_error("Vault backup verification or disposable restore failed.", status_code=409)
+        finally:
+            connection.close()
+            shutil.rmtree(proof_root, ignore_errors=True)
+        return JSONResponse(
+            {
+                "api_version": desktop_api_version,
+                "vault_id": vault_id,
+                "generation_id": generation_id,
+                "status": "verified",
+                "manifest_sha256": proof.manifest_sha256,
+                "artifact_count": proof.artifact_count,
+            }
         )
 
     @app.get("/desktop-api/v1/accounts")

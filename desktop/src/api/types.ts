@@ -75,3 +75,47 @@ export interface VaultHealth {
   audit_chain?: string;
   reason?: string;
 }
+
+
+export interface VaultIntakeStart {
+  api_version: string;
+  status: "ready_for_upload" | "recorded" | "rejected";
+  result_id: string;
+  acquisition_id: string | null;
+  upload_authorization_id: string | null;
+  reason_code: string | null;
+}
+
+export interface VaultArtifactAdmission {
+  api_version: string;
+  acquisition_id: string;
+  artifact_id: string;
+  sha256: string;
+  byte_size: number;
+  storage_relative_path: string;
+  reused_existing: boolean;
+}
+
+export interface VaultIntakeRecords {
+  api_version: string;
+  vault_id: string;
+  acquisitions: Array<Record<string, unknown>>;
+  artifacts: Array<Record<string, unknown>>;
+  rejections: Array<Record<string, unknown>>;
+}
+
+export interface VaultBackupResult {
+  api_version: string;
+  vault_id: string;
+  generation_id: string;
+  manifest_sha256: string;
+}
+
+export interface VaultBackupVerification {
+  api_version: string;
+  vault_id: string;
+  generation_id: string;
+  status: "verified";
+  manifest_sha256: string;
+  artifact_count: number;
+}

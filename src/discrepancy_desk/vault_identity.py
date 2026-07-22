@@ -213,6 +213,7 @@ def create_vault(
     if root.exists():
         raise FileExistsError(root)
     root.mkdir(parents=True, exist_ok=False)
+    _reject_reparse_chain(root, stop=vault_base.resolve(strict=False))
     for relative in (
         "database", "objects/sha256", "packages/sha256", "projections/markdown",
         "projections/html", "temp", "backups",

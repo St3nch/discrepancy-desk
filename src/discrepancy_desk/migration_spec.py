@@ -41,6 +41,6 @@ def vault_migration_spec(project_root: Path, migrations_root: Path | None = None
         config_path=(root / "alembic.ini").resolve(),
         migrations_root=root,
         manifest_path=(root / "manifest.sha256").resolve(),
-        expected_head="V0001",
+        expected_head="V0002",
         schema_name="m06a-vault",
     )

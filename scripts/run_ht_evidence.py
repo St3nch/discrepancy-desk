@@ -348,9 +348,64 @@ M06A_PHASE1_EXPECTED_IDS = (
     "M06A-HT-108",
 )
 
+M06A_PHASE2_INVARIANTS = (
+    Invariant("M06A-HT-018", "Observation chain required", "Acquisition without its governed observation chain is rejected.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_018_observation_chain_required",)),
+    Invariant("M06A-HT-019", "Truthful acquisition lifecycle", "Acquisitions start pending and finalize with a truthful terminal outcome.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_019_truthful_acquisition_lifecycle",)),
+    Invariant("M06A-HT-020", "Locator is not remote acquisition", "Locator-only intake records no acquired bytes and no false success.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_020_locator_is_not_acquisition",)),
+    Invariant("M06A-HT-021", "Duplicate bytes preserve encounters", "One immutable object may retain multiple acquisition encounters.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_021_repeated_identical_bytes_preserve_encounters",)),
+    Invariant("M06A-HT-022", "Artifact overwrite refusal", "Existing object mismatch or tamper blocks reuse and overwrite.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_022_artifact_overwrite_or_hash_mismatch_rejected",)),
+    Invariant("M06A-HT-023", "Temporary partial write reconciliation", "Oversized or interrupted temporary intake leaves no canonical object.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_023_temp_partial_write_reconciles",)),
+    Invariant("M06A-HT-024", "Orphan object reconciliation", "Object-finalized/database-failed state remains non-authoritative and reconciliation-required.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_024_orphan_object_reconciliation",)),
+    Invariant("M06A-HT-025", "Provenance composition", "The service does not accept caller-selected parent IDs and preserves exact branches.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_025_cross_provenance_composition_rejected",)),
+    Invariant("M06A-HT-027", "Unknown rights fail closed", "Unknown rights reject before byte admission.", ("tests/test_m06a_policy_context.py::test_m06a_ht_027_unknown_rights_fail_closed",)),
+    Invariant("M06A-HT-029", "Policy binding lineage", "Policy changes append immutable successor bindings.", ("tests/test_m06a_policy_context.py::test_m06a_ht_029_policy_binding_is_versioned",)),
+    Invariant("M06A-HT-030", "Timed-deletion rejection", "Timed-deletion material is rejected before admission with no purge promise.", ("tests/test_m06a_policy_context.py::test_m06a_ht_030_timed_deletion_material_rejected",)),
+    Invariant("M06A-HT-066", "Missing original recovery failure", "Backup or restore fails when a required original is missing.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_066_missing_original_fails_backup_or_restore",)),
+    Invariant("M06A-HT-067", "Backup tamper detection", "Manifest and artifact tamper are detected.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_067_manifest_and_artifact_tamper_detected",)),
+    Invariant("M06A-HT-068", "Wrong-account restore refusal", "A generation cannot restore as another Vault.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_068_wrong_account_restore_rejected",)),
+    Invariant("M06A-HT-069", "Dirty restore target refusal", "Disposable restore never overwrites or mixes an existing target.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_069_dirty_restore_target_rejected",)),
+    Invariant("M06A-HT-070", "Partial backup reconciliation", "A generation without COMPLETE is not restorable.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_070_partial_backup_reconciliation",)),
+    Invariant("M06A-HT-073", "Derived snapshot honesty", "Derived state is explicitly non-authoritative in backup manifests.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_073_derived_snapshot_rows_are_non_authoritative",)),
+    Invariant("M06A-HT-092", "Cross-platform brand Vault continuity", "Platform labels remain records inside one selected brand Vault.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_092_cross_platform_research_stays_in_brand_vault",)),
+    Invariant("M06A-HT-096", "Per-Vault backup isolation", "Backup and restore contain exactly one selected Vault.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_096_backup_restore_is_per_vault",)),
+    Invariant("M06A-HT-098", "Pre-byte timed-deletion gate", "Ineligible material is refused before any byte stream is accepted.", ("tests/test_m06a_policy_context.py::test_m06a_ht_098_timed_deletion_rejected_before_byte_admission",)),
+    Invariant("M06A-HT-099", "Content-free rejection receipt", "Unknown-retention rejection retains only safe classification metadata.", ("tests/test_m06a_policy_context.py::test_m06a_ht_099_unknown_retention_and_rejection_receipt_fail_closed",)),
+    Invariant("M06A-HT-100", "Rejected material has no downstream presence", "Rejected operations create no acquisition, artifact, backup, or other downstream authority.", ("tests/test_m06a_policy_context.py::test_m06a_ht_100_rejected_material_has_no_downstream_presence",)),
+    Invariant("M06A-HT-101", "No purge bypass", "No delete-later scheduler or purge promise bypasses intake rejection.", ("tests/test_m06a_policy_context.py::test_m06a_ht_101_no_hidden_purge_or_delete_later_bypass",)),
+    Invariant("M06A-HT-102", "Foundational backup schema timing", "V0002 contains the required backup and intake authority structures.", ("tests/test_m06a_migrations.py::test_m06a_ht_102_foundational_backup_schema_exists_by_phase_2",)),
+    Invariant("M06A-HT-103", "Rejected content hashes never persist", "Rejected bytes and their content hashes are absent from durable outputs.", ("tests/test_m06a_policy_context.py::test_m06a_ht_103_rejected_content_hashes_never_persist",)),
+    Invariant("M06A-HT-104", "No-artifact truthfulness", "no_artifact is restricted to locator-only operations and cannot mask failure.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_104_no_artifact_is_locator_only_and_cannot_mask_failure",)),
+    Invariant("M06A-HT-105", "Temporary quarantine is noncanonical", "Temporary bytes are destroyed or remain blocked and never become parser/package authority.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_105_temporary_quarantine_is_noncanonical_and_reconciled",)),
+    Invariant("M06A-HT-108", "Tauri-to-backend authority path", "Tauri uses the token-gated API and governed service with no browser mutation route.", ("tests/test_m06a_desktop_workflow.py::test_m06a_ht_108_tauri_api_uses_governed_service",)),
+    Invariant("M06A-HT-007", "Inherited reparse rejection", "Reparse points remain unable to become Vault or artifact authority.", ("tests/test_m06a_vault_identity.py::test_m06a_ht_007_reparse_points_rejected",)),
+    Invariant("M06A-HT-014", "Inherited audit integrity", "Vault audit rows remain append-only and tamper-detecting.", ("tests/test_m06a_actor_authority.py::test_m06a_ht_014_audit_tamper_detected",)),
+    Invariant("M06A-HT-065", "Inherited downgrade refusal", "Governed Vault identity prevents destructive downgrade before schema change.", ("tests/test_m06a_migrations.py::test_m06a_ht_065_destructive_downgrade_refused",)),
+    Invariant("M06A-HT-095", "Inherited per-Vault migration state", "V0002 migration state remains isolated by physical Vault.", ("tests/test_m06a_migrations.py::test_m06a_ht_095_migration_state_is_per_vault",)),
+    Invariant("M06A-HT-097", "Inherited cross-database honesty", "Cross-database operations never claim impossible atomicity.", ("tests/test_m06a_actor_authority.py::test_m06a_ht_097_cross_database_atomicity_is_never_claimed",)),
+)
+
+M06A_PHASE2_EXPECTED_IDS = (
+    *(f"M06A-HT-{value:03d}" for value in range(18, 26)),
+    "M06A-HT-027",
+    "M06A-HT-029",
+    "M06A-HT-030",
+    *(f"M06A-HT-{value:03d}" for value in range(66, 71)),
+    "M06A-HT-073",
+    "M06A-HT-092",
+    "M06A-HT-096",
+    *(f"M06A-HT-{value:03d}" for value in range(98, 106)),
+    "M06A-HT-108",
+    "M06A-HT-007",
+    "M06A-HT-014",
+    "M06A-HT-065",
+    "M06A-HT-095",
+    "M06A-HT-097",
+)
+
 SUITES = {
     "legacy": INVARIANTS,
     "m06a-phase1": M06A_PHASE1_INVARIANTS,
+    "m06a-phase2": M06A_PHASE2_INVARIANTS,
 }
 
 
@@ -376,6 +431,8 @@ def validate_suite(name: str, invariants: tuple[Invariant, ...]) -> None:
         raise RuntimeError(f"{name} invariant suite contains duplicate IDs")
     if name == "m06a-phase1" and tuple(ids) != M06A_PHASE1_EXPECTED_IDS:
         raise RuntimeError("M06-A Phase 1 invariant mapping diverges from the accepted set")
+    if name == "m06a-phase2" and tuple(ids) != M06A_PHASE2_EXPECTED_IDS:
+        raise RuntimeError("M06-A Phase 2 invariant mapping diverges from the accepted set")
     for invariant in invariants:
         if invariant.disposition == "execute" and not invariant.tests:
             raise RuntimeError(f"{invariant.invariant_id} has no test mapping")
@@ -444,6 +501,25 @@ def run_invariant(invariant: Invariant, evidence_root: Path, expected_commit: st
     }
 
 
+def commit_bound_payload(payload: dict[str, object]) -> dict[str, object]:
+    results = []
+    for raw_result in payload["results"]:
+        if not isinstance(raw_result, dict):
+            raise RuntimeError("hammer result is not an object")
+        results.append(
+            {
+                key: value
+                for key, value in raw_result.items()
+                if key not in {"stdout", "stderr"}
+            }
+        )
+    return {
+        key: value
+        for key, value in payload.items()
+        if key != "generated_at" and key != "results"
+    } | {"results": results}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--suite", choices=sorted(SUITES), default="legacy")
@@ -456,12 +532,13 @@ def main() -> int:
     output_root = Path("runtime/ht-evidence") / args.suite
     output_root.mkdir(parents=True, exist_ok=True)
     results = [run_invariant(invariant, evidence_root, expected_commit) for invariant in invariants]
+    dirty = working_tree_dirty()
     payload = {
         "schema_version": 2,
         "suite": args.suite,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="microseconds"),
         "commit_sha": expected_commit,
-        "working_tree_dirty": working_tree_dirty(),
+        "working_tree_dirty": dirty,
         "python_version": platform.python_version(),
         "sqlite_version": sqlite3.sqlite_version,
         "command": f"uv run python scripts/run_ht_evidence.py --suite {args.suite}",
@@ -478,11 +555,20 @@ def main() -> int:
         },
     }
     destination = output_root / "latest-ht-evidence.json"
-    destination.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    destination.write_text(rendered, encoding="utf-8", newline="\n")
+    if not dirty:
+        immutable = output_root / "by-commit" / f"{expected_commit}.json"
+        immutable.parent.mkdir(parents=True, exist_ok=True)
+        immutable_rendered = (
+            json.dumps(commit_bound_payload(payload), indent=2, sort_keys=True) + "\n"
+        )
+        if immutable.exists():
+            if immutable.read_text(encoding="utf-8") != immutable_rendered:
+                raise RuntimeError("commit-bound hammer evidence already exists with different bytes")
+        else:
+            with immutable.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(immutable_rendered)
     print(json.dumps(payload["summary"], sort_keys=True))
     print(destination)
     return 1 if payload["summary"]["failed"] else 0

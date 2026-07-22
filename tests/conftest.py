@@ -12,6 +12,8 @@ from discrepancy_desk.db import connect_existing
 from discrepancy_desk.migration_runner import run_guarded_upgrade
 from discrepancy_desk.migration_spec import central_migration_spec, vault_migration_spec
 from discrepancy_desk.test_evidence import pytest_evidence_destination as evidence_destination
+from discrepancy_desk.vault_router import open_registered_vault
+from discrepancy_desk.vault_service import provision_vault
 
 
 def _git_sha() -> str:
@@ -47,11 +49,17 @@ def pytest_sessionfinish(session, exitstatus: int) -> None:
         "counts": counts,
     }
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    destination.write_text(rendered, encoding="utf-8", newline="\n")
+    if destination.as_posix() == "runtime/test-evidence/full-suite.json" and not payload["working_tree_dirty"]:
+        immutable = Path("runtime/test-evidence/by-commit") / f"{payload['commit_sha']}.json"
+        immutable.parent.mkdir(parents=True, exist_ok=True)
+        if immutable.exists():
+            if immutable.read_text(encoding="utf-8") != rendered:
+                raise RuntimeError("commit-bound full-suite evidence already exists with different bytes")
+        else:
+            with immutable.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write(rendered)
 
 
 @pytest.fixture
@@ -83,3 +91,25 @@ def m06a_central_connection(tmp_path: Path, m06a_central_spec):
         yield connection, database_path
     finally:
         connection.close()
+
+
+@pytest.fixture
+def m06a_phase2_vault(m06a_central_connection, m06a_vault_spec, tmp_path: Path):
+    central, _ = m06a_central_connection
+    vault_base = tmp_path / "vaults"
+    vault_id = provision_vault(
+        central,
+        vault_base=vault_base,
+        migration_spec=m06a_vault_spec,
+        display_name="The Discrepancy Desk",
+        relative_root="discrepancy-desk",
+        owner_actor_id="owner-local",
+        operation_key="fixture:phase2-vault",
+    )
+    with open_registered_vault(
+        central,
+        vault_base=vault_base,
+        vault_id=vault_id,
+        migration_spec=m06a_vault_spec,
+    ) as opened:
+        yield central, opened

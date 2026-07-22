@@ -10,7 +10,10 @@ import type {
   ScheduleRow,
   SourceRow,
   SystemStatus,
+  VaultBackupResult,
+  VaultBackupVerification,
   VaultHealth,
+  VaultIntakeRecords,
   VaultSummary,
 } from "./api/types";
 
@@ -43,6 +46,19 @@ export default function App() {
   const [vaultHealth, setVaultHealth] = useState<VaultHealth | null>(null);
   const [vaultName, setVaultName] = useState("The Discrepancy Desk");
   const [vaultRoot, setVaultRoot] = useState("discrepancy-desk");
+  const [vaultRecords, setVaultRecords] = useState<VaultIntakeRecords | null>(null);
+  const [vaultBackup, setVaultBackup] = useState<VaultBackupResult | null>(null);
+  const [vaultBackupVerification, setVaultBackupVerification] =
+    useState<VaultBackupVerification | null>(null);
+  const [intakeLabel, setIntakeLabel] = useState("");
+  const [intakeLocator, setIntakeLocator] = useState("");
+  const [policyBasis, setPolicyBasis] = useState("owner-authorized local preservation");
+  const [classificationNote, setClassificationNote] = useState("");
+  const [retentionClassification, setRetentionClassification] = useState<
+    "preservation_compatible" | "timed_deletion_required" | "unknown"
+  >("preservation_compatible");
+  const [selectedVaultFile, setSelectedVaultFile] = useState<File | null>(null);
+  const [vaultOperationStatus, setVaultOperationStatus] = useState<string | null>(null);
   const [center, setCenter] = useState<CommandCenterResponse | null>(null);
   const [schedule, setSchedule] = useState<ScheduleRow[]>([]);
   const [records, setRecords] = useState<SourceRow[]>([]);
@@ -71,9 +87,16 @@ export default function App() {
   const refreshVault = async (selected = vaultId) => {
     if (!selected) {
       setVaultHealth(null);
+      setVaultRecords(null);
       return;
     }
-    setVaultHealth(await desktopClient.vaultHealth(selected));
+    const nextHealth = await desktopClient.vaultHealth(selected);
+    setVaultHealth(nextHealth);
+    if (nextHealth.status === "healthy" && nextHealth.migration === "V0002") {
+      setVaultRecords(await desktopClient.vaultIntakeRecords(selected));
+    } else {
+      setVaultRecords(null);
+    }
   };
 
   useEffect(() => {
@@ -111,6 +134,81 @@ export default function App() {
       setPage("vaults");
     } catch (value) {
       setError(value instanceof Error ? value.message : "Vault creation refused");
+    }
+  };
+
+  const migrateSelectedVault = async () => {
+    if (!vaultId) return;
+    try {
+      await desktopClient.migrateVault(vaultId);
+      await refreshVault(vaultId);
+      setVaultOperationStatus("Vault migration completed at V0002.");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Vault migration refused");
+    }
+  };
+
+  const submitVaultIntake = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!vaultId || !intakeLabel.trim()) return;
+    try {
+      const hasFile = selectedVaultFile !== null;
+      const result = await desktopClient.startVaultIntake(vaultId, {
+        sourceKind: hasFile ? "manual_file" : "manual_locator",
+        descriptorClass: hasFile ? "file" : "locator",
+        displayLabel: intakeLabel.trim(),
+        locator: hasFile ? undefined : intakeLocator.trim(),
+        retentionClassification,
+        policyBasisReference: policyBasis.trim(),
+        humanClassificationNote: classificationNote.trim(),
+        expectsBytes: hasFile,
+        suppliedFilename: selectedVaultFile?.name,
+        suppliedMediaType: selectedVaultFile?.type || undefined,
+        advisoryByteSize: selectedVaultFile?.size,
+      });
+      if (
+        result.status === "ready_for_upload" &&
+        result.acquisition_id &&
+        result.upload_authorization_id &&
+        selectedVaultFile
+      ) {
+        const admitted = await desktopClient.uploadVaultArtifact(
+          vaultId,
+          result.acquisition_id,
+          result.upload_authorization_id,
+          selectedVaultFile,
+        );
+        setVaultOperationStatus(
+          `Artifact admitted: ${admitted.sha256} (${admitted.byte_size} bytes).`,
+        );
+      } else if (result.status === "recorded") {
+        setVaultOperationStatus("Locator-only observation recorded without an artifact.");
+      } else {
+        setVaultOperationStatus(`Intake rejected: ${result.reason_code ?? "policy refusal"}.`);
+      }
+      setSelectedVaultFile(null);
+      setIntakeLabel("");
+      setIntakeLocator("");
+      setClassificationNote("");
+      await refreshVault(vaultId);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Vault intake refused");
+    }
+  };
+
+  const createAndVerifyVaultBackup = async () => {
+    if (!vaultId) return;
+    try {
+      const backup = await desktopClient.createVaultBackup(vaultId);
+      setVaultBackup(backup);
+      const verification = await desktopClient.verifyVaultBackup(
+        vaultId,
+        backup.generation_id,
+      );
+      setVaultBackupVerification(verification);
+      setVaultOperationStatus(`Backup ${backup.generation_id} verified.`);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Vault backup refused");
     }
   };
 
@@ -305,25 +403,99 @@ export default function App() {
       )}
 
       {page === "vaults" && (
-        <section>
-          <h2>Local Manual Vaults</h2>
-          <p>Vault selection is independent from platform-account selection.</p>
-          <pre>{JSON.stringify(vaultHealth, null, 2)}</pre>
-          <form onSubmit={createVault}>
-            <input
-              value={vaultName}
-              onChange={(event) => setVaultName(event.target.value)}
-              placeholder="Vault display name"
-            />
-            <input
-              value={vaultRoot}
-              onChange={(event) => setVaultRoot(event.target.value)}
-              placeholder="Relative Vault root"
-            />
-            <button>Create governed Vault</button>
-          </form>
-          <p>No content or parser is admitted by creating a Phase 1 Vault.</p>
-        </section>
+        <>
+          <section>
+            <h2>Local Manual Vaults</h2>
+            <p>Vault selection is independent from platform-account selection.</p>
+            <pre>{JSON.stringify(vaultHealth, null, 2)}</pre>
+            {vaultHealth?.status === "blocked" && vaultId && (
+              <button onClick={() => void migrateSelectedVault()}>
+                Run governed Vault migration
+              </button>
+            )}
+            <form onSubmit={createVault}>
+              <input
+                value={vaultName}
+                onChange={(event) => setVaultName(event.target.value)}
+                placeholder="Vault display name"
+              />
+              <input
+                value={vaultRoot}
+                onChange={(event) => setVaultRoot(event.target.value)}
+                placeholder="Relative Vault root"
+              />
+              <button>Create governed Vault</button>
+            </form>
+          </section>
+
+          <section>
+            <h2>Manual Vault intake</h2>
+            <p>
+              Retention eligibility is decided before file bytes are uploaded. No parser runs
+              in Phase 2.
+            </p>
+            <form onSubmit={submitVaultIntake}>
+              <input
+                value={intakeLabel}
+                onChange={(event) => setIntakeLabel(event.target.value)}
+                placeholder="Observation label"
+                required
+              />
+              <input
+                value={intakeLocator}
+                onChange={(event) => setIntakeLocator(event.target.value)}
+                placeholder="Locator for locator-only intake"
+                disabled={selectedVaultFile !== null}
+              />
+              <input
+                type="file"
+                onChange={(event) => setSelectedVaultFile(event.target.files?.[0] ?? null)}
+              />
+              <select
+                value={retentionClassification}
+                onChange={(event) =>
+                  setRetentionClassification(
+                    event.target.value as
+                      | "preservation_compatible"
+                      | "timed_deletion_required"
+                      | "unknown",
+                  )
+                }
+              >
+                <option value="preservation_compatible">Preservation compatible</option>
+                <option value="timed_deletion_required">Timed deletion required</option>
+                <option value="unknown">Unknown retention</option>
+              </select>
+              <input
+                value={policyBasis}
+                onChange={(event) => setPolicyBasis(event.target.value)}
+                placeholder="Policy basis reference"
+                required
+              />
+              <textarea
+                value={classificationNote}
+                onChange={(event) => setClassificationNote(event.target.value)}
+                placeholder="Human classification note"
+              />
+              <button disabled={!vaultId || vaultHealth?.status !== "healthy"}>
+                Record governed intake
+              </button>
+            </form>
+            <p>{vaultOperationStatus}</p>
+            <pre>{JSON.stringify(vaultRecords, null, 2)}</pre>
+          </section>
+
+          <section>
+            <h2>Per-Vault recovery proof</h2>
+            <button
+              onClick={() => void createAndVerifyVaultBackup()}
+              disabled={!vaultId || vaultHealth?.status !== "healthy"}
+            >
+              Create and verify backup
+            </button>
+            <pre>{JSON.stringify({ vaultBackup, vaultBackupVerification }, null, 2)}</pre>
+          </section>
+        </>
       )}
 
       {page === "release" && (

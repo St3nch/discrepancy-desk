@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import runpy
+
 from discrepancy_desk.test_evidence import pytest_evidence_destination
 
 
@@ -28,3 +30,37 @@ def test_pytest_option_value_is_not_misclassified_as_target() -> None:
         ("-o", "addopts=", "--disable-warnings", "-q"), {}
     )
     assert destination.as_posix() == "runtime/test-evidence/full-suite.json"
+
+
+def test_commit_bound_hammer_payload_ignores_run_time_diagnostics() -> None:
+    commit_bound_payload = runpy.run_path("scripts/run_ht_evidence.py")[
+        "commit_bound_payload"
+    ]
+    first = {
+        "schema_version": 3,
+        "suite": "m06a-phase2",
+        "generated_at": "first-time",
+        "commit_sha": "a" * 40,
+        "working_tree_dirty": False,
+        "results": [
+            {
+                "invariant_id": "M06A-HT-018",
+                "passed": True,
+                "stdout": "1 passed in 0.10s",
+                "stderr": "",
+            }
+        ],
+        "summary": {"passed": 1, "failed": 0},
+    }
+    second = {
+        **first,
+        "generated_at": "second-time",
+        "results": [
+            {
+                **first["results"][0],
+                "stdout": "1 passed in 0.82s",
+                "stderr": "environment warning",
+            }
+        ],
+    }
+    assert commit_bound_payload(first) == commit_bound_payload(second)

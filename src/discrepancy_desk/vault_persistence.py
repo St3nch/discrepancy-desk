@@ -90,28 +90,34 @@ def append_vault_audit(
 
 def verify_vault_audit_chain(connection: sqlite3.Connection) -> bool:
     previous: str | None = None
-    rows = connection.execute("SELECT * FROM audit_events ORDER BY sequence")
+    rows = connection.execute(
+        """SELECT id, vault_account_id, occurred_at, actor_class, actor_id,
+                  authority_operation, correlation_id, request_sha256, record_type,
+                  record_id, payload_json, previous_chain_sha256, event_sha256,
+                  chain_sha256
+        FROM audit_events ORDER BY sequence"""
+    )
     for row in rows:
-        payload_hash = sha256_bytes(bytes(row[11]))
+        payload_hash = sha256_bytes(bytes(row[10]))
         material = canonical_json(
             {
-                "id": row[1],
-                "vault_account_id": row[2],
-                "occurred_at": row[3],
-                "actor_class": row[4],
-                "actor_id": row[5],
-                "authority_operation": row[6],
-                "correlation_id": row[7],
-                "request_sha256": row[8],
-                "record_type": row[9],
-                "record_id": row[10],
+                "id": row[0],
+                "vault_account_id": row[1],
+                "occurred_at": row[2],
+                "actor_class": row[3],
+                "actor_id": row[4],
+                "authority_operation": row[5],
+                "correlation_id": row[6],
+                "request_sha256": row[7],
+                "record_type": row[8],
+                "record_id": row[9],
                 "payload_sha256": payload_hash,
                 "previous_chain_sha256": previous,
             }
         )
         event_hash = sha256_bytes(material)
         chain_hash = sha256_bytes(((previous or "") + event_hash).encode("ascii"))
-        if row[12] != previous or row[13] != event_hash or row[14] != chain_hash:
+        if row[11] != previous or row[12] != event_hash or row[13] != chain_hash:
             return False
         previous = chain_hash
     return True
