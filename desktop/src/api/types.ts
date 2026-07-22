@@ -57,3 +57,21 @@ export interface MetricRow {
   observation_state: string;
   metrics: Record<string, unknown>;
 }
+
+export interface VaultSummary {
+  vault_id: string;
+  display_name: string;
+  relative_root: string;
+  registry_state: string;
+}
+
+export interface VaultHealth {
+  api_version: string;
+  vault_id: string;
+  status: "healthy" | "blocked";
+  sqlite_integrity?: string;
+  migration?: string;
+  identity_fingerprint?: string;
+  audit_chain?: string;
+  reason?: string;
+}

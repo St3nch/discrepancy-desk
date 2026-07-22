@@ -8,6 +8,8 @@ import type {
   ScheduleRow,
   SourceRow,
   SystemStatus,
+  VaultHealth,
+  VaultSummary,
 } from "./types";
 
 let session: BackendSession | null = null;
@@ -42,6 +44,22 @@ export const desktopClient = {
   system: () => request<SystemStatus>("/desktop-api/v1/system"),
   accounts: async () =>
     (await request<{ accounts: OwnedAccount[] }>("/desktop-api/v1/accounts")).accounts,
+  vaults: async () =>
+    (await request<{ vaults: VaultSummary[] }>("/desktop-api/v1/vaults")).vaults,
+  vaultHealth: (vaultId: string) =>
+    request<VaultHealth>(
+      `/desktop-api/v1/vaults/${encodeURIComponent(vaultId)}/health`,
+    ),
+  createVault: (displayName: string, relativeRoot: string) =>
+    request<{ vault_id: string }>("/desktop-api/v1/vaults", {
+      method: "POST",
+      body: JSON.stringify({
+        display_name: displayName,
+        relative_root: relativeRoot,
+        owned_account_ids: [],
+        operation_key: operationKey("vault-create"),
+      }),
+    }),
   commandCenter: (accountId: string) =>
     request<CommandCenterResponse>(
       `/desktop-api/v1/command-center?account_id=${encodeURIComponent(accountId)}`,

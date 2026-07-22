@@ -16,6 +16,7 @@ from discrepancy_desk.migration_integrity import (
     discard_failed_empty_migration,
     recover_completed_migration,
 )
+from discrepancy_desk.migration_spec import central_migration_spec
 from discrepancy_desk.persistence import (
     approve_revision,
     create_revision,
@@ -202,21 +203,31 @@ def test_recover_completed_migration_requires_verified_database(tmp_path: Path) 
     database = tmp_path / "completed.sqlite3"
     connection = migrate(database)
     connection.close()
-    begin_migration_guard(database, operation_id="recover-completed", target_revision="head")
-    recover_completed_migration(
-        database, Path("migrations"), operation_id="recover-completed"
+    spec = central_migration_spec(Path(".").resolve())
+    begin_migration_guard(
+        database,
+        operation_id="recover-completed",
+        target_revision=spec.expected_head,
+        spec=spec,
     )
+    recover_completed_migration(database, spec, operation_id="recover-completed")
     assert not dirty_marker_path(database).exists()
 
 
 def test_completed_recovery_refuses_wrong_operation_and_missing_version(tmp_path: Path) -> None:
     database = tmp_path / "invalid-completed.sqlite3"
     sqlite3.connect(database).close()
-    begin_migration_guard(database, operation_id="expected", target_revision="head")
+    spec = central_migration_spec(Path(".").resolve())
+    begin_migration_guard(
+        database,
+        operation_id="expected",
+        target_revision=spec.expected_head,
+        spec=spec,
+    )
     with pytest.raises(MigrationIntegrityError, match="operation mismatch"):
-        recover_completed_migration(database, Path("migrations"), operation_id="wrong")
-    with pytest.raises(MigrationIntegrityError, match="version table"):
-        recover_completed_migration(database, Path("migrations"), operation_id="expected")
+        recover_completed_migration(database, spec, operation_id="wrong")
+    with pytest.raises(MigrationIntegrityError, match="expected head"):
+        recover_completed_migration(database, spec, operation_id="expected")
     assert dirty_marker_path(database).exists()
 
 

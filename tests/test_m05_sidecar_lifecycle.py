@@ -124,7 +124,7 @@ def test_real_python_desktop_backend_starts_authenticates_and_stops(tmp_path: Pa
         assert payload is not None
         assert payload["status"] == "healthy"
         assert payload["api_version"] == "1"
-        assert payload["migration"] == "0004"
+        assert payload["migration"] == "0005"
     finally:
         process.terminate()
         try:

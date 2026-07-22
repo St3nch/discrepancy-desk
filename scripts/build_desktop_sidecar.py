@@ -58,6 +58,8 @@ def main() -> int:
         "--add-data",
         f"{ROOT / 'migrations'};migrations",
         "--add-data",
+        f"{ROOT / 'vault_migrations'};vault_migrations",
+        "--add-data",
         f"{ROOT / 'alembic.ini'};.",
         str(launcher),
     ]

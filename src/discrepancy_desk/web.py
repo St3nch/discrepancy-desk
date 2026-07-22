@@ -24,6 +24,7 @@ from .editorial_queries import (
 )
 from .db import connect
 from .migration_runner import run_guarded_upgrade
+from .migration_spec import central_migration_spec, vault_migration_spec
 from .operator_service import (
     add_source_record,
     capture_work_item,
@@ -36,6 +37,8 @@ from .operator_service import (
     set_work_item_tags,
     unschedule_work_item,
 )
+from .vault_router import registry_snapshot, selected_vault_health
+from .vault_service import provision_vault
 from .persistence import (
     approve_revision,
     create_revision,
@@ -79,25 +82,41 @@ def create_app(
     database_path: Path | None = None,
     evidence_root: Path | None = None,
     migrations_root: Path | None = None,
+    vault_base: Path | None = None,
+    vault_migrations_root: Path | None = None,
+    vault_owner_actor_id: str = "owner-local",
     desktop_token: str | None = None,
     desktop_api_version: str = "1",
 ) -> FastAPI:
     resolved_database = database_path or PROJECT_ROOT / "runtime" / "discrepancy-desk.sqlite3"
     resolved_evidence = evidence_root or PROJECT_ROOT / "evidence"
     resolved_migrations = migrations_root or PROJECT_ROOT / "migrations"
+    resolved_vault_base = vault_base or resolved_database.parent / "vaults"
+    resolved_vault_migrations = (
+        vault_migrations_root or resolved_migrations.parent / "vault_migrations"
+    )
+    resolved_central_spec = central_migration_spec(
+        resolved_migrations.parent, resolved_migrations
+    )
+    resolved_vault_spec = vault_migration_spec(PROJECT_ROOT, resolved_vault_migrations)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.database_path = resolved_database
         app.state.evidence_root = resolved_evidence
         app.state.migrations_root = resolved_migrations
+        app.state.central_migration_spec = resolved_central_spec
+        app.state.vault_base = resolved_vault_base
+        app.state.vault_migration_spec = resolved_vault_spec
+        app.state.vault_owner_actor_id = vault_owner_actor_id
         app.state.desktop_token = desktop_token
         app.state.desktop_api_version = desktop_api_version
         resolved_evidence.mkdir(parents=True, exist_ok=True)
         run_guarded_upgrade(
             resolved_database,
-            resolved_migrations,
+            resolved_central_spec,
             operation_id=f"startup-{uuid4()}",
+            allow_create=True,
         )
         yield
 
@@ -157,6 +176,80 @@ def create_app(
                 "sqlite_integrity": integrity,
                 "migration": migration,
             }
+        )
+
+    @app.get("/desktop-api/v1/vaults")
+    async def desktop_vaults(request: Request) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            rows = registry_snapshot(connection)
+        finally:
+            connection.close()
+        return JSONResponse({"api_version": desktop_api_version, "vaults": rows})
+
+    @app.post("/desktop-api/v1/vaults")
+    async def desktop_create_vault(
+        request: Request, payload: Annotated[dict[str, object], Body()]
+    ) -> JSONResponse:
+        display_name = str(payload.get("display_name", "")).strip()
+        relative_root = str(payload.get("relative_root", "")).strip()
+        operation_key = str(payload.get("operation_key", "")).strip()
+        account_values = payload.get("owned_account_ids", [])
+        if (
+            not display_name
+            or not relative_root
+            or not operation_key
+            or not isinstance(account_values, list)
+        ):
+            return desktop_error(
+                "display_name, relative_root, operation_key, and owned_account_ids are required"
+            )
+        connection = _connection(request)
+        try:
+            try:
+                vault_id = provision_vault(
+                    connection,
+                    vault_base=request.app.state.vault_base,
+                    migration_spec=request.app.state.vault_migration_spec,
+                    display_name=display_name,
+                    relative_root=relative_root,
+                    owner_actor_id=request.app.state.vault_owner_actor_id,
+                    operation_key=operation_key,
+                    owned_account_ids=tuple(str(value) for value in account_values),
+                )
+            except FileExistsError:
+                return desktop_error("Vault root is already in use.")
+            except FileNotFoundError:
+                return desktop_error("Vault resources are unavailable.")
+            except PermissionError:
+                return desktop_error("Vault operation is not permitted.")
+            except RuntimeError:
+                return desktop_error("Vault operation requires reconciliation.")
+            except ValueError:
+                return desktop_error("Vault request violates the governed Vault contract.")
+        finally:
+            connection.close()
+        return JSONResponse(
+            status_code=201,
+            content={"api_version": desktop_api_version, "vault_id": vault_id},
+        )
+
+    @app.get("/desktop-api/v1/vaults/{vault_id}/health")
+    async def desktop_vault_health(request: Request, vault_id: str) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            health = selected_vault_health(
+                connection,
+                vault_base=request.app.state.vault_base,
+                vault_id=vault_id,
+                migration_spec=request.app.state.vault_migration_spec,
+            )
+        finally:
+            connection.close()
+        status_code = 200 if health["status"] == "healthy" else 409
+        return JSONResponse(
+            status_code=status_code,
+            content={"api_version": desktop_api_version, **health},
         )
 
     @app.get("/desktop-api/v1/accounts")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+import shutil
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from discrepancy_desk.backup import create_generation, verify_generation
 from discrepancy_desk.binding import RevisionBundle
 from discrepancy_desk.db import connect
 from discrepancy_desk.migration_integrity import MigrationIntegrityError, verify_manifest
+from discrepancy_desk.migration_spec import central_migration_spec
 from discrepancy_desk.persistence import (
     approve_revision,
     create_revision,
@@ -42,21 +44,18 @@ def seed(connection: sqlite3.Connection) -> None:
 
 
 def test_migration_manifest_verifies() -> None:
-    verify_manifest(Path("migrations"))
+    verify_manifest(central_migration_spec(Path(".").resolve()))
 
 
 def test_modified_migration_is_rejected(tmp_path: Path) -> None:
-    root = tmp_path / "migrations"
-    versions = root / "versions"
-    versions.mkdir(parents=True)
-    original = Path("migrations/versions/0001_initial_persistence.py")
-    (versions / original.name).write_bytes(original.read_bytes() + b"\n# tampered\n")
-    (root / "manifest.sha256").write_text(
-        Path("migrations/manifest.sha256").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
+    project = tmp_path / "project"
+    root = project / "migrations"
+    shutil.copytree(Path("migrations"), root)
+    shutil.copy2(Path("alembic.ini"), project / "alembic.ini")
+    original = root / "versions" / "0001_initial_persistence.py"
+    original.write_bytes(original.read_bytes() + b"\n# tampered\n")
     with pytest.raises(MigrationIntegrityError, match="hash mismatch"):
-        verify_manifest(root)
+        verify_manifest(central_migration_spec(project, root))
 
 
 def test_approval_wrong_state_rolls_back_even_after_prior_changes(tmp_path: Path) -> None:

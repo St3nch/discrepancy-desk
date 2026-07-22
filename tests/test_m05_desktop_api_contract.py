@@ -64,7 +64,7 @@ def test_desktop_health_reports_version_and_migration(tmp_path: Path) -> None:
             "service": "discrepancy-desk-desktop-backend",
             "status": "healthy",
             "sqlite_integrity": "ok",
-            "migration": "0004",
+            "migration": "0005",
         }
 
 
@@ -264,7 +264,7 @@ def test_desktop_calendar_work_detail_system_and_schedule_lineage(tmp_path: Path
         assert detail.json()["profile"]["account_id"] == "acct-1"
         system = client.get("/desktop-api/v1/system", headers=headers)
         assert system.status_code == 200
-        assert system.json()["migration"] == "0004"
+        assert system.json()["migration"] == "0005"
         assert system.json()["counts"]["work_items"] == 1
         unscheduled = client.post(
             "/desktop-api/v1/work-items/work-1/unschedule",

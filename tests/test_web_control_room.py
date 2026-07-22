@@ -34,7 +34,7 @@ def test_health_and_empty_control_room(tmp_path: Path) -> None:
         health = client.get("/health")
         assert health.status_code == 200
         assert "SQLite integrity" in health.text
-        assert "0004" in health.text
+        assert "0005" in health.text
         index = client.get("/")
         assert index.status_code == 200
         assert "No work items" in index.text

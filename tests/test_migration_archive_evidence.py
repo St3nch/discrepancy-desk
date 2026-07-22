@@ -13,17 +13,21 @@ import pytest
 from discrepancy_desk.archive import create_deterministic_zip, package_and_encrypt_generation
 from discrepancy_desk.migration_integrity import MigrationIntegrityError, dirty_marker_path
 from discrepancy_desk.migration_runner import run_guarded_upgrade
+from discrepancy_desk.migration_spec import central_migration_spec
 from discrepancy_desk.test_evidence import TestEvidenceInput, write_test_evidence
 
 
 def test_guarded_migration_success_clears_dirty_marker(tmp_path: Path) -> None:
     database = tmp_path / "guarded.sqlite3"
-    run_guarded_upgrade(database, Path("migrations"), operation_id="migration-1")
+    run_guarded_upgrade(
+        database, central_migration_spec(Path(".").resolve()),
+        operation_id="migration-1", allow_create=True,
+    )
     assert database.is_file()
     assert not dirty_marker_path(database).exists()
     raw = sqlite3.connect(database)
     try:
-        assert raw.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0004"
+        assert raw.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0005"
     finally:
         raw.close()
 
@@ -33,14 +37,17 @@ def test_guarded_migration_failure_retains_dirty_marker(tmp_path: Path) -> None:
     with pytest.raises(Exception):
         run_guarded_upgrade(
             database,
-            Path("migrations"),
+            central_migration_spec(Path(".").resolve()),
             operation_id="migration-fail",
             target_revision="missing-revision",
+            allow_create=True,
         )
     marker = dirty_marker_path(database)
     assert marker.is_file()
     with pytest.raises(MigrationIntegrityError, match="dirty"):
-        run_guarded_upgrade(database, Path("migrations"), operation_id="retry")
+        run_guarded_upgrade(
+            database, central_migration_spec(Path(".").resolve()), operation_id="retry"
+        )
 
 
 def test_deterministic_zip_is_byte_identical(tmp_path: Path) -> None:

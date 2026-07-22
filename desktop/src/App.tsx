@@ -10,6 +10,8 @@ import type {
   ScheduleRow,
   SourceRow,
   SystemStatus,
+  VaultHealth,
+  VaultSummary,
 } from "./api/types";
 
 type Page =
@@ -19,6 +21,7 @@ type Page =
   | "records"
   | "metrics"
   | "system"
+  | "vaults"
   | "release"
   | "library";
 
@@ -35,6 +38,11 @@ export default function App() {
   const [system, setSystem] = useState<SystemStatus | null>(null);
   const [accounts, setAccounts] = useState<OwnedAccount[]>([]);
   const [accountId, setAccountId] = useState("");
+  const [vaults, setVaults] = useState<VaultSummary[]>([]);
+  const [vaultId, setVaultId] = useState("");
+  const [vaultHealth, setVaultHealth] = useState<VaultHealth | null>(null);
+  const [vaultName, setVaultName] = useState("The Discrepancy Desk");
+  const [vaultRoot, setVaultRoot] = useState("discrepancy-desk");
   const [center, setCenter] = useState<CommandCenterResponse | null>(null);
   const [schedule, setSchedule] = useState<ScheduleRow[]>([]);
   const [records, setRecords] = useState<SourceRow[]>([]);
@@ -60,8 +68,26 @@ export default function App() {
     setSystem(nextSystem);
   };
 
+  const refreshVault = async (selected = vaultId) => {
+    if (!selected) {
+      setVaultHealth(null);
+      return;
+    }
+    setVaultHealth(await desktopClient.vaultHealth(selected));
+  };
+
   useEffect(() => {
     desktopClient.health().then(setHealth).catch((value: Error) => setError(value.message));
+    desktopClient
+      .vaults()
+      .then((rows) => {
+        setVaults(rows);
+        if (rows[0]) {
+          setVaultId(rows[0].vault_id);
+          void refreshVault(rows[0].vault_id);
+        }
+      })
+      .catch((value: Error) => setError(value.message));
     desktopClient
       .accounts()
       .then((rows) => {
@@ -73,6 +99,20 @@ export default function App() {
       })
       .catch((value: Error) => setError(value.message));
   }, []);
+
+  const createVault = async (event: FormEvent) => {
+    event.preventDefault();
+    try {
+      const result = await desktopClient.createVault(vaultName.trim(), vaultRoot.trim());
+      const rows = await desktopClient.vaults();
+      setVaults(rows);
+      setVaultId(result.vault_id);
+      await refreshVault(result.vault_id);
+      setPage("vaults");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Vault creation refused");
+    }
+  };
 
   const capture = async (event: FormEvent) => {
     event.preventDefault();
@@ -117,6 +157,7 @@ export default function App() {
     "records",
     "metrics",
     "system",
+    "vaults",
     "release",
     "library",
   ];
@@ -156,6 +197,25 @@ export default function App() {
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.platform} — {account.username ?? account.id}
+              </option>
+            ))}
+          </select>
+        </label>
+      </section>
+      <section>
+        <label>
+          Active Vault{" "}
+          <select
+            value={vaultId}
+            onChange={(event) => {
+              setVaultId(event.target.value);
+              void refreshVault(event.target.value);
+            }}
+          >
+            <option value="">No Vault selected</option>
+            {vaults.map((vault) => (
+              <option key={vault.vault_id} value={vault.vault_id}>
+                {vault.display_name} — {vault.registry_state}
               </option>
             ))}
           </select>
@@ -241,6 +301,28 @@ export default function App() {
         <section>
           <h2>System</h2>
           <pre>{JSON.stringify(system, null, 2)}</pre>
+        </section>
+      )}
+
+      {page === "vaults" && (
+        <section>
+          <h2>Local Manual Vaults</h2>
+          <p>Vault selection is independent from platform-account selection.</p>
+          <pre>{JSON.stringify(vaultHealth, null, 2)}</pre>
+          <form onSubmit={createVault}>
+            <input
+              value={vaultName}
+              onChange={(event) => setVaultName(event.target.value)}
+              placeholder="Vault display name"
+            />
+            <input
+              value={vaultRoot}
+              onChange={(event) => setVaultRoot(event.target.value)}
+              placeholder="Relative Vault root"
+            />
+            <button>Create governed Vault</button>
+          </form>
+          <p>No content or parser is admitted by creating a Phase 1 Vault.</p>
         </section>
       )}
 
