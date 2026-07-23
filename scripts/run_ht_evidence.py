@@ -472,6 +472,35 @@ M06A_TEXT_V1_INVARIANTS = (
     Invariant("M06A-TEXT-CANON-028", "No later-parser or capability leakage", "No SRT, VTT, JSON, Phase 3B, provider, agent, or publication capability enters the package.", ("tests/test_m06a_desktop_workflow.py::test_m06a_text_canon_028_no_later_parser_or_capability_leakage",)),
 )
 
+M06A_SRT_V1_INVARIANTS = (
+    Invariant("M06A-SRT-001", "Exact D039 tuple preservation", "Every exact plain-text tuple input remains byte-identical to application commit 7980b1e7.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_001_d039_tuple_inputs_are_byte_identical",)),
+    Invariant("M06A-SRT-002", "Parser-scoped SRT resource manifest", "The SRT config, schema, implementation, and dependency lock are bound by one exact parser-scoped manifest.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_002_scoped_manifest_is_complete_and_exact",)),
+    Invariant("M06A-SRT-003", "Fresh V0004 under-test authority only", "A fresh V0004 Vault installs one immutable SRT under-test candidate and zero SRT owner admissions.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_003_fresh_v0004_vault_installs_under_test_only",)),
+    Invariant("M06A-SRT-004", "No SRT admission or canonical surface", "No SRT admission, parse, lifecycle, configuration, bulk, or background mutation surface exists.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_004_no_admission_or_canonical_surface",)),
+    Invariant("M06A-SRT-005", "Valid indexed cue parsing", "Strict indexed single-line SRT cues produce exact timing and source metadata.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_005_valid_indexed_single_line_cues",)),
+    Invariant("M06A-SRT-006", "Optional cue index", "A cue without a numeric index remains valid and records an explicit null index.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_006_optional_index",)),
+    Invariant("M06A-SRT-007", "Multiline and separator locator fidelity", "Multiline cue text and blank separators preserve exact byte, character, line, and normalized-text behavior.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_007_multiline_and_blank_locator_fidelity",)),
+    Invariant("M06A-SRT-008", "Nonsequential index warning", "Nonsequential numeric cue indexes produce only the admitted deterministic warning.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_008_nonsequential_indexes_warn",)),
+    Invariant("M06A-SRT-009", "Overlapping cue warning", "Overlapping cue times produce only the admitted deterministic warning.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_009_overlap_warns",)),
+    Invariant("M06A-SRT-010", "Source order preservation", "Cue source order is preserved and never silently reordered by time or index.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_010_source_order_is_preserved",)),
+    Invariant("M06A-SRT-011", "Malformed timestamp and arrow refusal", "Malformed timestamp or separator syntax fails the entire candidate with no partial output.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_011_malformed_timestamp_or_arrow_fails",)),
+    Invariant("M06A-SRT-012", "Timestamp field and duration limits", "Invalid fields, excessive timestamps, and negative duration fail closed.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_012_invalid_fields_duration_and_maximum_fail",)),
+    Invariant("M06A-SRT-013", "Cue text and separation required", "Missing cue text or ambiguous cue boundaries fail the whole candidate.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_013_missing_text_or_separator_fails",)),
+    Invariant("M06A-SRT-014", "Exact SRT limits", "Input, cue-count, cue-byte, line, and element limits fail without partial output.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_014_all_limits_fail_closed",)),
+    Invariant("M06A-SRT-015", "Explicit SRT encoding contract", "Admitted BOM encodings succeed while invalid encoding and NUL-bearing input fail explicitly.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_015_admitted_encodings", "tests/test_m06a_srt_parser.py::test_m06a_srt_015_invalid_encoding_and_nul_fail")),
+    Invariant("M06A-SRT-016", "Independent SRT coverage reconciliation", "Tampered full-cue or cue-text locators are independently detected.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_016_independent_coverage_reconciliation",)),
+    Invariant("M06A-SRT-017", "Deterministic source execution", "Identical isolated source workers produce byte-identical candidates and normalized packages.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_017_source_worker_is_deterministic",)),
+    Invariant("M06A-SRT-018", "Source denial controls", "Network, process, filesystem, and exec violations are denied with no candidate output; malformed input preserves a failed receipt.", ("tests/test_m06a_srt_packaging.py::test_m06a_srt_018_source_worker_denials_and_failure_output",)),
+    Invariant("M06A-SRT-019", "Packaged SRT authority parity", "The real packaged sidecar uses exact SRT resources and self-tested denial controls.", ("tests/test_m06a_srt_packaging.py::test_m06a_srt_019_real_packaged_sidecar_uses_exact_resources",)),
+    Invariant("M06A-SRT-020", "Receipt separation", "Run-specific SRT receipt fields never enter deterministic candidate or package bytes.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_020_receipt_data_is_separate_from_package",)),
+    Invariant("M06A-SRT-021", "Under-test non-authority", "Synthetic under-test execution creates no Vault execution, package, document, element, or region authority.", ("tests/test_m06a_srt_parser.py::test_m06a_srt_021_under_test_creates_no_vault_output_authority",)),
+    Invariant("M06A-SRT-022", "Read-only desktop status", "Tauri and loopback expose SRT under-test status without admission or canonical mutation controls.", ("tests/test_m06a_desktop_workflow.py::test_m06a_srt_022_desktop_status_is_read_only_under_test",)),
+    Invariant("M06A-SRT-023", "Inherited backup and plain-text regression", "V0004 package recovery and exact D039 plain-text admission/canonical behavior remain green.", ("tests/test_m06a_srt_packaging.py::test_m06a_srt_023_plain_text_and_backup_regression_surface_is_unchanged", "tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_024_backup_restore_includes_output", "tests/test_m06a_parser_framework.py::test_m06a_ht_032_runtime_admission_manifest_enforced")),
+    Invariant("M06A-SRT-024", "No later capability leakage", "No VTT, JSON, Phase 3B, provider, agent, or publication capability enters D040.", ("tests/test_m06a_srt_packaging.py::test_m06a_srt_024_no_later_capability_leakage",)),
+)
+
+M06A_SRT_V1_EXPECTED_IDS = tuple(f"M06A-SRT-{value:03d}" for value in range(1, 25))
+
 M06A_TEXT_V1_EXPECTED_IDS = tuple(
     [f"M06A-TEXT-ADMIT-{value:03d}" for value in range(1, 11)]
     + [f"M06A-TEXT-CANON-{value:03d}" for value in range(11, 29)]
@@ -495,6 +524,7 @@ SUITES = {
     "m06a-phase2": M06A_PHASE2_INVARIANTS,
     "m06a-phase3a": M06A_PHASE3A_INVARIANTS,
     "m06a-text-v1": M06A_TEXT_V1_INVARIANTS,
+    "m06a-srt-v1": M06A_SRT_V1_INVARIANTS,
 }
 
 
@@ -624,6 +654,51 @@ def text_v1_contract_metadata(results: list[dict[str, object]]) -> dict[str, obj
         "later_capability_leakage_absent": by_id["M06A-TEXT-CANON-028"]["passed"],
     }
 
+
+def srt_v1_contract_metadata(results: list[dict[str, object]]) -> dict[str, object]:
+    from discrepancy_desk.migration_spec import central_migration_spec, vault_migration_spec
+    from discrepancy_desk.srt_service import load_srt_resources
+
+    project_root = Path.cwd().resolve()
+    resources = load_srt_resources(project_root)
+    by_id = {str(result["invariant_id"]): result for result in results}
+    if any(by_id.get(value, {}).get("passed") is not True for value in M06A_SRT_V1_EXPECTED_IDS):
+        raise RuntimeError("D040 SRT contract metadata lacks a required passing proof")
+    fixture_manifest = project_root / "tests/fixtures/m06a/parsers/srt/manifest.sha256"
+    package = (
+        project_root.parent
+        / "discrepancy-desk-docs"
+        / "05-implementation-planning"
+        / "m06a-srt-v1-under-test-candidate-package.md"
+    )
+    if not fixture_manifest.is_file() or not package.is_file():
+        raise RuntimeError("D040 SRT evidence resources are unavailable")
+    return {
+        "runner_registry_sha256": sha256_path(Path(__file__).resolve()),
+        "implementation_package_sha256": sha256_path(package),
+        "fixture_manifest_sha256": sha256_path(fixture_manifest),
+        "resource_manifest_sha256": resources.manifest_sha256,
+        "config_sha256": resources.config_sha256,
+        "schema_sha256": resources.schema_sha256,
+        "implementation_sha256": resources.implementation_sha256,
+        "dependency_lock_sha256": resources.dependency_lock_sha256,
+        "parser_tuple": resources.parser_tuple().material(),
+        "central_migration_head": central_migration_spec(project_root).expected_head,
+        "vault_migration_head": vault_migration_spec(project_root).expected_head,
+        "execution_modes": ["source-worker", "packaged-sidecar"],
+        "plain_text_tuple_inputs_preserved": by_id["M06A-SRT-001"]["passed"],
+        "automatic_owner_admission": False,
+        "canonical_execution_available": False,
+        "fresh_vault_state": "under_test",
+        "source_denial_proof": by_id["M06A-SRT-018"]["passed"],
+        "packaged_execution_proof": by_id["M06A-SRT-019"]["passed"],
+        "read_only_status_proof": by_id["M06A-SRT-022"]["passed"],
+        "inherited_regression_proof": by_id["M06A-SRT-023"]["passed"],
+        "later_capability_leakage_absent": by_id["M06A-SRT-024"]["passed"],
+        "d039_independent_review_deferred_not_waived": True,
+    }
+
+
 def validate_suite(name: str, invariants: tuple[Invariant, ...]) -> None:
     ids = [invariant.invariant_id for invariant in invariants]
     if not ids:
@@ -638,6 +713,8 @@ def validate_suite(name: str, invariants: tuple[Invariant, ...]) -> None:
         raise RuntimeError("M06-A Phase 3A invariant mapping diverges from the accepted set")
     if name == "m06a-text-v1" and tuple(ids) != M06A_TEXT_V1_EXPECTED_IDS:
         raise RuntimeError("M06-A text-v1 invariant mapping diverges from the D039 set")
+    if name == "m06a-srt-v1" and tuple(ids) != M06A_SRT_V1_EXPECTED_IDS:
+        raise RuntimeError("M06-A SRT-v1 invariant mapping diverges from the D040 set")
     for invariant in invariants:
         if invariant.disposition == "execute" and not invariant.tests:
             raise RuntimeError(f"{invariant.invariant_id} has no test mapping")
@@ -777,7 +854,7 @@ def main() -> int:
     expected_commit = git_sha()
     evidence_root = (
         Path("runtime/test-evidence/hammer") / args.suite
-        if args.suite in {"m06a-phase3a", "m06a-text-v1"}
+        if args.suite in {"m06a-phase3a", "m06a-text-v1", "m06a-srt-v1"}
         else Path("runtime/test-evidence") / args.suite
     )
     evidence_root.mkdir(parents=True, exist_ok=True)
@@ -799,6 +876,7 @@ def main() -> int:
     }
     phase_contract = phase3a_contract_metadata(results) if args.suite == "m06a-phase3a" else None
     text_v1_contract = text_v1_contract_metadata(results) if args.suite == "m06a-text-v1" else None
+    srt_v1_contract = srt_v1_contract_metadata(results) if args.suite == "m06a-srt-v1" else None
     payload = {
         "schema_version": 2,
         "suite": args.suite,
@@ -813,6 +891,7 @@ def main() -> int:
         "test_counts": aggregate_test_counts,
         "phase3a_contract": phase_contract,
         "text_v1_contract": text_v1_contract,
+        "srt_v1_contract": srt_v1_contract,
         "summary": {
             "required": len(invariants),
             "executed": sum(result["disposition"] == "execute" for result in results),
@@ -829,7 +908,7 @@ def main() -> int:
     if not dirty:
         immutable = (
             Path("runtime/test-evidence") / args.suite / "by-commit" / f"{expected_commit}.json"
-            if args.suite in {"m06a-phase3a", "m06a-text-v1"}
+            if args.suite in {"m06a-phase3a", "m06a-text-v1", "m06a-srt-v1"}
             else output_root / "by-commit" / f"{expected_commit}.json"
         )
         immutable.parent.mkdir(parents=True, exist_ok=True)

@@ -31,8 +31,8 @@ from .parser_service import (
     admit_text_parser,
     canonical_parse_text,
     list_canonical_documents,
-    list_parser_status,
 )
+from .srt_service import list_all_parser_status
 from .operator_service import (
     add_source_record,
     capture_work_item,
@@ -289,7 +289,7 @@ def create_app(
                     vault_id=vault_id,
                     migration_spec=request.app.state.vault_migration_spec,
                 ) as opened:
-                    parsers = list_parser_status(
+                    parsers = list_all_parser_status(
                         opened.connection,
                         vault_account_id=vault_id,
                         project_root=PROJECT_ROOT,

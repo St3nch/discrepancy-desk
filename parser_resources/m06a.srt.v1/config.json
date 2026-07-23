@@ -1,0 +1,1 @@
+{"cue_limit":100000,"input_size_limit_bytes":10485760,"line_limit":300000,"maximum_cue_bytes":1048576,"maximum_timestamp_milliseconds":86400000,"partial_output":"prohibited","preserve_blank_regions":true,"source_order":"preserved","warning_policy_version":"m06a.srt.warnings.v1"}

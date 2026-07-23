@@ -340,3 +340,45 @@ def test_m06a_text_canon_028_no_later_parser_or_capability_leakage() -> None:
         "admit-all",
     ):
         assert forbidden not in combined
+
+
+def test_m06a_srt_022_desktop_status_is_read_only_under_test(tmp_path: Path) -> None:
+    headers = {"x-discrepancy-desk-token": TOKEN}
+    with _client(tmp_path) as client:
+        created = client.post(
+            "/desktop-api/v1/vaults",
+            headers=headers,
+            json={
+                "display_name": "SRT Status Vault",
+                "relative_root": "srt-status-vault",
+                "owned_account_ids": [],
+                "operation_key": "d040:srt-status:create",
+            },
+        )
+        assert created.status_code == 201
+        vault_id = created.json()["vault_id"]
+        response = client.get(
+            f"/desktop-api/v1/vaults/{vault_id}/parsers",
+            headers=headers,
+        )
+        assert response.status_code == 200
+        parsers = response.json()["parsers"]
+        srt = [row for row in parsers if row["parser_id"] == "m06a.srt.v1"]
+        assert len(srt) == 1
+        assert srt[0]["display_name"] == "SubRip (SRT)"
+        assert srt[0]["state"] == "under_test"
+        assert srt[0]["canonical_available"] is False
+        assert srt[0]["admission_ready"] is False
+        assert srt[0]["admission_manifest"] is None
+
+        route_paths = {route.path for route in client.app.routes}
+        assert "/desktop-api/v1/vaults/{vault_id}/parsers/m06a.srt.v1/admit" not in route_paths
+        assert (
+            "/desktop-api/v1/vaults/{vault_id}/artifacts/{acquisition_artifact_link_id}/parse-srt"
+            not in route_paths
+        )
+
+    app_source = Path("desktop/src/App.tsx").read_text(encoding="utf-8")
+    assert "SubRip (SRT)" not in app_source
+    assert "Admit SRT" not in app_source
+    assert "Parse as SRT" not in app_source

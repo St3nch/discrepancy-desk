@@ -7,6 +7,7 @@ from uuid import uuid4
 from .db import begin_write, connect_existing
 from .migration_spec import MigrationSpec
 from .parser_service import install_under_test_parser_candidate
+from .srt_service import install_under_test_srt_candidate
 from .persistence import append_audit, existing_operation, record_operation
 from .vault_identity import create_vault, resolve_vault_root
 from .vault_persistence import request_hash
@@ -147,6 +148,12 @@ def provision_vault(
                     actor_id=owner_actor_id,
                     project_root=migration_spec.migrations_root.parent,
                 )
+                if migration_spec.expected_head == "V0004":
+                    install_under_test_srt_candidate(
+                        vault_connection,
+                        actor_id=owner_actor_id,
+                        project_root=migration_spec.migrations_root.parent,
+                    )
             finally:
                 vault_connection.close()
     except Exception as exc:
