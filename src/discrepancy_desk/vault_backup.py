@@ -15,6 +15,7 @@ from .vault_filesystem import (
     object_relative_path,
     reject_reparse_chain,
     sha256_file,
+    verify_package_file,
 )
 from .vault_ingestion import verify_artifact_inventory
 from .vault_persistence import (
@@ -44,6 +45,7 @@ class RestoreProof:
     vault_account_id: str
     vault_instance_id: str
     artifact_count: int
+    package_count: int
     manifest_sha256: str
 
 
@@ -89,6 +91,50 @@ def _identity(connection: sqlite3.Connection) -> tuple[str, str, str]:
     return str(row[0]), str(row[1]), str(row[2])
 
 
+def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
+    return connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone() is not None
+
+
+def _verify_package_inventory(
+    connection: sqlite3.Connection,
+    vault_root: Path,
+    *,
+    vault_account_id: str,
+) -> int:
+    package_root = vault_root / "packages" / "sha256"
+    if not _table_exists(connection, "normalized_packages"):
+        if any(path.is_file() for path in package_root.rglob("*")):
+            raise ValueError("pre-V0003 Vault contains unauthorized package files")
+        return 0
+    rows = connection.execute(
+        """SELECT storage_relative_path, package_sha256, byte_size
+        FROM normalized_packages WHERE vault_account_id=? ORDER BY storage_relative_path""",
+        (vault_account_id,),
+    ).fetchall()
+    authoritative: set[str] = set()
+    for row in rows:
+        relative = str(row[0])
+        verified = verify_package_file(
+            vault_root,
+            package_sha256=str(row[1]),
+            expected_size=int(row[2]),
+        )
+        if verified.relative_to(vault_root).as_posix() != relative:
+            raise ValueError("normalized package path is outside its content address")
+        authoritative.add(relative)
+    package_root = vault_root / "packages" / "sha256"
+    actual = {
+        path.relative_to(vault_root).as_posix()
+        for path in package_root.rglob("*")
+        if path.is_file()
+    }
+    if actual != authoritative:
+        raise ValueError("Vault package inventory does not reconcile with SQLite authority")
+    return len(rows)
+
+
 def _ensure_backup_ready(
     connection: sqlite3.Connection,
     vault_root: Path,
@@ -106,6 +152,11 @@ def _ensure_backup_ready(
     verify_artifact_inventory(
         connection,
         vault_root=vault_root,
+        vault_account_id=vault_account_id,
+    )
+    _verify_package_inventory(
+        connection,
+        vault_root,
         vault_account_id=vault_account_id,
     )
 
@@ -135,7 +186,7 @@ def create_vault_generation(
     *,
     vault_root: Path,
     actor: ActorContext,
-    migration_head: str = "V0002",
+    migration_head: str = "V0003",
     application_commit: str | None = None,
 ) -> VaultBackupResult:
     vault_account_id, vault_instance_id, identity_fingerprint = _identity(connection)
@@ -273,6 +324,35 @@ def create_vault_generation(
                     required=True,
                 )
             )
+        package_rows = (
+            connection.execute(
+                """SELECT storage_relative_path, package_sha256, byte_size
+                FROM normalized_packages WHERE vault_account_id=? ORDER BY storage_relative_path""",
+                (vault_account_id,),
+            ).fetchall()
+            if _table_exists(connection, "normalized_packages")
+            else []
+        )
+        for row in package_rows:
+            relative = str(row[0])
+            source = verify_package_file(
+                vault_root,
+                package_sha256=str(row[1]),
+                expected_size=int(row[2]),
+            )
+            if source.relative_to(vault_root).as_posix() != relative:
+                raise ValueError("normalized package path is outside the canonical content address")
+            destination = generation_root / Path(relative)
+            copy_regular_no_overwrite(source, destination, root=generation_root)
+            files.append(
+                _file_entry(
+                    destination,
+                    generation_root,
+                    family="package",
+                    authority="canonical",
+                    required=True,
+                )
+            )
         manifest = {
             "schema_version": 1,
             "generation_id": generation_id,
@@ -390,7 +470,7 @@ def verify_vault_generation(
     *,
     expected_vault_account_id: str | None = None,
     expected_vault_instance_id: str | None = None,
-    expected_migration_head: str = "V0002",
+    expected_migration_head: str | None = None,
     authority_connection: sqlite3.Connection | None = None,
 ) -> dict[str, object]:
     reject_reparse_chain(generation_root)
@@ -419,7 +499,12 @@ def verify_vault_generation(
         raise ValueError("backup belongs to another Vault account")
     if expected_vault_instance_id is not None and vault_instance_id != expected_vault_instance_id:
         raise ValueError("backup belongs to another Vault instance")
-    if manifest.get("migration_head") != expected_migration_head:
+    manifest_migration_head = str(manifest.get("migration_head", ""))
+    if expected_migration_head is None:
+        if manifest_migration_head not in {"V0002", "V0003"}:
+            raise ValueError("backup migration head is not admitted")
+        expected_migration_head = manifest_migration_head
+    if manifest_migration_head != expected_migration_head:
         raise ValueError("backup migration head is not admitted")
     expected_paths: set[str] = set()
     for entry in manifest.get("files", []):
@@ -502,6 +587,23 @@ def verify_vault_generation(
         }
         if authoritative != manifest_objects:
             raise ValueError("backup artifact manifest does not reconcile with SQLite authority")
+        package_rows = (
+            connection.execute(
+                "SELECT storage_relative_path, package_sha256, byte_size FROM normalized_packages ORDER BY storage_relative_path"
+            ).fetchall()
+            if _table_exists(connection, "normalized_packages")
+            else []
+        )
+        authoritative_packages = {
+            str(row[0]): (str(row[1]), int(row[2])) for row in package_rows
+        }
+        manifest_packages = {
+            str(entry["path"]): (str(entry["sha256"]), int(entry["byte_size"]))
+            for entry in manifest.get("files", [])
+            if entry.get("file_family") == "package"
+        }
+        if authoritative_packages != manifest_packages:
+            raise ValueError("backup package manifest does not reconcile with SQLite authority")
     finally:
         connection.close()
     actual = {
@@ -520,6 +622,7 @@ def verify_vault_generation(
         "manifest_sha256": manifest_sha256,
         "file_count": len(expected_paths),
         "artifact_count": sum(1 for entry in manifest.get("files", []) if entry.get("file_family") == "object"),
+        "package_count": sum(1 for entry in manifest.get("files", []) if entry.get("file_family") == "package"),
     }
 
 
@@ -529,6 +632,7 @@ def restore_generation_disposable(
     *,
     expected_vault_account_id: str,
     expected_vault_instance_id: str,
+    expected_migration_head: str | None = None,
     authority_connection: sqlite3.Connection | None = None,
 ) -> RestoreProof:
     if proof_root.exists() and any(proof_root.iterdir()):
@@ -537,6 +641,7 @@ def restore_generation_disposable(
         generation_root,
         expected_vault_account_id=expected_vault_account_id,
         expected_vault_instance_id=expected_vault_instance_id,
+        expected_migration_head=expected_migration_head,
         authority_connection=authority_connection,
     )
     proof_root.mkdir(parents=True, exist_ok=True)
@@ -563,6 +668,7 @@ def restore_generation_disposable(
         vault_account_id=expected_vault_account_id,
         vault_instance_id=expected_vault_instance_id,
         artifact_count=int(verification["artifact_count"]),
+        package_count=int(verification["package_count"]),
         manifest_sha256=str(verification["manifest_sha256"]),
     )
 
@@ -586,7 +692,7 @@ def verify_and_restore_generation(
     actor: ActorContext,
     generation_id: str,
     proof_root: Path,
-    expected_migration_head: str = "V0002",
+    expected_migration_head: str = "V0003",
 ) -> RestoreProof:
     vault_account_id, vault_instance_id, _ = _identity(connection)
     _require_backup_actor(
@@ -612,6 +718,7 @@ def verify_and_restore_generation(
         proof_root,
         expected_vault_account_id=vault_account_id,
         expected_vault_instance_id=vault_instance_id,
+        expected_migration_head=expected_migration_head,
         authority_connection=connection,
     )
     existing = existing_vault_operation(

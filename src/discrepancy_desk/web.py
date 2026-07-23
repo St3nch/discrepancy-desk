@@ -27,6 +27,7 @@ from .editorial_queries import (
 from .db import connect
 from .migration_runner import run_guarded_upgrade
 from .migration_spec import central_migration_spec, vault_migration_spec
+from .parser_service import list_parser_status
 from .operator_service import (
     add_source_record,
     capture_work_item,
@@ -270,6 +271,37 @@ def create_app(
         return JSONResponse(
             status_code=status_code,
             content={"api_version": desktop_api_version, **health},
+        )
+
+    @app.get("/desktop-api/v1/vaults/{vault_id}/parsers")
+    async def desktop_vault_parsers(request: Request, vault_id: str) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            try:
+                with open_registered_vault(
+                    connection,
+                    vault_base=request.app.state.vault_base,
+                    vault_id=vault_id,
+                    migration_spec=request.app.state.vault_migration_spec,
+                ) as opened:
+                    parsers = list_parser_status(
+                        opened.connection,
+                        vault_account_id=vault_id,
+                        project_root=PROJECT_ROOT,
+                    )
+            except (FileNotFoundError, PermissionError, RuntimeError, ValueError, sqlite3.DatabaseError):
+                return desktop_error("Vault parser status is unavailable.", status_code=409)
+        finally:
+            connection.close()
+        return JSONResponse(
+            {
+                "api_version": desktop_api_version,
+                "vault_id": vault_id,
+                "parsers": parsers,
+                "canonical_parser_available": any(
+                    bool(parser.get("canonical_available")) for parser in parsers
+                ),
+            }
         )
 
     @app.post("/desktop-api/v1/vaults/{vault_id}/migrate")
@@ -538,6 +570,7 @@ def create_app(
                 "status": "verified",
                 "manifest_sha256": proof.manifest_sha256,
                 "artifact_count": proof.artifact_count,
+                "package_count": proof.package_count,
             }
         )
 

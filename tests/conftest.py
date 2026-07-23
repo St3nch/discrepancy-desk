@@ -10,7 +10,7 @@ import pytest
 
 from discrepancy_desk.db import connect_existing
 from discrepancy_desk.migration_runner import run_guarded_upgrade
-from discrepancy_desk.migration_spec import central_migration_spec, vault_migration_spec
+from discrepancy_desk.migration_spec import MigrationSpec, central_migration_spec, vault_migration_spec
 from discrepancy_desk.test_evidence import pytest_evidence_destination as evidence_destination
 from discrepancy_desk.vault_router import open_registered_vault
 from discrepancy_desk.vault_service import provision_vault
@@ -74,6 +74,19 @@ def m06a_central_spec(m06a_project_root: Path):
 
 @pytest.fixture
 def m06a_vault_spec(m06a_project_root: Path):
+    current = vault_migration_spec(m06a_project_root)
+    return MigrationSpec(
+        config_path=current.config_path,
+        migrations_root=current.migrations_root,
+        manifest_path=current.manifest_path,
+        expected_head="V0002",
+        schema_name=current.schema_name,
+        version_table=current.version_table,
+    )
+
+
+@pytest.fixture
+def m06a_phase3a_vault_spec(m06a_project_root: Path):
     return vault_migration_spec(m06a_project_root)
 
 
@@ -113,3 +126,48 @@ def m06a_phase2_vault(m06a_central_connection, m06a_vault_spec, tmp_path: Path):
         migration_spec=m06a_vault_spec,
     ) as opened:
         yield central, opened
+
+
+@pytest.fixture
+def m06a_phase3a_vault(m06a_central_connection, m06a_phase3a_vault_spec, tmp_path: Path):
+    central, _ = m06a_central_connection
+    vault_base = tmp_path / "vaults-phase3a"
+    vault_id = provision_vault(
+        central,
+        vault_base=vault_base,
+        migration_spec=m06a_phase3a_vault_spec,
+        display_name="The Discrepancy Desk Phase 3A",
+        relative_root="discrepancy-desk-phase3a",
+        owner_actor_id="owner-local",
+        operation_key="fixture:phase3a-vault",
+    )
+    with open_registered_vault(
+        central,
+        vault_base=vault_base,
+        vault_id=vault_id,
+        migration_spec=m06a_phase3a_vault_spec,
+    ) as opened:
+        yield central, opened
+
+
+@pytest.fixture(autouse=True)
+def preserve_historical_phase2_desktop_fixture(request, monkeypatch, m06a_project_root: Path):
+    if request.node.path.name != "test_m06a_phase2_desktop_workflow.py":
+        return
+    import discrepancy_desk.web as web_module
+
+    current = vault_migration_spec(m06a_project_root)
+
+    def phase2_spec(
+        _project_root: Path, _migrations_root: Path | None = None
+    ) -> MigrationSpec:
+        return MigrationSpec(
+            config_path=current.config_path,
+            migrations_root=current.migrations_root,
+            manifest_path=current.manifest_path,
+            expected_head="V0002",
+            schema_name=current.schema_name,
+            version_table=current.version_table,
+        )
+
+    monkeypatch.setattr(web_module, "vault_migration_spec", phase2_spec)

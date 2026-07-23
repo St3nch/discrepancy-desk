@@ -6,6 +6,7 @@ from pathlib import Path
 from .actor_context import ActorContext, resolve_actor_context
 from .migration_runner import run_guarded_upgrade
 from .migration_spec import MigrationSpec
+from .parser_service import install_under_test_parser_candidate
 from .vault_filesystem import ArtifactIntegrityError
 from .vault_identity import OpenedVault, open_existing_vault
 from .vault_ingestion import verify_artifact_inventory
@@ -131,6 +132,12 @@ def upgrade_registered_vault(
         if existing != migration_spec.expected_head:
             current.close()
             raise ValueError("Vault is already at the expected migration head")
+        if migration_spec.expected_head == "V0003":
+            install_under_test_parser_candidate(
+                current.connection,
+                actor_id=actor_id,
+                project_root=migration_spec.migrations_root.parent,
+            )
         _complete_migration_audit(
             current,
             actor=actor,
@@ -140,11 +147,12 @@ def upgrade_registered_vault(
         )
         return current
 
+    previous_head = "V0002" if migration_spec.expected_head == "V0003" else "V0001"
     previous = MigrationSpec(
         config_path=migration_spec.config_path,
         migrations_root=migration_spec.migrations_root,
         manifest_path=migration_spec.manifest_path,
-        expected_head="V0001",
+        expected_head=previous_head,
         schema_name=migration_spec.schema_name,
         version_table=migration_spec.version_table,
     )
@@ -226,6 +234,12 @@ def upgrade_registered_vault(
         actor_id=actor_id,
         operation_id=normalized_operation,
     )
+    if migration_spec.expected_head == "V0003":
+        install_under_test_parser_candidate(
+            upgraded.connection,
+            actor_id=actor_id,
+            project_root=migration_spec.migrations_root.parent,
+        )
     _complete_migration_audit(
         upgraded,
         actor=upgraded_actor,

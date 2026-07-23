@@ -31,8 +31,13 @@ def main() -> int:
         shutil.rmtree(TARGET_DIR)
     launcher = RUNTIME / "desktop_backend_launcher.py"
     launcher.write_text(
-        "from discrepancy_desk.web import desktop_main\n"
-        "if __name__ == '__main__':\n    desktop_main()\n",
+        "import sys\n"
+        "if __name__ == '__main__':\n"
+        "    if '--m06a-parser-worker' in sys.argv:\n"
+        "        from discrepancy_desk.parser_worker import main\n"
+        "        raise SystemExit(main())\n"
+        "    from discrepancy_desk.web import desktop_main\n"
+        "    desktop_main()\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -59,6 +64,10 @@ def main() -> int:
         f"{ROOT / 'migrations'};migrations",
         "--add-data",
         f"{ROOT / 'vault_migrations'};vault_migrations",
+        "--add-data",
+        f"{ROOT / 'parser_resources'};parser_resources",
+        "--add-data",
+        f"{ROOT / 'uv.lock'};.",
         "--add-data",
         f"{ROOT / 'alembic.ini'};.",
         str(launcher),

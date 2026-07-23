@@ -118,4 +118,27 @@ export interface VaultBackupVerification {
   status: "verified";
   manifest_sha256: string;
   artifact_count: number;
+  package_count: number;
+}
+
+
+export interface VaultParserStatus {
+  parser_definition_id: string;
+  parser_configuration_version_id?: string;
+  parser_admission_version_id?: string;
+  parser_id: string;
+  display_name: string;
+  format_id?: string;
+  state: string;
+  canonical_available: boolean;
+  reason_code: string | null;
+  package_schema_version: string;
+  security_profile_id: string;
+}
+
+export interface VaultParsersResponse {
+  api_version: string;
+  vault_id: string;
+  parsers: VaultParserStatus[];
+  canonical_parser_available: boolean;
 }

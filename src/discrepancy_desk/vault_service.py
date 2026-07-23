@@ -4,8 +4,9 @@ import sqlite3
 from pathlib import Path
 from uuid import uuid4
 
-from .db import begin_write
+from .db import begin_write, connect_existing
 from .migration_spec import MigrationSpec
+from .parser_service import install_under_test_parser_candidate
 from .persistence import append_audit, existing_operation, record_operation
 from .vault_identity import create_vault, resolve_vault_root
 from .vault_persistence import request_hash
@@ -133,6 +134,21 @@ def provision_vault(
             correlation_id=correlation_id,
             request_sha256=request_sha256,
         )
+        if migration_spec.expected_head == "V0003":
+            _, created_root = resolve_vault_root(
+                vault_base, normalized_root, must_exist=True
+            )
+            vault_connection = connect_existing(
+                created_root / "database" / "vault.sqlite3"
+            )
+            try:
+                install_under_test_parser_candidate(
+                    vault_connection,
+                    actor_id=owner_actor_id,
+                    project_root=migration_spec.migrations_root.parent,
+                )
+            finally:
+                vault_connection.close()
     except Exception as exc:
         _record_reconciliation_required(
             connection,

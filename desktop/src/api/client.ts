@@ -14,6 +14,7 @@ import type {
   VaultHealth,
   VaultIntakeRecords,
   VaultIntakeStart,
+  VaultParsersResponse,
   VaultSummary,
 } from "./types";
 
@@ -55,6 +56,10 @@ export const desktopClient = {
   vaultHealth: (vaultId: string) =>
     request<VaultHealth>(
       `/desktop-api/v1/vaults/${encodeURIComponent(vaultId)}/health`,
+    ),
+  vaultParsers: (vaultId: string) =>
+    request<VaultParsersResponse>(
+      `/desktop-api/v1/vaults/${encodeURIComponent(vaultId)}/parsers`,
     ),
   createVault: (displayName: string, relativeRoot: string) =>
     request<{ vault_id: string }>("/desktop-api/v1/vaults", {

@@ -1,0 +1,1 @@
+{"character_limit":1000000,"element_limit":50000,"input_size_limit_bytes":10485760,"line_limit":100000,"maximum_line_bytes":1048576,"normalize_line_endings_in_derivative":"LF","paragraph_separator":"one-or-more blank logical lines","partial_output":"prohibited","preserve_blank_regions":true,"unicode_normalization":"none","warning_policy_version":"m06a.text.warnings.v1"}

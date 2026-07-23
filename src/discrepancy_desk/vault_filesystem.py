@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
+from .parser_contract import package_relative_path, sha256_bytes
+
 MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
 READ_CHUNK_BYTES = 1024 * 1024
 
@@ -239,3 +241,73 @@ def copy_regular_no_overwrite(source: Path, destination: Path, *, root: Path) ->
         shutil.copyfileobj(input_stream, output_stream, length=READ_CHUNK_BYTES)
         output_stream.flush()
         os.fsync(output_stream.fileno())
+
+
+@dataclass(frozen=True, slots=True)
+class StoredPackage:
+    sha256: str
+    byte_size: int
+    storage_relative_path: str
+    final_path: Path
+    reused_existing: bool
+
+
+def verify_package_file(
+    vault_root: Path,
+    *,
+    package_sha256: str,
+    expected_size: int,
+) -> Path:
+    relative = package_relative_path(package_sha256)
+    path = vault_root / Path(relative)
+    reject_reparse_chain(path, stop=vault_root)
+    _verify_existing(
+        path,
+        expected_sha256=package_sha256,
+        expected_size=expected_size,
+    )
+    return path
+
+
+def store_package_bytes(vault_root: Path, package_bytes: bytes) -> StoredPackage:
+    package_sha256 = sha256_bytes(package_bytes)
+    relative = package_relative_path(package_sha256)
+    final_path = vault_root / Path(relative)
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    reject_reparse_chain(final_path.parent, stop=vault_root)
+    reused = False
+    if final_path.exists():
+        _verify_existing(
+            final_path,
+            expected_sha256=package_sha256,
+            expected_size=len(package_bytes),
+        )
+        reused = True
+    else:
+        try:
+            with final_path.open("xb") as handle:
+                handle.write(package_bytes)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except FileExistsError:
+            _verify_existing(
+                final_path,
+                expected_sha256=package_sha256,
+                expected_size=len(package_bytes),
+            )
+            reused = True
+        except Exception:
+            final_path.unlink(missing_ok=True)
+            raise
+    _verify_existing(
+        final_path,
+        expected_sha256=package_sha256,
+        expected_size=len(package_bytes),
+    )
+    return StoredPackage(
+        sha256=package_sha256,
+        byte_size=len(package_bytes),
+        storage_relative_path=relative,
+        final_path=final_path,
+        reused_existing=reused,
+    )

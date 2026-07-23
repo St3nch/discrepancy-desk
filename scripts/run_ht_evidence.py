@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -402,10 +403,61 @@ M06A_PHASE2_EXPECTED_IDS = (
     "M06A-HT-097",
 )
 
+M06A_PHASE3A_INVARIANTS = (
+    Invariant("M06A-HT-032", "Runtime parser admission manifest enforcement", "Only an exact owner-admitted same-Vault parser tuple may become canonically selectable; under-test remains blocked.", ("tests/test_m06a_parser_framework.py::test_m06a_ht_032_runtime_admission_manifest_enforced", "tests/test_m06a_parser_framework.py::test_non_admitted_parser_states_fail_before_worker_launch", "tests/test_m06a_parser_framework.py::test_mismatched_and_ambiguous_admission_fail_before_worker_launch", "tests/test_m06a_parser_framework.py::test_wrong_vault_and_retention_ineligible_inputs_fail_before_worker", "tests/test_m06a_parser_packaging.py::test_parser_api_is_read_only_and_exposes_no_mutation_routes")),
+    Invariant("M06A-HT-033", "Socket egress denial", "Worker socket creation is denied with no candidate package.", ("tests/test_m06a_parser_framework.py::test_m06a_ht_033_socket_egress_denied",)),
+    Invariant("M06A-HT-034", "DNS and HTTP denial", "Worker DNS and HTTP attempts are denied with no outbound connection.", ("tests/test_m06a_parser_framework.py::test_m06a_ht_034_dns_and_http_denied",)),
+    Invariant("M06A-HT-035", "Subprocess and shell denial", "Worker subprocess and shell attempts are denied.", ("tests/test_m06a_parser_framework.py::test_m06a_ht_035_subprocess_denied",)),
+    Invariant("M06A-HT-039", "Deterministic normalized package", "Identical input and tuple produce byte-identical canonical package bytes in separate workers.", ("tests/test_m06a_parser_framework.py::test_m06a_ht_039_package_is_deterministic",)),
+    Invariant("M06A-HT-040", "Execution receipt separation", "Run-specific receipt fields never enter canonical package bytes.", ("tests/test_m06a_parser_framework.py::test_m06a_ht_040_execution_receipt_separate_from_package",)),
+    Invariant("M06A-HT-041", "Complete coverage required", "Silent partial output fails before any document version or package authority.", ("tests/test_m06a_parser_framework.py::test_m06a_ht_041_silent_partial_output_fails",)),
+    Invariant("M06A-HT-042", "Plain-text limits fail closed", "Every exact byte, character, line, line-byte, and element limit fails without partial output.", ("tests/test_m06a_parser_stdlib.py::test_m06a_ht_042_limits_fail_closed", "tests/test_m06a_parser_stdlib.py::test_hashed_boundary_recipes_generate_the_admitted_corpus_edges")),
+    Invariant("M06A-HT-043", "Explicit encoding contract", "UTF-8 and BOM-declared UTF-16 succeed; invalid, replacement, missing-BOM, and NUL input fail explicitly.", ("tests/test_m06a_parser_stdlib.py::test_m06a_ht_043_encoding_is_explicit",)),
+    Invariant("M06A-HT-044", "Packaged parser authority parity", "Source and real packaged sidecar use matching parser resources, tuple hashes, denial controls, and package recovery authority.", ("tests/test_m06a_parser_packaging.py::test_m06a_ht_044_packaged_parser_authority_matches", "tests/test_m06a_parser_packaging.py::test_canonical_package_backup_restore_and_tamper_fail_closed")),
+    Invariant("M06A-HT-099", "Content-free rejection receipt", "Unknown-retention rejection retains only safe classification metadata.", ("tests/test_m06a_policy_context.py::test_m06a_ht_099_unknown_retention_and_rejection_receipt_fail_closed",)),
+    Invariant("M06A-HT-100", "Rejected material has no downstream presence", "Rejected material creates no acquisition, artifact, package, document, backup, or other downstream authority.", ("tests/test_m06a_policy_context.py::test_m06a_ht_100_rejected_material_has_no_downstream_presence",)),
+    Invariant("M06A-HT-103", "Rejected content hashes never persist", "Rejected bytes and their hashes remain absent from durable outputs.", ("tests/test_m06a_policy_context.py::test_m06a_ht_103_rejected_content_hashes_never_persist",)),
+    Invariant("M06A-HT-105", "Temporary quarantine is noncanonical", "Temporary candidate bytes are destroyed or blocked and never become package authority.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_105_temporary_quarantine_is_noncanonical_and_reconciled",)),
+    Invariant("M06A-HT-106", "No second quarantine truth store", "Governed quarantine state never creates or trusts a second canonical byte store.", ("tests/test_m06a_parser_framework.py::test_m06a_ht_106_database_quarantine_creates_no_second_truth_store",)),
+    Invariant("M06A-HT-007", "Inherited reparse rejection", "Reparse points remain unable to become Vault, artifact, or package authority.", ("tests/test_m06a_vault_identity.py::test_m06a_ht_007_reparse_points_rejected",)),
+    Invariant("M06A-HT-012", "Inherited actor status and scope", "Disabled or wrong-Vault actors remain blocked.", ("tests/test_m06a_actor_authority.py::test_m06a_ht_012_actor_status_and_scope_enforced",)),
+    Invariant("M06A-HT-014", "Inherited Vault audit integrity", "Append-only Vault audit enforcement and chain verification detect tamper.", ("tests/test_m06a_actor_authority.py::test_m06a_ht_014_audit_tamper_detected",)),
+    Invariant("M06A-HT-015", "Inherited Vault idempotency scope", "Operation keys remain bound to exact actor, Vault, correlation, and request.", ("tests/test_m06a_actor_authority.py::test_m06a_ht_015_idempotency_scope_and_conflict",)),
+    Invariant("M06A-HT-025", "Inherited provenance composition", "Caller-selected cross-provenance parent composition remains rejected.", ("tests/test_m06a_ingestion_artifacts.py::test_m06a_ht_025_cross_provenance_composition_rejected",)),
+    Invariant("M06A-HT-027", "Inherited unknown-rights refusal", "Unknown rights continue to fail before byte admission.", ("tests/test_m06a_policy_context.py::test_m06a_ht_027_unknown_rights_fail_closed",)),
+    Invariant("M06A-HT-030", "Inherited timed-deletion refusal", "Timed-deletion material remains rejected before admission with no purge promise.", ("tests/test_m06a_policy_context.py::test_m06a_ht_030_timed_deletion_material_rejected",)),
+    Invariant("M06A-HT-062", "Inherited exact migration environment", "Vault config, manifest, revision coverage, two fresh Vaults, and populated V0002-to-V0003 upgrade remain exact.", ("tests/test_m06a_migrations.py::test_m06a_ht_062_exact_migration_environment_enforced", "tests/test_m06a_parser_framework.py::test_m06a_phase3a_fresh_two_vaults_and_populated_v0002_upgrade")),
+    Invariant("M06A-HT-063", "Inherited dirty migration retention", "Interrupted Vault migration remains durably dirty through V0003 until exact recovery.", ("tests/test_m06a_migrations.py::test_m06a_ht_063_partial_migration_remains_dirty", "tests/test_m06a_parser_framework.py::test_m06a_phase3a_dirty_migration_exact_recovery")),
+    Invariant("M06A-HT-064", "Inherited exact migration recovery", "Only exact identity, manifest, and V0003 head proof clears dirty state.", ("tests/test_m06a_migrations.py::test_m06a_ht_064_migration_recovery_is_exact", "tests/test_m06a_parser_framework.py::test_m06a_phase3a_dirty_migration_exact_recovery")),
+    Invariant("M06A-HT-065", "Inherited destructive downgrade refusal", "Empty V0003 downgrades to exact V0002 parity while governed Phase 3A rows prevent destructive downgrade.", ("tests/test_m06a_migrations.py::test_m06a_ht_065_destructive_downgrade_refused", "tests/test_m06a_parser_framework.py::test_m06a_phase3a_empty_downgrade_parity_and_populated_refusal")),
+    Invariant("M06A-HT-066", "Inherited missing-original recovery failure", "Backup or restore fails when a required original is missing.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_066_missing_original_fails_backup_or_restore",)),
+    Invariant("M06A-HT-067", "Inherited backup tamper detection", "Manifest and artifact tamper remain detectable.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_067_manifest_and_artifact_tamper_detected",)),
+    Invariant("M06A-HT-068", "Inherited wrong-account restore refusal", "A generation cannot restore as another Vault.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_068_wrong_account_restore_rejected",)),
+    Invariant("M06A-HT-069", "Inherited dirty restore target refusal", "Disposable restore never overwrites or mixes an existing target.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_069_dirty_restore_target_rejected",)),
+    Invariant("M06A-HT-070", "Inherited partial backup reconciliation", "A generation without exact completion evidence remains unrestorable.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_070_partial_backup_reconciliation",)),
+    Invariant("M06A-HT-075", "Inherited Vault-scoped observability", "Health and errors do not leak another Vault path or data.", ("tests/test_m06a_desktop_workflow.py::test_m06a_ht_075_logs_cache_temp_are_vault_scoped",)),
+    Invariant("M06A-HT-076", "Inherited secret hygiene", "Source, fixtures, resources, manifests, logs, and evidence contain no credential material.", ("tests/test_m06a_desktop_workflow.py::test_m06a_ht_076_secret_leakage_detected",)),
+    Invariant("M06A-HT-095", "Inherited per-Vault migration state", "V0003 migration state remains isolated by physical Vault.", ("tests/test_m06a_migrations.py::test_m06a_ht_095_migration_state_is_per_vault",)),
+    Invariant("M06A-HT-096", "Inherited per-Vault backup isolation", "Backup and restore contain exactly one selected Vault and reject missing, extra, or cross-Vault package bytes.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_096_backup_restore_is_per_vault", "tests/test_m06a_parser_packaging.py::test_package_backup_rejects_missing_extra_and_cross_vault_bytes")),
+)
+
+M06A_PHASE3A_EXPECTED_IDS = (
+    "M06A-HT-032", "M06A-HT-033", "M06A-HT-034", "M06A-HT-035",
+    "M06A-HT-039", "M06A-HT-040", "M06A-HT-041", "M06A-HT-042",
+    "M06A-HT-043", "M06A-HT-044", "M06A-HT-099", "M06A-HT-100",
+    "M06A-HT-103", "M06A-HT-105", "M06A-HT-106", "M06A-HT-007",
+    "M06A-HT-012", "M06A-HT-014", "M06A-HT-015", "M06A-HT-025",
+    "M06A-HT-027", "M06A-HT-030", "M06A-HT-062", "M06A-HT-063",
+    "M06A-HT-064", "M06A-HT-065", "M06A-HT-066", "M06A-HT-067",
+    "M06A-HT-068", "M06A-HT-069", "M06A-HT-070", "M06A-HT-075",
+    "M06A-HT-076", "M06A-HT-095", "M06A-HT-096",
+)
+
 SUITES = {
     "legacy": INVARIANTS,
     "m06a-phase1": M06A_PHASE1_INVARIANTS,
     "m06a-phase2": M06A_PHASE2_INVARIANTS,
+    "m06a-phase3a": M06A_PHASE3A_INVARIANTS,
 }
 
 
@@ -423,6 +475,89 @@ def working_tree_dirty() -> bool:
     return bool(completed.stdout.strip())
 
 
+def sha256_path(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def phase3a_contract_metadata(results: list[dict[str, object]]) -> dict[str, object]:
+    from discrepancy_desk.migration_spec import central_migration_spec, vault_migration_spec
+    from discrepancy_desk.parser_contract import SECURITY_PROFILE_ID, sha256_bytes
+    from discrepancy_desk.parser_service import assemble_under_test_package, load_parser_resources
+
+    project_root = Path.cwd().resolve()
+    docs_matrix = (
+        project_root.parent
+        / "discrepancy-desk-docs"
+        / "05-implementation-planning"
+        / "m06a-adversarial-closure-matrix.md"
+    )
+    fixture_manifest = project_root / "tests/fixtures/m06a/parsers/manifest.sha256"
+    schema_path = project_root / "parser_resources/schemas/m06a.normalized-package.v1.json"
+    resources = load_parser_resources(project_root)
+    required_paths = (docs_matrix, fixture_manifest, schema_path, Path(__file__).resolve())
+    missing = [str(path) for path in required_paths if not path.is_file()]
+    if missing:
+        raise RuntimeError(f"Phase 3A evidence resources are missing: {missing}")
+
+    probe_bytes = b"phase3a deterministic evidence\r\n\r\nplain text\r\n"
+    probe_sha256 = sha256_bytes(probe_bytes)
+    probe_args = {
+        "vault_account_id": "synthetic-phase3a-evidence-vault",
+        "source_artifact_sha256": probe_sha256,
+        "parser_admission_id": "synthetic-under-test-evidence-admission",
+        "project_root": project_root,
+    }
+    _, first_bytes, first_worker = assemble_under_test_package(probe_bytes, **probe_args)
+    _, second_bytes, second_worker = assemble_under_test_package(probe_bytes, **probe_args)
+    first_hash = sha256_bytes(first_bytes)
+    second_hash = sha256_bytes(second_bytes)
+    deterministic = first_bytes == second_bytes and first_hash == second_hash
+    if not deterministic:
+        raise RuntimeError("Phase 3A evidence determinism probe failed")
+    if first_worker.exit_code != 0 or second_worker.exit_code != 0:
+        raise RuntimeError("Phase 3A evidence worker probe failed")
+
+    by_id = {str(result["invariant_id"]): result for result in results}
+    required_passes = (
+        "M06A-HT-032", "M06A-HT-033", "M06A-HT-034", "M06A-HT-035",
+        "M06A-HT-039", "M06A-HT-044", "M06A-HT-096",
+    )
+    if any(by_id.get(value, {}).get("passed") is not True for value in required_passes):
+        raise RuntimeError("Phase 3A contract metadata lacks a required passing proof")
+
+    return {
+        "matrix_sha256": sha256_path(docs_matrix),
+        "runner_registry_sha256": sha256_path(Path(__file__).resolve()),
+        "fixture_manifest_sha256": sha256_path(fixture_manifest),
+        "parser_resource_manifest_sha256": resources.manifest_sha256,
+        "parser_implementation_sha256": resources.implementation_sha256,
+        "parser_config_sha256": resources.config_sha256,
+        "normalized_package_schema_sha256": sha256_path(schema_path),
+        "dependency_lock_sha256": resources.dependency_lock_sha256,
+        "security_profile_id": SECURITY_PROFILE_ID,
+        "central_migration_head": central_migration_spec(project_root).expected_head,
+        "vault_migration_head": vault_migration_spec(project_root).expected_head,
+        "execution_modes": ["source-worker", "packaged-sidecar"],
+        "worker_denial_results": {
+            "socket": by_id["M06A-HT-033"]["passed"],
+            "dns_http": by_id["M06A-HT-034"]["passed"],
+            "subprocess_shell_filesystem": by_id["M06A-HT-035"]["passed"],
+        },
+        "deterministic_package_probe": {
+            "input_sha256": probe_sha256,
+            "first_package_sha256": first_hash,
+            "second_package_sha256": second_hash,
+            "byte_identical": deterministic,
+        },
+        "package_backup_restore_proof": by_id["M06A-HT-044"]["passed"],
+        "package_vault_isolation_proof": by_id["M06A-HT-096"]["passed"],
+        "product_default_parser_state": "under_test",
+        "canonical_parser_available_by_default": False,
+        "production_owner_admitted_parser_records": 0,
+        "admission_gate_proof": by_id["M06A-HT-032"]["passed"],
+    }
+
+
 def validate_suite(name: str, invariants: tuple[Invariant, ...]) -> None:
     ids = [invariant.invariant_id for invariant in invariants]
     if not ids:
@@ -433,6 +568,8 @@ def validate_suite(name: str, invariants: tuple[Invariant, ...]) -> None:
         raise RuntimeError("M06-A Phase 1 invariant mapping diverges from the accepted set")
     if name == "m06a-phase2" and tuple(ids) != M06A_PHASE2_EXPECTED_IDS:
         raise RuntimeError("M06-A Phase 2 invariant mapping diverges from the accepted set")
+    if name == "m06a-phase3a" and tuple(ids) != M06A_PHASE3A_EXPECTED_IDS:
+        raise RuntimeError("M06-A Phase 3A invariant mapping diverges from the accepted set")
     for invariant in invariants:
         if invariant.disposition == "execute" and not invariant.tests:
             raise RuntimeError(f"{invariant.invariant_id} has no test mapping")
@@ -450,6 +587,16 @@ def run_invariant(invariant: Invariant, evidence_root: Path, expected_commit: st
             "exit_code": None,
             "stdout": "",
             "stderr": "",
+            "evidence_counts": {
+                "collected": 0,
+                "executed": 0,
+                "passed": 0,
+                "failed": 0,
+                "skipped": 0,
+                "xfailed": 0,
+                "xpassed": 0,
+                "errored": 0,
+            },
             "evidence_error": None,
         }
     evidence_path = evidence_root / f"{invariant.invariant_id}.json"
@@ -462,6 +609,16 @@ def run_invariant(invariant: Invariant, evidence_root: Path, expected_commit: st
     )
     evidence_error: str | None = None
     evidence_payload: dict[str, object] | None = None
+    evidence_counts = {
+        "collected": 0,
+        "executed": 0,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "xfailed": 0,
+        "xpassed": 0,
+        "errored": 0,
+    }
     if not evidence_path.is_file():
         evidence_error = "pytest evidence file is missing"
     else:
@@ -471,6 +628,28 @@ def run_invariant(invariant: Invariant, evidence_root: Path, expected_commit: st
             evidence_error = f"pytest evidence is unreadable: {type(exc).__name__}"
         if evidence_payload is not None:
             counts = evidence_payload.get("counts")
+            if isinstance(counts, dict):
+                passed_count = int(counts.get("passed", 0))
+                failed_count = int(counts.get("failed", 0))
+                skipped_count = int(counts.get("skipped", 0))
+                error_count = int(counts.get("error", 0))
+                xfailed_count = int(counts.get("xfailed", 0))
+                xpassed_count = int(counts.get("xpassed", 0))
+                evidence_counts = {
+                    "collected": passed_count
+                    + failed_count
+                    + skipped_count
+                    + error_count
+                    + xfailed_count
+                    + xpassed_count,
+                    "executed": passed_count + failed_count + error_count,
+                    "passed": passed_count,
+                    "failed": failed_count,
+                    "skipped": skipped_count,
+                    "xfailed": xfailed_count,
+                    "xpassed": xpassed_count,
+                    "errored": error_count,
+                }
             if not isinstance(counts, dict):
                 evidence_error = "pytest evidence counts are missing"
             elif int(counts.get("passed", 0)) <= 0:
@@ -497,6 +676,7 @@ def run_invariant(invariant: Invariant, evidence_root: Path, expected_commit: st
         "stdout": completed.stdout,
         "stderr": completed.stderr,
         "evidence_path": str(evidence_path).replace("\\", "/"),
+        "evidence_counts": evidence_counts,
         "evidence_error": evidence_error,
     }
 
@@ -527,12 +707,29 @@ def main() -> int:
     invariants = SUITES[args.suite]
     validate_suite(args.suite, invariants)
     expected_commit = git_sha()
-    evidence_root = Path("runtime/test-evidence") / args.suite
+    evidence_root = (
+        Path("runtime/test-evidence/hammer") / args.suite
+        if args.suite == "m06a-phase3a"
+        else Path("runtime/test-evidence") / args.suite
+    )
     evidence_root.mkdir(parents=True, exist_ok=True)
     output_root = Path("runtime/ht-evidence") / args.suite
     output_root.mkdir(parents=True, exist_ok=True)
     results = [run_invariant(invariant, evidence_root, expected_commit) for invariant in invariants]
     dirty = working_tree_dirty()
+    test_count_names = (
+        "collected", "executed", "passed", "failed", "skipped",
+        "xfailed", "xpassed", "errored",
+    )
+    aggregate_test_counts = {
+        name: sum(
+            int(result.get("evidence_counts", {}).get(name, 0))
+            for result in results
+            if isinstance(result.get("evidence_counts"), dict)
+        )
+        for name in test_count_names
+    }
+    phase_contract = phase3a_contract_metadata(results) if args.suite == "m06a-phase3a" else None
     payload = {
         "schema_version": 2,
         "suite": args.suite,
@@ -544,6 +741,8 @@ def main() -> int:
         "command": f"uv run python scripts/run_ht_evidence.py --suite {args.suite}",
         "invariant_ids": [invariant.invariant_id for invariant in invariants],
         "results": results,
+        "test_counts": aggregate_test_counts,
+        "phase3a_contract": phase_contract,
         "summary": {
             "required": len(invariants),
             "executed": sum(result["disposition"] == "execute" for result in results),
@@ -558,7 +757,11 @@ def main() -> int:
     rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     destination.write_text(rendered, encoding="utf-8", newline="\n")
     if not dirty:
-        immutable = output_root / "by-commit" / f"{expected_commit}.json"
+        immutable = (
+            Path("runtime/test-evidence") / args.suite / "by-commit" / f"{expected_commit}.json"
+            if args.suite == "m06a-phase3a"
+            else output_root / "by-commit" / f"{expected_commit}.json"
+        )
         immutable.parent.mkdir(parents=True, exist_ok=True)
         immutable_rendered = (
             json.dumps(commit_bound_payload(payload), indent=2, sort_keys=True) + "\n"

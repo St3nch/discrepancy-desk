@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:discrepancy-desk:m06a.normalized-package.v1",
+  "additionalProperties": false,
+  "properties": {
+    "coverage": {"type": "object"},
+    "elements": {"type": "array"},
+    "encoding": {"type": "string"},
+    "line_ending_profile": {"type": "string"},
+    "parser_admission_id": {"type": "string"},
+    "parser_config_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "parser_id": {"const": "m06a.text.v1"},
+    "parser_implementation_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "parser_implementation_version": {"type": "string"},
+    "regions": {"type": "array"},
+    "schema_version": {"const": "m06a.normalized-package.v1"},
+    "security_profile_id": {"type": "string"},
+    "source_artifact_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "vault_account_id": {"type": "string"},
+    "warnings": {"items": {"enum": ["encoding_bom_removed", "line_ending_normalized"]}, "type": "array"}
+  },
+  "required": [
+    "schema_version",
+    "vault_account_id",
+    "source_artifact_sha256",
+    "parser_id",
+    "parser_implementation_version",
+    "parser_implementation_sha256",
+    "parser_config_sha256",
+    "parser_admission_id",
+    "security_profile_id",
+    "encoding",
+    "line_ending_profile",
+    "coverage",
+    "elements",
+    "regions",
+    "warnings"
+  ],
+  "type": "object"
+}

@@ -14,6 +14,7 @@ import type {
   VaultBackupVerification,
   VaultHealth,
   VaultIntakeRecords,
+  VaultParsersResponse,
   VaultSummary,
 } from "./api/types";
 
@@ -44,6 +45,7 @@ export default function App() {
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
   const [vaultId, setVaultId] = useState("");
   const [vaultHealth, setVaultHealth] = useState<VaultHealth | null>(null);
+  const [vaultParsers, setVaultParsers] = useState<VaultParsersResponse | null>(null);
   const [vaultName, setVaultName] = useState("The Discrepancy Desk");
   const [vaultRoot, setVaultRoot] = useState("discrepancy-desk");
   const [vaultRecords, setVaultRecords] = useState<VaultIntakeRecords | null>(null);
@@ -87,15 +89,22 @@ export default function App() {
   const refreshVault = async (selected = vaultId) => {
     if (!selected) {
       setVaultHealth(null);
+      setVaultParsers(null);
       setVaultRecords(null);
       return;
     }
     const nextHealth = await desktopClient.vaultHealth(selected);
     setVaultHealth(nextHealth);
-    if (nextHealth.status === "healthy" && nextHealth.migration === "V0002") {
-      setVaultRecords(await desktopClient.vaultIntakeRecords(selected));
+    if (nextHealth.status === "healthy" && nextHealth.migration === "V0003") {
+      const [nextRecords, nextParsers] = await Promise.all([
+        desktopClient.vaultIntakeRecords(selected),
+        desktopClient.vaultParsers(selected),
+      ]);
+      setVaultRecords(nextRecords);
+      setVaultParsers(nextParsers);
     } else {
       setVaultRecords(null);
+      setVaultParsers(null);
     }
   };
 
@@ -142,7 +151,7 @@ export default function App() {
     try {
       await desktopClient.migrateVault(vaultId);
       await refreshVault(vaultId);
-      setVaultOperationStatus("Vault migration completed at V0002.");
+      setVaultOperationStatus("Vault migration completed at V0003.");
     } catch (value) {
       setError(value instanceof Error ? value.message : "Vault migration refused");
     }
@@ -429,10 +438,28 @@ export default function App() {
           </section>
 
           <section>
+            <h2>Parser status</h2>
+            <p>This surface is read-only. No parser execution or admission control is available.</p>
+            {vaultParsers?.parsers.length ? (
+              <ul>
+                {vaultParsers.parsers.map((parser) => (
+                  <li key={parser.parser_admission_version_id ?? parser.parser_definition_id}>
+                    <strong>{parser.display_name}</strong> — {parser.state.replaceAll("_", " ")}
+                    {" · Canonical use — "}
+                    {parser.canonical_available ? "Available" : "Not admitted"}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No parser candidate is available.</p>
+            )}
+          </section>
+
+          <section>
             <h2>Manual Vault intake</h2>
             <p>
-              Retention eligibility is decided before file bytes are uploaded. No parser runs
-              in Phase 2.
+              Retention eligibility is decided before file bytes are uploaded. The plain-text
+              parser remains under test and cannot process canonical Vault material.
             </p>
             <form onSubmit={submitVaultIntake}>
               <input
