@@ -132,7 +132,7 @@ def upgrade_registered_vault(
         if existing != migration_spec.expected_head:
             current.close()
             raise ValueError("Vault is already at the expected migration head")
-        if migration_spec.expected_head == "V0003":
+        if migration_spec.expected_head in {"V0003", "V0004"}:
             install_under_test_parser_candidate(
                 current.connection,
                 actor_id=actor_id,
@@ -147,25 +147,35 @@ def upgrade_registered_vault(
         )
         return current
 
-    previous_head = "V0002" if migration_spec.expected_head == "V0003" else "V0001"
-    previous = MigrationSpec(
-        config_path=migration_spec.config_path,
-        migrations_root=migration_spec.migrations_root,
-        manifest_path=migration_spec.manifest_path,
-        expected_head=previous_head,
-        schema_name=migration_spec.schema_name,
-        version_table=migration_spec.version_table,
-    )
-    try:
-        previous_opened = open_existing_vault(
-            vault_base=vault_base,
-            registry=registry,
-            migration_spec=previous,
+    source_heads = {
+        "V0004": ("V0003", "V0002", "V0001"),
+        "V0003": ("V0002", "V0001"),
+        "V0002": ("V0001",),
+    }.get(migration_spec.expected_head, ())
+    previous_opened = None
+    last_source_error: Exception | None = None
+    for previous_head in source_heads:
+        previous = MigrationSpec(
+            config_path=migration_spec.config_path,
+            migrations_root=migration_spec.migrations_root,
+            manifest_path=migration_spec.manifest_path,
+            expected_head=previous_head,
+            schema_name=migration_spec.schema_name,
+            version_table=migration_spec.version_table,
         )
-    except Exception as exc:
+        try:
+            previous_opened = open_existing_vault(
+                vault_base=vault_base,
+                registry=registry,
+                migration_spec=previous,
+            )
+            break
+        except Exception as exc:
+            last_source_error = exc
+    if previous_opened is None:
         raise ValueError(
             current_error_message or "Vault migration source head is not admitted"
-        ) from exc
+        ) from last_source_error
     with previous_opened as opened:
         database_path = opened.database_path
         identity = opened.identity.marker()
@@ -234,7 +244,7 @@ def upgrade_registered_vault(
         actor_id=actor_id,
         operation_id=normalized_operation,
     )
-    if migration_spec.expected_head == "V0003":
+    if migration_spec.expected_head in {"V0003", "V0004"}:
         install_under_test_parser_candidate(
             upgraded.connection,
             actor_id=actor_id,

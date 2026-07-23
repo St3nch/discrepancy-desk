@@ -332,7 +332,7 @@ def test_m06a_ht_024_orphan_object_reconciliation(
             opened.connection,
             vault_root=opened.root,
             actor=_actor(opened.identity.vault_account_id, "backup:orphan-blocked"),
-            migration_head="V0002",
+            migration_head="V0004",
             application_commit="test-commit",
         )
 
@@ -358,7 +358,7 @@ def test_untracked_object_blocks_health_and_backup(
             opened.connection,
             vault_root=opened.root,
             actor=_actor(opened.identity.vault_account_id, "backup:untracked-orphan"),
-            migration_head="V0002",
+            migration_head="V0004",
             application_commit="test-commit",
         )
 
@@ -460,11 +460,7 @@ def test_m06a_ht_105_temporary_quarantine_is_noncanonical_and_reconciled(
         )
     assert not any(path.is_file() for path in (opened.root / "temp").rglob("*"))
     assert not any(path.is_file() for path in (opened.root / "objects").rglob("*"))
-    tables = {
-        str(row[0])
-        for row in opened.connection.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        )
-    }
-    assert "parser_executions" not in tables
-    assert "normalized_packages" not in tables
+    assert opened.connection.execute("SELECT count(*) FROM parser_executions").fetchone()[0] == 0
+    assert opened.connection.execute("SELECT count(*) FROM normalized_packages").fetchone()[0] == 0
+    assert opened.connection.execute("SELECT count(*) FROM document_versions").fetchone()[0] == 0
+    assert not any(path.is_file() for path in (opened.root / "packages").rglob("*"))

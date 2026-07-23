@@ -74,12 +74,30 @@ def m06a_central_spec(m06a_project_root: Path):
 
 @pytest.fixture
 def m06a_vault_spec(m06a_project_root: Path):
+    return vault_migration_spec(m06a_project_root)
+
+
+@pytest.fixture
+def m06a_historical_v0002_spec(m06a_project_root: Path):
     current = vault_migration_spec(m06a_project_root)
     return MigrationSpec(
         config_path=current.config_path,
         migrations_root=current.migrations_root,
         manifest_path=current.manifest_path,
         expected_head="V0002",
+        schema_name=current.schema_name,
+        version_table=current.version_table,
+    )
+
+
+@pytest.fixture
+def m06a_historical_v0003_spec(m06a_project_root: Path):
+    current = vault_migration_spec(m06a_project_root)
+    return MigrationSpec(
+        config_path=current.config_path,
+        migrations_root=current.migrations_root,
+        manifest_path=current.manifest_path,
+        expected_head="V0003",
         schema_name=current.schema_name,
         version_table=current.version_table,
     )
@@ -124,6 +142,30 @@ def m06a_phase2_vault(m06a_central_connection, m06a_vault_spec, tmp_path: Path):
         vault_base=vault_base,
         vault_id=vault_id,
         migration_spec=m06a_vault_spec,
+    ) as opened:
+        yield central, opened
+
+
+@pytest.fixture
+def m06a_historical_phase2_vault(
+    m06a_central_connection, m06a_historical_v0002_spec, tmp_path: Path
+):
+    central, _ = m06a_central_connection
+    vault_base = tmp_path / "vaults-historical-v0002"
+    vault_id = provision_vault(
+        central,
+        vault_base=vault_base,
+        migration_spec=m06a_historical_v0002_spec,
+        display_name="The Discrepancy Desk Historical V0002",
+        relative_root="discrepancy-desk-historical-v0002",
+        owner_actor_id="owner-local",
+        operation_key="fixture:historical-v0002-vault",
+    )
+    with open_registered_vault(
+        central,
+        vault_base=vault_base,
+        vault_id=vault_id,
+        migration_spec=m06a_historical_v0002_spec,
     ) as opened:
         yield central, opened
 

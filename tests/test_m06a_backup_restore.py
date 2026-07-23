@@ -61,11 +61,14 @@ def _seed_artifact(opened, key: str, content: bytes = b"backup fixture bytes"):
 
 
 def _generation(opened, key: str = "default"):
+    migration_head = str(
+        opened.connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+    )
     return create_vault_generation(
         opened.connection,
         vault_root=opened.root,
         actor=_actor(opened.identity.vault_account_id, f"backup:{key}"),
-        migration_head="V0002",
+        migration_head=migration_head,
         application_commit="test-commit",
     )
 
@@ -178,7 +181,7 @@ def test_backup_operation_key_is_bounded(m06a_phase2_vault) -> None:
             opened.connection,
             vault_root=opened.root,
             actor=_actor(opened.identity.vault_account_id, "x" * 257),
-            migration_head="V0002",
+            migration_head="V0004",
             application_commit="test-commit",
         )
     assert opened.connection.execute("SELECT count(*) FROM backup_generations").fetchone()[0] == 0
@@ -196,7 +199,7 @@ def test_backup_operation_replay_is_idempotent_and_conflicts_fail(m06a_phase2_va
             opened.connection,
             vault_root=opened.root,
             actor=_actor(opened.identity.vault_account_id, "backup:replay"),
-            migration_head="V0002",
+            migration_head="V0004",
             application_commit="different-commit",
         )
 

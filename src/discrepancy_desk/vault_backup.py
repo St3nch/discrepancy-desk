@@ -186,7 +186,7 @@ def create_vault_generation(
     *,
     vault_root: Path,
     actor: ActorContext,
-    migration_head: str = "V0003",
+    migration_head: str = "V0004",
     application_commit: str | None = None,
 ) -> VaultBackupResult:
     vault_account_id, vault_instance_id, identity_fingerprint = _identity(connection)
@@ -501,7 +501,7 @@ def verify_vault_generation(
         raise ValueError("backup belongs to another Vault instance")
     manifest_migration_head = str(manifest.get("migration_head", ""))
     if expected_migration_head is None:
-        if manifest_migration_head not in {"V0002", "V0003"}:
+        if manifest_migration_head not in {"V0002", "V0003", "V0004"}:
             raise ValueError("backup migration head is not admitted")
         expected_migration_head = manifest_migration_head
     if manifest_migration_head != expected_migration_head:
@@ -692,7 +692,7 @@ def verify_and_restore_generation(
     actor: ActorContext,
     generation_id: str,
     proof_root: Path,
-    expected_migration_head: str = "V0003",
+    expected_migration_head: str = "V0004",
 ) -> RestoreProof:
     vault_account_id, vault_instance_id, _ = _identity(connection)
     _require_backup_actor(

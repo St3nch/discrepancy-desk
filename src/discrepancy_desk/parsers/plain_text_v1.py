@@ -165,12 +165,29 @@ def parse_bytes(data: bytes, config: dict[str, object] | None = None) -> dict[st
             raise LimitExceeded("a logical line exceeds the configured byte limit")
 
     profile = _line_ending_profile(text)
-    if "CR" in profile:
+    if profile not in {"none", "LF"}:
         warnings.append("line_ending_normalized")
     warnings = sorted(set(warnings))
 
     elements: list[dict[str, object]] = []
     regions: list[dict[str, object]] = []
+    if bom_size:
+        regions.append(
+            {
+                "content_sha256": sha256_bytes(data[:bom_size]),
+                "kind": "encoding_preamble",
+                "ordinal": 0,
+                "raw_text": "",
+                "source_locator": _locator(
+                    byte_start=0,
+                    byte_end=bom_size,
+                    char_start=0,
+                    char_end=0,
+                    line_start=0,
+                    line_end=0,
+                ),
+            }
+        )
     index = 0
     while index < len(lines):
         blank = lines[index].blank

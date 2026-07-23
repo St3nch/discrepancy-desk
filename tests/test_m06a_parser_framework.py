@@ -22,6 +22,7 @@ from discrepancy_desk.parser_contract import (
     sha256_bytes,
     validate_candidate_core,
 )
+from discrepancy_desk.parsers.plain_text_v1 import parse_bytes
 from discrepancy_desk.parser_service import (
     assemble_under_test_package,
     list_parser_status,
@@ -204,6 +205,8 @@ from discrepancy_desk.parser_worker import install_security_controls
 from discrepancy_desk.parser_contract import SecurityBoundaryViolation
 operation=Path({str(operation)!r})
 resources=Path({str(project_root / 'parser_resources')!r})
+outside=operation.parent / "outside-security-probe.txt"
+outside.write_text("synthetic", encoding="utf-8")
 install_security_controls(operation_root=operation, resource_root=resources)
 try:
     {expression}
@@ -283,6 +286,27 @@ def test_m06a_ht_035_subprocess_denied(tmp_path: Path) -> None:
         tmp_path / "filesystem",
     )
     assert escape.returncode == 0, escape.stderr
+    low_level = _security_child(
+        "__import__('os').open(operation.parent / 'low-level.txt', "
+        "__import__('os').O_WRONLY | __import__('os').O_CREAT | __import__('os').O_TRUNC)",
+        tmp_path / "low-level",
+    )
+    assert low_level.returncode == 0, low_level.stderr
+    remove = _security_child(
+        "__import__('os').remove(outside)",
+        tmp_path / "remove",
+    )
+    assert remove.returncode == 0, remove.stderr
+    rename = _security_child(
+        "__import__('os').rename(outside, operation.parent / 'renamed.txt')",
+        tmp_path / "rename",
+    )
+    assert rename.returncode == 0, rename.stderr
+    execute = _security_child(
+        "__import__('os').execv(str(operation / 'missing.exe'), ['missing.exe'])",
+        tmp_path / "exec",
+    )
+    assert execute.returncode == 0, execute.stderr
 
 
 def test_m06a_ht_039_package_is_deterministic(m06a_phase3a_vault) -> None:
@@ -354,11 +378,20 @@ def test_m06a_ht_041_silent_partial_output_fails() -> None:
         "warnings": [],
     }
     with pytest.raises(PartialOutputFailure, match="cover the input exactly"):
-        validate_candidate_core(candidate, input_size=4)
+        validate_candidate_core(candidate, input_bytes=b"abcd")
     candidate["coverage"]["consumed_byte_ranges"] = [[0, 4]]
     candidate["coverage"]["complete"] = False
     with pytest.raises(PartialOutputFailure, match="complete input"):
-        validate_candidate_core(candidate, input_size=4)
+        validate_candidate_core(candidate, input_bytes=b"abcd")
+
+    omitted = parse_bytes(b"abcd")
+    omitted["elements"][0]["source_locator"]["source_byte_start"] = 1
+    omitted["elements"][0]["source_locator"]["source_character_start"] = 1
+    omitted["elements"][0]["raw_text"] = "bcd"
+    omitted["elements"][0]["normalized_text"] = "bcd"
+    omitted["elements"][0]["content_sha256"] = sha256_bytes(b"bcd")
+    with pytest.raises(PartialOutputFailure, match="gap or overlap"):
+        validate_candidate_core(omitted, input_bytes=b"abcd")
 
 
 def test_m06a_ht_106_database_quarantine_creates_no_second_truth_store(
@@ -554,7 +587,10 @@ def test_wrong_vault_and_retention_ineligible_inputs_fail_before_worker(
 
 
 def test_m06a_phase3a_fresh_two_vaults_and_populated_v0002_upgrade(
-    m06a_central_connection, m06a_vault_spec, m06a_phase3a_vault_spec, tmp_path: Path
+    m06a_central_connection,
+    m06a_historical_v0002_spec,
+    m06a_phase3a_vault_spec,
+    tmp_path: Path,
 ) -> None:
     central, _ = m06a_central_connection
     vault_base = tmp_path / "migration-vaults"
@@ -565,10 +601,10 @@ def test_m06a_phase3a_fresh_two_vaults_and_populated_v0002_upgrade(
                 central,
                 vault_base=vault_base,
                 migration_spec=m06a_phase3a_vault_spec,
-                display_name=f"Fresh V0003 {ordinal}",
-                relative_root=f"fresh-v0003-{ordinal}",
+                display_name=f"Fresh V0004 {ordinal}",
+                relative_root=f"fresh-v0004-{ordinal}",
                 owner_actor_id="owner-local",
-                operation_key=f"phase3a:fresh:{ordinal}",
+                operation_key=f"phase3a-c1:fresh:{ordinal}",
             )
         )
     database_paths: list[Path] = []
@@ -582,26 +618,28 @@ def test_m06a_phase3a_fresh_two_vaults_and_populated_v0002_upgrade(
             database_paths.append(opened.database_path)
             assert opened.connection.execute(
                 "SELECT version_num FROM alembic_version"
-            ).fetchone()[0] == "V0003"
-            assert opened.connection.execute(
-                "SELECT state FROM parser_admission_versions"
-            ).fetchone()[0] == "under_test"
+            ).fetchone()[0] == "V0004"
+            state = opened.connection.execute(
+                """SELECT state FROM parser_admission_versions
+                ORDER BY created_at DESC, id DESC LIMIT 1"""
+            ).fetchone()[0]
+            assert state == "under_test"
     assert database_paths[0] != database_paths[1]
 
     upgrade_id = provision_vault(
         central,
         vault_base=vault_base,
-        migration_spec=m06a_vault_spec,
+        migration_spec=m06a_historical_v0002_spec,
         display_name="Populated V0002",
         relative_root="populated-v0002",
         owner_actor_id="owner-local",
-        operation_key="phase3a:upgrade:create",
+        operation_key="phase3a-c1:upgrade:create",
     )
     with open_registered_vault(
         central,
         vault_base=vault_base,
         vault_id=upgrade_id,
-        migration_spec=m06a_vault_spec,
+        migration_spec=m06a_historical_v0002_spec,
     ) as old:
         _artifact(old, key="before-upgrade", content=b"preserved before upgrade")
         artifact_count = old.connection.execute("SELECT count(*) FROM artifact_objects").fetchone()[0]
@@ -610,75 +648,82 @@ def test_m06a_phase3a_fresh_two_vaults_and_populated_v0002_upgrade(
         vault_base=vault_base,
         vault_id=upgrade_id,
         migration_spec=m06a_phase3a_vault_spec,
-        operation_id="phase3a:upgrade:v0003",
+        operation_id="phase3a-c1:upgrade:v0004",
         actor_id="owner-local",
     ) as upgraded:
         assert upgraded.connection.execute(
             "SELECT version_num FROM alembic_version"
-        ).fetchone()[0] == "V0003"
+        ).fetchone()[0] == "V0004"
         assert upgraded.connection.execute("SELECT count(*) FROM artifact_objects").fetchone()[0] == artifact_count
         assert upgraded.connection.execute(
-            "SELECT state FROM parser_admission_versions"
-        ).fetchone()[0] == "under_test"
+            "SELECT count(*) FROM parser_execution_package_links"
+        ).fetchone()[0] == 0
+        assert list_parser_status(
+            upgraded.connection,
+            vault_account_id=upgraded.identity.vault_account_id,
+        )[0]["state"] == "under_test"
 
 
 def test_m06a_phase3a_empty_downgrade_parity_and_populated_refusal(
-    m06a_phase3a_vault_spec, m06a_vault_spec, m06a_phase3a_vault, tmp_path: Path
+    m06a_phase3a_vault_spec,
+    m06a_historical_v0003_spec,
+    m06a_phase3a_vault,
+    tmp_path: Path,
 ) -> None:
+    empty_v0004 = tmp_path / "empty-v0004.sqlite3"
     empty_v0003 = tmp_path / "empty-v0003.sqlite3"
-    empty_v0002 = tmp_path / "empty-v0002.sqlite3"
+    run_guarded_upgrade(
+        empty_v0004,
+        m06a_phase3a_vault_spec,
+        operation_id="phase3a-c1:empty-v0004",
+        allow_create=True,
+    )
     run_guarded_upgrade(
         empty_v0003,
-        m06a_phase3a_vault_spec,
-        operation_id="phase3a:empty-v0003",
+        m06a_historical_v0003_spec,
+        operation_id="phase3a-c1:empty-v0003",
         allow_create=True,
     )
-    run_guarded_upgrade(
-        empty_v0002,
-        m06a_vault_spec,
-        operation_id="phase3a:empty-v0002",
-        allow_create=True,
-    )
-    command.downgrade(_alembic_config(m06a_phase3a_vault_spec, empty_v0003), "V0002")
-    assert _schema_objects(empty_v0003) == _schema_objects(empty_v0002)
+    command.downgrade(_alembic_config(m06a_phase3a_vault_spec, empty_v0004), "V0003")
+    assert _schema_objects(empty_v0004) == _schema_objects(empty_v0003)
 
     _, opened = m06a_phase3a_vault
-    with pytest.raises(RuntimeError, match="refusing to downgrade V0003"):
+    with pytest.raises(RuntimeError, match="refusing to downgrade V0004"):
         command.downgrade(
-            _alembic_config(m06a_phase3a_vault_spec, opened.database_path), "V0002"
+            _alembic_config(m06a_phase3a_vault_spec, opened.database_path), "V0003"
         )
     opened.connection.rollback()
     assert opened.connection.execute(
         "SELECT version_num FROM alembic_version"
-    ).fetchone()[0] == "V0003"
+    ).fetchone()[0] == "V0004"
 
 
 def test_m06a_phase3a_dirty_migration_exact_recovery(
-    m06a_vault_spec, m06a_phase3a_vault_spec, tmp_path: Path
+    m06a_historical_v0003_spec, m06a_phase3a_vault_spec, tmp_path: Path
 ) -> None:
-    database_path = tmp_path / "dirty-v0003.sqlite3"
+    database_path = tmp_path / "dirty-v0004.sqlite3"
     run_guarded_upgrade(
         database_path,
-        m06a_vault_spec,
-        operation_id="phase3a:dirty-base",
+        m06a_historical_v0003_spec,
+        operation_id="phase3a-c1:dirty-base",
         allow_create=True,
     )
-    operation_id = "phase3a:dirty-recovery"
+    operation_id = "phase3a-c1:dirty-recovery"
     begin_migration_guard(
         database_path,
         operation_id=operation_id,
-        target_revision="V0003",
+        target_revision="V0004",
         spec=m06a_phase3a_vault_spec,
-        from_revision="V0002",
+        from_revision="V0003",
         identity={},
         manifest_sha256=verify_manifest(m06a_phase3a_vault_spec),
     )
-    command.upgrade(_alembic_config(m06a_phase3a_vault_spec, database_path), "V0003")
+    command.upgrade(_alembic_config(m06a_phase3a_vault_spec, database_path), "V0004")
     with pytest.raises(Exception, match="dirty"):
         run_guarded_upgrade(
             database_path,
             m06a_phase3a_vault_spec,
-            operation_id="phase3a:blocked-while-dirty",
+            operation_id="phase3a-c1:blocked-while-dirty",
             allow_create=False,
         )
     recover_completed_migration(
@@ -689,6 +734,6 @@ def test_m06a_phase3a_dirty_migration_exact_recovery(
     )
     connection = sqlite3.connect(database_path)
     try:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "V0003"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "V0004"
     finally:
         connection.close()

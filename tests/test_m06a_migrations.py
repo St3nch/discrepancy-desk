@@ -132,11 +132,11 @@ def test_m06a_ht_065_destructive_downgrade_refused(
     config = Config(str(m06a_vault_spec.config_path))
     config.set_main_option("script_location", str(m06a_vault_spec.migrations_root))
     config.set_main_option("sqlalchemy.url", f"sqlite:///{database.as_posix()}")
-    with pytest.raises(RuntimeError, match="refusing to downgrade V0002"):
+    with pytest.raises(RuntimeError, match="refusing to downgrade V0004"):
         command.downgrade(config, "base")
     connection = connect_existing(database)
     try:
-        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "V0002"
+        assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "V0004"
         assert connection.execute("SELECT count(*) FROM vault_metadata").fetchone()[0] == 1
     finally:
         connection.close()
@@ -172,13 +172,13 @@ def test_m06a_ht_095_migration_state_is_per_vault(
         vault_id=second,
         migration_spec=m06a_vault_spec,
     ) as opened:
-        assert opened.connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "V0002"
+        assert opened.connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "V0004"
 
 
 def test_m06a_ht_102_foundational_backup_schema_exists_by_phase_2(
-    m06a_phase2_vault,
+    m06a_historical_phase2_vault,
 ) -> None:
-    _, opened = m06a_phase2_vault
+    _, opened = m06a_historical_phase2_vault
     head = opened.connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
     assert head == "V0002"
     required = {
@@ -201,9 +201,10 @@ def test_m06a_ht_102_foundational_backup_schema_exists_by_phase_2(
 
 def test_phase2_vault_upgrade_is_human_authorized_audited_and_idempotent(
     m06a_central_connection,
-    m06a_vault_spec,
+    m06a_historical_v0002_spec,
     tmp_path: Path,
 ) -> None:
+    m06a_vault_spec = m06a_historical_v0002_spec
     central, _ = m06a_central_connection
     previous = MigrationSpec(
         config_path=m06a_vault_spec.config_path,
@@ -262,9 +263,10 @@ def test_phase2_vault_upgrade_is_human_authorized_audited_and_idempotent(
 
 def test_phase2_vault_upgrade_rejects_disabled_human_actor(
     m06a_central_connection,
-    m06a_vault_spec,
+    m06a_historical_v0002_spec,
     tmp_path: Path,
 ) -> None:
+    m06a_vault_spec = m06a_historical_v0002_spec
     central, _ = m06a_central_connection
     previous = MigrationSpec(
         config_path=m06a_vault_spec.config_path,
@@ -308,8 +310,9 @@ def test_phase2_vault_upgrade_rejects_disabled_human_actor(
 
 
 def test_empty_v0002_downgrade_preserves_exact_v0001_schema(
-    tmp_path: Path, m06a_vault_spec
+    tmp_path: Path, m06a_historical_v0002_spec
 ) -> None:
+    m06a_vault_spec = m06a_historical_v0002_spec
     v0001_database = tmp_path / "expected-v0001.sqlite3"
     downgraded_database = tmp_path / "downgraded-v0001.sqlite3"
 

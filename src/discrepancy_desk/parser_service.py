@@ -29,6 +29,7 @@ from .parser_contract import (
     sha256_file,
     validate_candidate_core,
 )
+from .parser_worker import sanitized_worker_environment
 from .vault_persistence import append_vault_audit, request_hash, utc_now
 
 
@@ -142,12 +143,16 @@ def load_parser_resources(project_root: Path | None = None) -> ParserResources:
     if implementation_sha != PARSER_IMPLEMENTATION_SHA256:
         raise ValueError("parser implementation manifest hash mismatch")
     source_path = Path(__file__).resolve().parent / "parsers" / "plain_text_v1.py"
-    if source_path.is_file() and sha256_file(source_path) != implementation_sha:
+    if not source_path.is_file():
+        raise FileNotFoundError("parser implementation source bytes are unavailable")
+    if sha256_file(source_path) != implementation_sha:
         raise ValueError("parser implementation bytes diverge from the admitted hash")
     dependency_sha = entries[("dependency-lock", "uv.lock")]
     lock_candidates = [root.parent / "uv.lock", Path(sys.executable).resolve().parent / "uv.lock"]
     existing_lock = next((path for path in lock_candidates if path.is_file()), None)
-    if existing_lock is not None and sha256_file(existing_lock) != dependency_sha:
+    if existing_lock is None:
+        raise FileNotFoundError("parser dependency lock bytes are unavailable")
+    if sha256_file(existing_lock) != dependency_sha:
         raise ValueError("dependency lock bytes diverge from the admitted hash")
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     if schema.get("$id") != "urn:discrepancy-desk:m06a.normalized-package.v1":
@@ -167,9 +172,19 @@ def _pending_evidence_hash(label: str) -> str:
 
 
 def _candidate_ids(resources: ParserResources) -> tuple[str, str, str]:
-    tuple_hash = resources.parser_tuple().sha256()
-    definition_id = "parser-definition-m06a-text-v1"
-    config_id = f"parser-config-m06a-text-v1-{resources.config_sha256[:16]}"
+    parser_tuple = resources.parser_tuple()
+    definition_material = {
+        key: value
+        for key, value in parser_tuple.material().items()
+        if key != "config_sha256"
+    }
+    definition_hash = sha256_bytes(canonical_json(definition_material))
+    tuple_hash = parser_tuple.sha256()
+    definition_id = f"parser-definition-m06a-text-v1-{definition_hash[:16]}"
+    config_id = (
+        f"parser-config-m06a-text-v1-{definition_hash[:12]}-"
+        f"{resources.config_sha256[:16]}"
+    )
     admission_id = f"parser-admission-m06a-text-v1-under-test-{tuple_hash[:16]}"
     return definition_id, config_id, admission_id
 
@@ -306,7 +321,7 @@ def install_under_test_parser_candidate(
                 _pending_evidence_hash("no-egress"),
                 _pending_evidence_hash("packaged-sidecar"),
                 parser_tuple.dependency_lock_sha256,
-                "D036 under-test candidate; owner admission is separately blocked",
+                "D037 corrected under-test candidate; owner admission is separately blocked",
                 created_at,
                 actor_id,
             ),
@@ -339,6 +354,7 @@ def list_parser_status(
     project_root: Path | None = None,
 ) -> list[dict[str, object]]:
     resources = load_parser_resources(project_root)
+    definition_id, _, _ = _candidate_ids(resources)
     rows = connection.execute(
         """SELECT d.id, d.format_id, d.package_schema_version, d.security_profile_id,
                   d.implementation_sha256, d.resource_manifest_sha256, d.dependency_lock_sha256,
@@ -350,14 +366,14 @@ def list_parser_status(
           ON a.vault_account_id=d.vault_account_id
          AND a.parser_definition_id=d.id
          AND a.parser_configuration_version_id=c.id
-        WHERE d.vault_account_id=?
+        WHERE d.vault_account_id=? AND d.id=?
           AND NOT EXISTS (
               SELECT 1 FROM parser_admission_versions successor
               WHERE successor.vault_account_id=a.vault_account_id
                 AND successor.supersedes_admission_id=a.id
           )
         ORDER BY d.id, a.created_at, a.id""",
-        (vault_account_id,),
+        (vault_account_id, definition_id),
     ).fetchall()
     grouped: dict[str, list[sqlite3.Row]] = {}
     for row in rows:
@@ -497,6 +513,7 @@ def run_under_test_worker(
             capture_output=True,
             timeout=timeout_seconds,
             check=False,
+            env=sanitized_worker_environment(),
         )
         receipt_path = operation_root / "worker-receipt.json"
         if not receipt_path.is_file():
@@ -511,7 +528,7 @@ def run_under_test_worker(
         if candidate_path.is_file():
             candidate_bytes = candidate_path.read_bytes()
             loaded = load_canonical_json_bytes(candidate_bytes)
-            candidate = validate_candidate_core(loaded, input_size=len(input_bytes))
+            candidate = validate_candidate_core(loaded, input_bytes=input_bytes)
             if receipt.get("candidate_package_sha256") != sha256_bytes(candidate_bytes):
                 raise RuntimeError("parser worker receipt does not match candidate bytes")
         if completed.returncode == 0 and candidate is None:
@@ -543,7 +560,7 @@ def assemble_under_test_package(
         raise ValueError(str(result.receipt.get("terminal_outcome", "internal_error")))
     package, rendered = assemble_normalized_package(
         candidate=result.candidate,
-        input_size=len(input_bytes),
+        input_bytes=input_bytes,
         vault_account_id=vault_account_id,
         source_artifact_sha256=source_artifact_sha256,
         parser_tuple=resources.parser_tuple(),

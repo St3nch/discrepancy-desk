@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import hashlib
 import json
 import math
@@ -9,11 +10,11 @@ from typing import Any
 
 PACKAGE_SCHEMA_VERSION = "m06a.normalized-package.v1"
 CANONICAL_JSON_VERSION = "m06a.canonical-json.v1"
-DETERMINISTIC_CONTRACT_VERSION = "m06a.parser-determinism.v1"
-SECURITY_PROFILE_ID = "m06a.parser-worker.windows.v1"
+DETERMINISTIC_CONTRACT_VERSION = "m06a.parser-determinism.v2"
+SECURITY_PROFILE_ID = "m06a.parser-worker.windows.v2"
 PARSER_ID = "m06a.text.v1"
-PARSER_IMPLEMENTATION_VERSION = "1.0.0"
-PARSER_IMPLEMENTATION_SHA256 = "ca83f246b915fb584f9dad6d590e211aed6822631fc572fb319de29cba4e9677"
+PARSER_IMPLEMENTATION_VERSION = "1.1.0"
+PARSER_IMPLEMENTATION_SHA256 = "d0d5a2973d4cf2f4327708255e7403659e51baa255658223c0f3d84f62ec3f67"
 WARNING_POLICY_VERSION = "m06a.text.warnings.v1"
 WORKER_PROTOCOL_VERSION = "m06a.parser-worker.v1"
 
@@ -161,6 +162,54 @@ class ParserTuple:
         return sha256_bytes(canonical_json(self.material()))
 
 
+def _decode_candidate_source(input_bytes: bytes, encoding: object) -> tuple[str, int, bytes]:
+    if encoding == "utf-8":
+        bom = codecs.BOM_UTF8 if input_bytes.startswith(codecs.BOM_UTF8) else b""
+    elif encoding == "utf-16-le":
+        bom = codecs.BOM_UTF16_LE
+        if not input_bytes.startswith(bom):
+            raise PartialOutputFailure("UTF-16 LE candidate omitted its source BOM")
+    elif encoding == "utf-16-be":
+        bom = codecs.BOM_UTF16_BE
+        if not input_bytes.startswith(bom):
+            raise PartialOutputFailure("UTF-16 BE candidate omitted its source BOM")
+    else:
+        raise PackagingMismatch("candidate encoding is not admitted")
+    try:
+        text = input_bytes[len(bom):].decode(str(encoding), errors="strict")
+    except UnicodeDecodeError as exc:
+        raise PartialOutputFailure("candidate encoding cannot reproduce the source bytes") from exc
+    return text, len(bom), bom
+
+
+def _logical_line_ranges(text: str) -> list[tuple[int, int, int]]:
+    ranges: list[tuple[int, int, int]] = []
+    if not text:
+        return ranges
+    start = 0
+    index = 0
+    line_number = 1
+    while index < len(text):
+        character = text[index]
+        if character == "\r":
+            end = index + 2 if index + 1 < len(text) and text[index + 1] == "\n" else index + 1
+            ranges.append((start, end, line_number))
+            start = end
+            index = end
+            line_number += 1
+        elif character == "\n":
+            end = index + 1
+            ranges.append((start, end, line_number))
+            start = end
+            index = end
+            line_number += 1
+        else:
+            index += 1
+    if start < len(text):
+        ranges.append((start, len(text), line_number))
+    return ranges
+
+
 def validate_coverage(coverage: object, *, input_size: int) -> dict[str, object]:
     if not isinstance(coverage, dict):
         raise PartialOutputFailure("coverage is missing")
@@ -194,7 +243,29 @@ def validate_coverage(coverage: object, *, input_size: int) -> dict[str, object]
     return dict(coverage)
 
 
-def validate_candidate_core(candidate: object, *, input_size: int) -> dict[str, object]:
+def _require_locator(record: dict[str, object], *, input_size: int) -> dict[str, int]:
+    locator = record.get("source_locator")
+    required = {
+        "source_byte_end",
+        "source_byte_start",
+        "source_character_end",
+        "source_character_start",
+        "source_line_end",
+        "source_line_start",
+    }
+    if not isinstance(locator, dict) or set(locator) != required:
+        raise PackagingMismatch("source locator fields are invalid")
+    if any(type(locator[name]) is not int for name in required):
+        raise PackagingMismatch("source locator values must be integers")
+    result = {name: int(locator[name]) for name in required}
+    if not (0 <= result["source_byte_start"] < result["source_byte_end"] <= input_size):
+        raise PartialOutputFailure("source byte locator is outside the input")
+    if not (0 <= result["source_character_start"] <= result["source_character_end"]):
+        raise PartialOutputFailure("source character locator is invalid")
+    return result
+
+
+def validate_candidate_core(candidate: object, *, input_bytes: bytes) -> dict[str, object]:
     if not isinstance(candidate, dict):
         raise PackagingMismatch("candidate package is not an object")
     required = {
@@ -207,7 +278,7 @@ def validate_candidate_core(candidate: object, *, input_size: int) -> dict[str, 
     }
     if set(candidate) != required:
         raise PackagingMismatch("candidate package fields diverge from the contract")
-    coverage = validate_coverage(candidate["coverage"], input_size=input_size)
+    coverage = validate_coverage(candidate["coverage"], input_size=len(input_bytes))
     elements = candidate["elements"]
     regions = candidate["regions"]
     warnings = candidate["warnings"]
@@ -217,12 +288,113 @@ def validate_candidate_core(candidate: object, *, input_size: int) -> dict[str, 
         raise PartialOutputFailure("coverage counts do not match emitted records")
     if warnings != sorted(set(warnings)) or any(value not in ALLOWED_WARNINGS for value in warnings):
         raise PackagingMismatch("warning vocabulary is invalid")
-    for index, element in enumerate(elements):
-        if not isinstance(element, dict) or element.get("ordinal") != index:
-            raise PackagingMismatch("element ordinals are not contiguous")
-    for index, region in enumerate(regions):
-        if not isinstance(region, dict) or region.get("ordinal") != index:
-            raise PackagingMismatch("region ordinals are not contiguous")
+
+    text, bom_size, bom_bytes = _decode_candidate_source(input_bytes, candidate["encoding"])
+    line_ranges = _logical_line_ranges(text)
+    if coverage["decoded_character_count"] != len(text):
+        raise PartialOutputFailure("coverage character count does not match the source")
+    if coverage["source_line_count"] != len(line_ranges):
+        raise PartialOutputFailure("coverage line count does not match the source")
+
+    byte_spans: list[tuple[int, int]] = []
+    character_spans: list[tuple[int, int]] = []
+    preamble_count = 0
+
+    def validate_record(record: object, *, ordinal: int, element: bool) -> None:
+        nonlocal preamble_count
+        if not isinstance(record, dict) or record.get("ordinal") != ordinal:
+            raise PackagingMismatch("record ordinals are not contiguous")
+        required_fields = (
+            {"content_sha256", "kind", "normalized_text", "ordinal", "raw_text", "source_locator", "warnings"}
+            if element
+            else {"content_sha256", "kind", "ordinal", "raw_text", "source_locator"}
+        )
+        if set(record) != required_fields:
+            raise PackagingMismatch("parser record fields diverge from the contract")
+        raw_text = record.get("raw_text")
+        if not isinstance(raw_text, str):
+            raise PackagingMismatch("parser record raw text is invalid")
+        locator = _require_locator(record, input_size=len(input_bytes))
+        byte_start = locator["source_byte_start"]
+        byte_end = locator["source_byte_end"]
+        char_start = locator["source_character_start"]
+        char_end = locator["source_character_end"]
+        kind = record.get("kind")
+        if kind == "encoding_preamble":
+            if element or raw_text or char_start != 0 or char_end != 0:
+                raise PartialOutputFailure("encoding preamble locator is invalid")
+            if byte_start != 0 or byte_end != bom_size or input_bytes[byte_start:byte_end] != bom_bytes:
+                raise PartialOutputFailure("encoding preamble does not match the source BOM")
+            if record.get("content_sha256") != sha256_bytes(bom_bytes):
+                raise PackagingMismatch("encoding preamble hash is invalid")
+            if locator["source_line_start"] != 0 or locator["source_line_end"] != 0:
+                raise PartialOutputFailure("encoding preamble line locator is invalid")
+            preamble_count += 1
+        else:
+            if kind not in ({"paragraph"} if element else {"blank_separator"}):
+                raise PackagingMismatch("parser record kind is invalid")
+            if not (0 <= char_start < char_end <= len(text)):
+                raise PartialOutputFailure("source character locator is outside the decoded input")
+            try:
+                decoded_slice = input_bytes[byte_start:byte_end].decode(str(candidate["encoding"]), errors="strict")
+            except UnicodeDecodeError as exc:
+                raise PartialOutputFailure("source byte locator cannot reproduce record text") from exc
+            if decoded_slice != raw_text or text[char_start:char_end] != raw_text:
+                raise PartialOutputFailure("record text does not match its source locator")
+            if record.get("content_sha256") != sha256_bytes(raw_text.encode("utf-8")):
+                raise PackagingMismatch("record content hash is invalid")
+            touched = [line for line in line_ranges if not (line[1] <= char_start or line[0] >= char_end)]
+            if not touched:
+                raise PartialOutputFailure("record locator does not map to a logical line")
+            if locator["source_line_start"] != touched[0][2] or locator["source_line_end"] != touched[-1][2]:
+                raise PartialOutputFailure("record line locator does not match its character span")
+            character_spans.append((char_start, char_end))
+            if element:
+                normalized = raw_text.replace("\r\n", "\n").replace("\r", "\n")
+                if record.get("normalized_text") != normalized:
+                    raise PackagingMismatch("element normalized text is invalid")
+                record_warnings = record.get("warnings")
+                if record_warnings != warnings:
+                    raise PackagingMismatch("element warnings diverge from the package warnings")
+        byte_spans.append((byte_start, byte_end))
+
+    for index, element_record in enumerate(elements):
+        validate_record(element_record, ordinal=index, element=True)
+    for index, region_record in enumerate(regions):
+        validate_record(region_record, ordinal=index, element=False)
+
+    expected_preamble = 1 if bom_size else 0
+    if preamble_count != expected_preamble:
+        raise PartialOutputFailure("encoding preamble coverage is incomplete")
+    if bool(bom_size) != ("encoding_bom_removed" in warnings):
+        raise PackagingMismatch("encoding BOM warning does not match the source")
+
+    ordered_bytes = sorted(byte_spans)
+    if not input_bytes:
+        if ordered_bytes:
+            raise PartialOutputFailure("empty input emitted source spans")
+    else:
+        cursor = 0
+        for start, end in ordered_bytes:
+            if start != cursor:
+                raise PartialOutputFailure("emitted byte locators contain a gap or overlap")
+            cursor = end
+        if cursor != len(input_bytes):
+            raise PartialOutputFailure("emitted byte locators omit terminal source bytes")
+
+    ordered_characters = sorted(character_spans)
+    if not text:
+        if ordered_characters:
+            raise PartialOutputFailure("empty decoded input emitted character spans")
+    else:
+        cursor = 0
+        for start, end in ordered_characters:
+            if start != cursor:
+                raise PartialOutputFailure("emitted character locators contain a gap or overlap")
+            cursor = end
+        if cursor != len(text):
+            raise PartialOutputFailure("emitted character locators omit terminal text")
+
     return {
         "encoding": candidate["encoding"],
         "line_ending_profile": candidate["line_ending_profile"],
@@ -244,13 +416,13 @@ def require_deterministic_candidates(first: bytes, second: bytes) -> str:
 def assemble_normalized_package(
     *,
     candidate: object,
-    input_size: int,
+    input_bytes: bytes,
     vault_account_id: str,
     source_artifact_sha256: str,
     parser_tuple: ParserTuple,
     parser_admission_id: str,
 ) -> tuple[dict[str, object], bytes]:
-    core = validate_candidate_core(candidate, input_size=input_size)
+    core = validate_candidate_core(candidate, input_bytes=input_bytes)
     package: dict[str, object] = {
         "coverage": core["coverage"],
         "elements": core["elements"],

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
+import sqlite3
 import json
 import struct
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -17,10 +20,12 @@ from discrepancy_desk.parser_contract import (
     canonical_json,
     sha256_bytes,
 )
+from discrepancy_desk import parser_service as parser_service_module
 from discrepancy_desk.parser_service import (
     assemble_under_test_package,
     load_parser_resources,
 )
+from discrepancy_desk.parser_worker import sanitized_worker_environment
 from discrepancy_desk.vault_backup import (
     create_vault_generation,
     restore_generation_disposable,
@@ -297,6 +302,7 @@ def _run_packaged_worker(executable: Path, operation_root: Path, input_bytes: by
         capture_output=True,
         check=False,
         timeout=60,
+        env=sanitized_worker_environment(),
     )
     receipt = json.loads((operation_root / "worker-receipt.json").read_text(encoding="utf-8"))
     return completed.returncode, receipt
@@ -320,7 +326,10 @@ def test_m06a_ht_044_packaged_parser_authority_matches(tmp_path: Path) -> None:
         "dns_denied",
         "subprocess_denied",
         "bounded_filesystem",
+        "filesystem_mutation_denied",
+        "exec_denied",
         "audit_hook_installed",
+        "self_tested_denials",
     }
 
 
@@ -333,14 +342,14 @@ def test_canonical_package_backup_restore_and_tamper_fail_closed(
         opened.connection,
         vault_root=opened.root,
         actor=_actor(opened.identity.vault_account_id, "backup:phase3a-package"),
-        migration_head="V0003",
+        migration_head="V0004",
         application_commit="test-phase3a-package",
     )
     verification = verify_vault_generation(
         generation.generation_root,
         expected_vault_account_id=opened.identity.vault_account_id,
         expected_vault_instance_id=opened.identity.vault_instance_id,
-        expected_migration_head="V0003",
+        expected_migration_head="V0004",
         authority_connection=opened.connection,
     )
     assert verification["package_count"] == 1
@@ -360,7 +369,7 @@ def test_canonical_package_backup_restore_and_tamper_fail_closed(
     with pytest.raises(ValueError, match="size mismatch|hash mismatch"):
         verify_vault_generation(
             generation.generation_root,
-            expected_migration_head="V0003",
+            expected_migration_head="V0004",
         )
 
 
@@ -424,7 +433,7 @@ def test_package_backup_rejects_missing_extra_and_cross_vault_bytes(
                 first.connection,
                 vault_root=first.root,
                 actor=_actor(first_id, "backup:missing-package"),
-                migration_head="V0003",
+                migration_head="V0004",
                 application_commit="test-missing-package",
             )
 
@@ -437,6 +446,126 @@ def test_package_backup_rejects_missing_extra_and_cross_vault_bytes(
                 second.connection,
                 vault_root=second.root,
                 actor=_actor(second_id, "backup:cross-vault-package"),
-                migration_head="V0003",
+                migration_head="V0004",
                 application_commit="test-cross-vault-package",
             )
+
+def test_phase3a_c1_parser_definition_ids_are_tuple_versioned() -> None:
+    resources = load_parser_resources()
+    current = parser_service_module._candidate_ids(resources)
+    changed = parser_service_module._candidate_ids(
+        replace(resources, implementation_sha256="0" * 64)
+    )
+    assert current[0].startswith("parser-definition-m06a-text-v1-")
+    assert current[0] != "parser-definition-m06a-text-v1"
+    assert current != changed
+
+
+def test_phase3a_c1_exact_package_document_lineage_and_reuse(
+    m06a_phase3a_vault,
+) -> None:
+    _, opened = m06a_phase3a_vault
+    _seed_canonical_synthetic_package(opened)
+    vault_id = opened.identity.vault_account_id
+    origin = opened.connection.execute(
+        "SELECT id FROM parser_executions ORDER BY started_at, id LIMIT 1"
+    ).fetchone()[0]
+    package_id = opened.connection.execute(
+        "SELECT id FROM normalized_packages WHERE parser_execution_id=?", (origin,)
+    ).fetchone()[0]
+    source_hash = opened.connection.execute(
+        "SELECT input_sha256 FROM parser_executions WHERE id=?", (origin,)
+    ).fetchone()[0]
+
+    duplicate = "parser-execution-packaging-reuse"
+    opened.connection.execute(
+        """INSERT INTO parser_executions
+        (id, vault_account_id, vault_instance_id, acquisition_artifact_link_id,
+         parser_definition_id, parser_configuration_version_id,
+         parser_admission_version_id, security_profile_id, input_sha256,
+         input_size_bytes, state, terminal_outcome, warning_codes_json,
+         started_at, finished_at, worker_receipt_sha256, package_sha256,
+         error_code, operation_id, actor_id)
+        SELECT ?, vault_account_id, vault_instance_id, acquisition_artifact_link_id,
+               parser_definition_id, parser_configuration_version_id,
+               parser_admission_version_id, security_profile_id, input_sha256,
+               input_size_bytes, state, terminal_outcome, warning_codes_json,
+               started_at, finished_at, worker_receipt_sha256, package_sha256,
+               error_code, ?, actor_id
+        FROM parser_executions WHERE vault_account_id=? AND id=?""",
+        (duplicate, "test:canonical-package-reuse", vault_id, origin),
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="exact execution/package/artifact lineage"):
+        opened.connection.execute(
+            """INSERT INTO document_versions
+            (id, vault_account_id, normalized_package_id, source_artifact_sha256,
+             parser_execution_id, version_ordinal, state, created_at)
+            VALUES ('document-before-link', ?, ?, ?, ?, 2, 'current', ?)""",
+            (vault_id, package_id, source_hash, duplicate, utc_now()),
+        )
+    opened.connection.execute(
+        """INSERT INTO parser_execution_package_links
+        (vault_account_id, parser_execution_id, normalized_package_id, created_at)
+        VALUES (?, ?, ?, ?)""",
+        (vault_id, duplicate, package_id, utc_now()),
+    )
+    opened.connection.execute(
+        """INSERT INTO document_versions
+        (id, vault_account_id, normalized_package_id, source_artifact_sha256,
+         parser_execution_id, version_ordinal, state, created_at)
+        VALUES ('document-reused-package', ?, ?, ?, ?, 2, 'current', ?)""",
+        (vault_id, package_id, source_hash, duplicate, utc_now()),
+    )
+    third = "parser-execution-packaging-third"
+    opened.connection.execute(
+        """INSERT INTO parser_executions
+        (id, vault_account_id, vault_instance_id, acquisition_artifact_link_id,
+         parser_definition_id, parser_configuration_version_id,
+         parser_admission_version_id, security_profile_id, input_sha256,
+         input_size_bytes, state, terminal_outcome, warning_codes_json,
+         started_at, finished_at, worker_receipt_sha256, package_sha256,
+         error_code, operation_id, actor_id)
+        SELECT ?, vault_account_id, vault_instance_id, acquisition_artifact_link_id,
+               parser_definition_id, parser_configuration_version_id,
+               parser_admission_version_id, security_profile_id, input_sha256,
+               input_size_bytes, state, terminal_outcome, warning_codes_json,
+               started_at, finished_at, worker_receipt_sha256, package_sha256,
+               error_code, ?, actor_id
+        FROM parser_executions WHERE vault_account_id=? AND id=?""",
+        (third, "test:canonical-package-third", vault_id, origin),
+    )
+    opened.connection.execute(
+        """INSERT INTO parser_execution_package_links
+        (vault_account_id, parser_execution_id, normalized_package_id, created_at)
+        VALUES (?, ?, ?, ?)""",
+        (vault_id, third, package_id, utc_now()),
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="ordinal already exists"):
+        opened.connection.execute(
+            """INSERT INTO document_versions
+            (id, vault_account_id, normalized_package_id, source_artifact_sha256,
+             parser_execution_id, version_ordinal, state, created_at)
+            VALUES ('document-duplicate-ordinal', ?, ?, ?, ?, 2, 'current', ?)""",
+            (vault_id, package_id, source_hash, third, utc_now()),
+        )
+    opened.connection.rollback()
+
+
+def test_phase3a_c1_packaged_identity_bytes_are_mandatory(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = tmp_path / "project"
+    shutil.copytree(Path("parser_resources"), project / "parser_resources")
+    fake_module = project / "src" / "discrepancy_desk" / "parser_service.py"
+    fake_module.parent.mkdir(parents=True)
+    fake_module.write_text("# synthetic module anchor\n", encoding="utf-8")
+    monkeypatch.setattr(parser_service_module, "__file__", str(fake_module))
+    monkeypatch.setattr(parser_service_module.sys, "executable", str(project / "bin" / "python.exe"))
+    with pytest.raises(FileNotFoundError, match="implementation source bytes"):
+        load_parser_resources(project)
+
+    implementation = fake_module.parent / "parsers" / "plain_text_v1.py"
+    implementation.parent.mkdir()
+    shutil.copyfile(Path("src/discrepancy_desk/parsers/plain_text_v1.py"), implementation)
+    with pytest.raises(FileNotFoundError, match="dependency lock bytes"):
+        load_parser_resources(project)

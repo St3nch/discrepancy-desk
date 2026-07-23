@@ -51,6 +51,21 @@ _DENIED_ENV_NAMES = {
 }
 
 
+def sanitized_worker_environment(environment: dict[str, str] | None = None) -> dict[str, str]:
+    sanitized = dict(os.environ if environment is None else environment)
+    for name in list(sanitized):
+        upper = name.upper()
+        if upper in _DENIED_ENV_NAMES or any(
+            upper.startswith(prefix) for prefix in _DENIED_ENV_PREFIXES
+        ):
+            sanitized.pop(name, None)
+    sanitized["TZ"] = "UTC"
+    sanitized["LC_ALL"] = "C"
+    sanitized["LANG"] = "C"
+    sanitized["PYTHONHASHSEED"] = "0"
+    return sanitized
+
+
 def _deny(message: str):
     def denied(*args, **kwargs):
         raise SecurityBoundaryViolation(message)
@@ -83,14 +98,9 @@ def install_security_controls(*, operation_root: Path, resource_root: Path) -> t
         if str(path)
     )
 
-    for name in list(os.environ):
-        upper = name.upper()
-        if upper in _DENIED_ENV_NAMES or any(upper.startswith(prefix) for prefix in _DENIED_ENV_PREFIXES):
-            os.environ.pop(name, None)
-    os.environ["TZ"] = "UTC"
-    os.environ["LC_ALL"] = "C"
-    os.environ["LANG"] = "C"
-    os.environ["PYTHONHASHSEED"] = "0"
+    sanitized = sanitized_worker_environment(dict(os.environ))
+    os.environ.clear()
+    os.environ.update(sanitized)
 
     original_socket_type = socket.socket
 
@@ -126,27 +136,90 @@ def install_security_controls(*, operation_root: Path, resource_root: Path) -> t
 
     builtins.open = guarded_open
 
+    write_flags = os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_APPEND | os.O_TRUNC
+    denied_process_events = {
+        "os.system",
+        "os.posix_spawn",
+        "os.spawn",
+        "os.exec",
+        "os.startfile",
+        "os.startfile/2",
+        "ctypes.dlopen",
+    }
+    mutation_events = {
+        "os.remove",
+        "os.rename",
+        "os.replace",
+        "os.rmdir",
+        "os.mkdir",
+        "os.chmod",
+        "os.chown",
+        "os.link",
+        "os.symlink",
+        "os.truncate",
+        "os.utime",
+    }
+
+    def resolve_audit_path(target: object) -> Path | None:
+        if not isinstance(target, (str, bytes, os.PathLike)):
+            return None
+        path = Path(os.fsdecode(target))
+        return path if path.is_absolute() else operation / path
+
     def audit_hook(event: str, args: tuple[object, ...]) -> None:
-        if event.startswith("socket.") or event.startswith("subprocess.") or event in {
-            "os.system",
-            "os.posix_spawn",
-            "os.spawn",
-            "ctypes.dlopen",
-        }:
+        if (
+            event.startswith("socket.")
+            or event.startswith("subprocess.")
+            or event.startswith("os.exec")
+            or event.startswith("os.spawn")
+            or event.startswith("os.startfile")
+            or event in denied_process_events
+        ):
             raise SecurityBoundaryViolation(f"audit event denied: {event}")
         if event == "open" and args:
-            target = args[0]
-            if isinstance(target, (str, bytes, os.PathLike)):
-                path = Path(os.fsdecode(target))
-                if not path.is_absolute():
-                    path = operation / path
-                mode = str(args[1]) if len(args) > 1 else "r"
-                writing = any(flag in mode for flag in ("w", "a", "x", "+"))
+            path = resolve_audit_path(args[0])
+            if path is not None:
+                mode = args[1] if len(args) > 1 else "r"
+                flags = args[2] if len(args) > 2 and type(args[2]) is int else 0
+                writing = (
+                    any(flag in str(mode) for flag in ("w", "a", "x", "+"))
+                    or bool(int(flags) & write_flags)
+                )
                 allowed_roots = (operation,) if writing else stdlib_roots
                 if not _within(path, allowed_roots):
                     raise SecurityBoundaryViolation("audit hook denied filesystem escape")
+        if event in mutation_events:
+            paths = [path for path in (resolve_audit_path(value) for value in args) if path is not None]
+            if not paths or any(not _within(path, (operation,)) for path in paths):
+                raise SecurityBoundaryViolation(f"audit hook denied filesystem mutation: {event}")
 
     sys.addaudithook(audit_hook)
+
+    def require_denied(label: str, action) -> None:
+        try:
+            action()
+        except SecurityBoundaryViolation:
+            return
+        except Exception as exc:
+            raise RuntimeError(f"security control self-test failed open: {label}") from exc
+        raise RuntimeError(f"security control self-test was not denied: {label}")
+
+    def low_level_open_probe() -> None:
+        descriptor = os.open(resource / "manifest.sha256", os.O_WRONLY)
+        os.close(descriptor)
+
+    require_denied("low_level_write", low_level_open_probe)
+    require_denied("filesystem_mutation", lambda: os.remove(resource / "missing-security-probe"))
+    require_denied(
+        "exec",
+        lambda: os.execv(str(operation / "missing-security-probe.exe"), ["missing-security-probe"]),
+    )
+    if hasattr(os, "startfile"):
+        require_denied(
+            "startfile",
+            lambda: os.startfile(str(operation / "missing-security-probe.exe")),
+        )
+
     return (
         "credential_environment_cleared",
         "socket_denied",
@@ -154,8 +227,11 @@ def install_security_controls(*, operation_root: Path, resource_root: Path) -> t
         "subprocess_denied",
         "shell_denied",
         "dynamic_library_denied",
+        "exec_denied",
+        "filesystem_mutation_denied",
         "bounded_filesystem",
         "audit_hook_installed",
+        "self_tested_denials",
     )
 
 
@@ -266,7 +342,7 @@ def main() -> int:
         stage = "parse_input"
         candidate = parse_bytes(input_bytes, config)
         stage = "validate_candidate"
-        candidate = validate_candidate_core(candidate, input_size=len(input_bytes))
+        candidate = validate_candidate_core(candidate, input_bytes=input_bytes)
         rendered = canonical_json(candidate)
         stage = "write_candidate"
         _write_exact(operation_root / OUTPUT_NAME, rendered)

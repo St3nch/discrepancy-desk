@@ -134,7 +134,7 @@ def provision_vault(
             correlation_id=correlation_id,
             request_sha256=request_sha256,
         )
-        if migration_spec.expected_head == "V0003":
+        if migration_spec.expected_head in {"V0003", "V0004"}:
             _, created_root = resolve_vault_root(
                 vault_base, normalized_root, must_exist=True
             )

@@ -12,6 +12,7 @@ from discrepancy_desk.parser_contract import (
     LimitExceeded,
     MalformedInput,
     canonical_json,
+    validate_candidate_core,
 )
 from discrepancy_desk.parsers.plain_text_v1 import parse_bytes
 
@@ -86,9 +87,17 @@ def test_m06a_ht_042_limits_fail_closed() -> None:
 
 def test_m06a_ht_043_encoding_is_explicit() -> None:
     root = _fixtures()
-    assert parse_bytes((root / "utf8_bom.txt").read_bytes())["encoding"] == "utf-8"
-    assert parse_bytes((root / "utf16_le.txt").read_bytes())["encoding"] == "utf-16-le"
-    assert parse_bytes((root / "utf16_be.txt").read_bytes())["encoding"] == "utf-16-be"
+    for name, expected_encoding in (
+        ("utf8_bom.txt", "utf-8"),
+        ("utf16_le.txt", "utf-16-le"),
+        ("utf16_be.txt", "utf-16-be"),
+    ):
+        data = (root / name).read_bytes()
+        candidate = parse_bytes(data)
+        assert candidate["encoding"] == expected_encoding
+        validated = validate_candidate_core(candidate, input_bytes=data)
+        assert validated["regions"][0]["kind"] == "encoding_preamble"
+        assert validated["regions"][0]["source_locator"]["source_byte_start"] == 0
     with pytest.raises(EncodingFailure):
         parse_bytes((root / "invalid_utf8.bin").read_bytes())
     with pytest.raises(EncodingFailure, match="explicit BOM"):
