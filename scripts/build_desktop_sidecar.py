@@ -39,6 +39,9 @@ def main() -> int:
         "    if '--m06a-srt-parser-worker' in sys.argv:\n"
         "        from discrepancy_desk.srt_worker import main\n"
         "        raise SystemExit(main())\n"
+        "    if '--m06a-vtt-parser-worker' in sys.argv:\n"
+        "        from discrepancy_desk.vtt_worker import main\n"
+        "        raise SystemExit(main())\n"
         "    from discrepancy_desk.web import desktop_main\n"
         "    desktop_main()\n",
         encoding="utf-8",

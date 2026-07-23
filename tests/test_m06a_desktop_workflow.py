@@ -431,3 +431,56 @@ def test_m06a_srt_c1_007_srt_resource_failure_preserves_plain_text_status(
         assert srt[0]["reason_code"] == "packaged_tuple_mismatch"
         assert str(tmp_path) not in response.text
         assert "tampered" not in response.text
+
+
+def test_m06a_vtt_027_neutral_status_isolates_each_parser_failure(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    headers = {"x-discrepancy-desk-token": TOKEN}
+    with _client(tmp_path) as client:
+        created = client.post(
+            "/desktop-api/v1/vaults",
+            headers=headers,
+            json={
+                "display_name": "VTT Status Isolation Vault",
+                "relative_root": "vtt-status-isolation-vault",
+                "owned_account_ids": [],
+                "operation_key": "d045:vtt-status:create",
+            },
+        )
+        assert created.status_code == 201
+        vault_id = created.json()["vault_id"]
+
+        for broken in ("text", "srt", "vtt"):
+            fake_project = tmp_path / f"fake-project-{broken}"
+            shutil.copytree(Path("parser_resources"), fake_project / "parser_resources")
+            shutil.copy2(Path("uv.lock"), fake_project / "uv.lock")
+            if broken == "text":
+                target = fake_project / "parser_resources" / "manifest.sha256"
+                target.write_bytes(target.read_bytes() + b"\nD045 tamper\n")
+            else:
+                target = fake_project / "parser_resources" / f"m06a.{broken}.v1" / "schema.json"
+                target.write_text('{"tampered":true}', encoding="utf-8")
+            monkeypatch.setattr(web_module, "PROJECT_ROOT", fake_project)
+            response = client.get(
+                f"/desktop-api/v1/vaults/{vault_id}/parsers", headers=headers
+            )
+            assert response.status_code == 200
+            rows = {row["parser_id"]: row for row in response.json()["parsers"]}
+            assert set(rows) == {"m06a.text.v1", "m06a.srt.v1", "m06a.vtt.v1"}
+            assert rows[f"m06a.{broken}.v1"]["state"] == "unavailable"
+            for healthy in {"text", "srt", "vtt"} - {broken}:
+                assert rows[f"m06a.{healthy}.v1"]["state"] == "under_test"
+            assert str(tmp_path) not in response.text
+            assert "tampered" not in response.text
+
+        route_paths = {route.path for route in client.app.routes}
+        assert "/desktop-api/v1/vaults/{vault_id}/parsers/m06a.vtt.v1/admit" not in route_paths
+        assert (
+            "/desktop-api/v1/vaults/{vault_id}/artifacts/{acquisition_artifact_link_id}/parse-vtt"
+            not in route_paths
+        )
+
+    app_source = Path("desktop/src/App.tsx").read_text(encoding="utf-8")
+    assert "Admit VTT" not in app_source
+    assert "Parse as VTT" not in app_source

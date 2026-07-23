@@ -32,7 +32,7 @@ from .parser_service import (
     canonical_parse_text,
     list_canonical_documents,
 )
-from .srt_service import list_all_parser_status
+from .parser_status_service import list_all_parser_status
 from .operator_service import (
     add_source_record,
     capture_work_item,
