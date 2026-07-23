@@ -116,3 +116,88 @@ describe("desktop Vault API contract", () => {
     expect(headers.get("x-discrepancy-desk-token")).toBe("launch-token");
   });
 });
+
+
+describe("desktop plain-text authority contract", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("submits only the exact per-Vault admission confirmation and manifest", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "admission-operation" });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          parser_admission_version_id: "admission-1",
+          parser_definition_id: "definition-1",
+          parser_configuration_version_id: "config-1",
+          state: "owner_admitted",
+          canonical_available: true,
+          replayed: false,
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const manifest = {
+      parser_definition_id: "definition-1",
+      parser_configuration_version_id: "config-1",
+      parser_admission_version_id: "admission-1",
+      confirmation_text: "ADMIT m06a.text.v1 FOR THIS VAULT",
+    };
+
+    await desktopClient.admitTextParser(
+      "vault-1",
+      "ADMIT m06a.text.v1 FOR THIS VAULT",
+      manifest,
+    );
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/vaults/vault-1/parsers/m06a.text.v1/admit");
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(body).toEqual({
+      operation_key: "desktop:vault-text-admission:admission-operation",
+      confirmation_text: "ADMIT m06a.text.v1 FOR THIS VAULT",
+      expected_manifest: manifest,
+    });
+    expect(body).not.toHaveProperty("actor_id");
+    expect(body).not.toHaveProperty("vault_path");
+    expect(body).not.toHaveProperty("database_path");
+  });
+
+  it("submits one artifact lineage and one exact parser admission for parsing", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "parse-operation" });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          parser_execution_id: "execution-1",
+          normalized_package_id: "package-1",
+          document_version_id: "document-1",
+          package_sha256: "a".repeat(64),
+          state: "succeeded",
+          terminal_outcome: "success",
+          reused_package: false,
+          reused_document: false,
+          replayed: false,
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await desktopClient.parseTextArtifact("vault-1", "artifact-link-1", "admission-1");
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/vaults/vault-1/artifacts/artifact-link-1/parse-text");
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(body).toEqual({
+      operation_key: "desktop:vault-text-parse:parse-operation",
+      expected_parser_admission_version_id: "admission-1",
+    });
+    expect(body).not.toHaveProperty("actor_id");
+    expect(body).not.toHaveProperty("content");
+    expect(body).not.toHaveProperty("path");
+    expect(body).not.toHaveProperty("parser_entrypoint");
+  });
+});

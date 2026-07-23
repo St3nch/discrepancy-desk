@@ -24,10 +24,13 @@ from discrepancy_desk.parser_contract import (
 )
 from discrepancy_desk.parsers.plain_text_v1 import parse_bytes
 from discrepancy_desk.parser_service import (
+    TEXT_ADMISSION_CONFIRMATION,
+    admit_text_parser,
     assemble_under_test_package,
     list_parser_status,
     load_parser_resources,
     resolve_canonical_parser,
+    text_admission_manifest,
 )
 from discrepancy_desk.migration_integrity import (
     begin_migration_guard,
@@ -95,43 +98,15 @@ def _artifact(opened, *, key: str, content: bytes = b"alpha\n\nbeta\n") -> tuple
 
 def _owner_admit_for_disposable_test(opened) -> str:
     vault_id = opened.identity.vault_account_id
-    row = opened.connection.execute(
-        """SELECT a.id, a.parser_definition_id, a.parser_configuration_version_id,
-                  a.fixture_manifest_sha256, a.focused_test_evidence_sha256,
-                  a.no_egress_evidence_sha256, a.packaged_sidecar_evidence_sha256,
-                  a.dependency_lock_sha256
-        FROM parser_admission_versions a
-        WHERE a.vault_account_id=? AND a.state='under_test'""",
-        (vault_id,),
-    ).fetchone()
-    assert row is not None
-    admission_id = "parser-admission-test-owner-admitted"
-    opened.connection.execute(
-        """INSERT INTO parser_admission_versions
-        (id, vault_account_id, parser_definition_id, parser_configuration_version_id,
-         state, fixture_manifest_sha256, focused_test_evidence_sha256,
-         no_egress_evidence_sha256, packaged_sidecar_evidence_sha256,
-         dependency_lock_sha256, admitted_by_actor_id, admitted_at,
-         supersedes_admission_id, reason, created_at, created_by_actor_id)
-        VALUES (?, ?, ?, ?, 'owner_admitted', ?, ?, ?, ?, ?, 'owner-local', ?, ?,
-                'synthetic disposable positive-gate proof', ?, 'owner-local')""",
-        (
-            admission_id,
-            vault_id,
-            str(row[1]),
-            str(row[2]),
-            str(row[3]),
-            str(row[4]),
-            str(row[5]),
-            str(row[6]),
-            str(row[7]),
-            utc_now(),
-            str(row[0]),
-            utc_now(),
-        ),
+    operation_key = f"admit:disposable:{vault_id}"
+    result = admit_text_parser(
+        opened.connection,
+        actor=_actor(vault_id, operation_key),
+        operation_key=operation_key,
+        confirmation_text=TEXT_ADMISSION_CONFIRMATION,
+        expected_manifest=text_admission_manifest(),
     )
-    opened.connection.commit()
-    return admission_id
+    return result.parser_admission_version_id
 
 
 def _append_admission_state(opened, *, state: str, suffix: str, supersedes: str | None = None) -> str:

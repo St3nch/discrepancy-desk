@@ -13,6 +13,7 @@ import type {
   VaultBackupResult,
   VaultBackupVerification,
   VaultHealth,
+  VaultDocumentsResponse,
   VaultIntakeRecords,
   VaultParsersResponse,
   VaultSummary,
@@ -46,6 +47,8 @@ export default function App() {
   const [vaultId, setVaultId] = useState("");
   const [vaultHealth, setVaultHealth] = useState<VaultHealth | null>(null);
   const [vaultParsers, setVaultParsers] = useState<VaultParsersResponse | null>(null);
+  const [vaultDocuments, setVaultDocuments] = useState<VaultDocumentsResponse | null>(null);
+  const [textAdmissionConfirmation, setTextAdmissionConfirmation] = useState("");
   const [vaultName, setVaultName] = useState("The Discrepancy Desk");
   const [vaultRoot, setVaultRoot] = useState("discrepancy-desk");
   const [vaultRecords, setVaultRecords] = useState<VaultIntakeRecords | null>(null);
@@ -90,21 +93,25 @@ export default function App() {
     if (!selected) {
       setVaultHealth(null);
       setVaultParsers(null);
+      setVaultDocuments(null);
       setVaultRecords(null);
       return;
     }
     const nextHealth = await desktopClient.vaultHealth(selected);
     setVaultHealth(nextHealth);
-    if (nextHealth.status === "healthy" && nextHealth.migration === "V0003") {
-      const [nextRecords, nextParsers] = await Promise.all([
+    if (nextHealth.status === "healthy" && nextHealth.migration === "V0004") {
+      const [nextRecords, nextParsers, nextDocuments] = await Promise.all([
         desktopClient.vaultIntakeRecords(selected),
         desktopClient.vaultParsers(selected),
+        desktopClient.vaultDocuments(selected),
       ]);
       setVaultRecords(nextRecords);
       setVaultParsers(nextParsers);
+      setVaultDocuments(nextDocuments);
     } else {
       setVaultRecords(null);
       setVaultParsers(null);
+      setVaultDocuments(null);
     }
   };
 
@@ -151,9 +158,52 @@ export default function App() {
     try {
       await desktopClient.migrateVault(vaultId);
       await refreshVault(vaultId);
-      setVaultOperationStatus("Vault migration completed at V0003.");
+      setVaultOperationStatus("Vault migration completed at V0004.");
     } catch (value) {
       setError(value instanceof Error ? value.message : "Vault migration refused");
+    }
+  };
+
+  const admitPlainTextParser = async () => {
+    if (!vaultId) return;
+    const parser = vaultParsers?.parsers.find((row) => row.parser_id === "m06a.text.v1");
+    if (!parser?.admission_ready || !parser.admission_manifest) return;
+    try {
+      const result = await desktopClient.admitTextParser(
+        vaultId,
+        textAdmissionConfirmation,
+        parser.admission_manifest,
+      );
+      setTextAdmissionConfirmation("");
+      setVaultOperationStatus(
+        `Plain text admitted for this Vault: ${result.parser_admission_version_id}.`,
+      );
+      await refreshVault(vaultId);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Plain-text admission refused");
+    }
+  };
+
+  const parsePlainTextArtifact = async (acquisitionArtifactLinkId: string) => {
+    if (!vaultId) return;
+    const parser = vaultParsers?.parsers.find(
+      (row) => row.parser_id === "m06a.text.v1" && row.canonical_available,
+    );
+    if (!parser?.parser_admission_version_id) return;
+    try {
+      const result = await desktopClient.parseTextArtifact(
+        vaultId,
+        acquisitionArtifactLinkId,
+        parser.parser_admission_version_id,
+      );
+      setVaultOperationStatus(
+        result.state === "failed"
+          ? `Plain-text parse failed closed: ${result.terminal_outcome}.`
+          : `Canonical document ready: ${result.document_version_id}.`,
+      );
+      await refreshVault(vaultId);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : "Canonical plain-text parse refused");
     }
   };
 
@@ -439,7 +489,7 @@ export default function App() {
 
           <section>
             <h2>Parser status</h2>
-            <p>This surface is read-only. No parser execution or admission control is available.</p>
+            <p>Admission is explicit, human-only, and applies only to this selected Vault.</p>
             {vaultParsers?.parsers.length ? (
               <ul>
                 {vaultParsers.parsers.map((parser) => (
@@ -447,6 +497,29 @@ export default function App() {
                     <strong>{parser.display_name}</strong> — {parser.state.replaceAll("_", " ")}
                     {" · Canonical use — "}
                     {parser.canonical_available ? "Available" : "Not admitted"}
+                    {parser.admission_ready && parser.admission_manifest && (
+                      <div>
+                        <p>
+                          Type <code>{parser.admission_manifest.confirmation_text}</code> to admit
+                          this exact parser tuple for this Vault.
+                        </p>
+                        <input
+                          value={textAdmissionConfirmation}
+                          onChange={(event) => setTextAdmissionConfirmation(event.target.value)}
+                          placeholder="Exact admission confirmation"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void admitPlainTextParser()}
+                          disabled={
+                            textAdmissionConfirmation !==
+                            parser.admission_manifest.confirmation_text
+                          }
+                        >
+                          Admit plain text for this Vault
+                        </button>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -459,7 +532,7 @@ export default function App() {
             <h2>Manual Vault intake</h2>
             <p>
               Retention eligibility is decided before file bytes are uploaded. The plain-text
-              parser remains under test and cannot process canonical Vault material.
+              parser can process canonical Vault material only after explicit admission for this Vault.
             </p>
             <form onSubmit={submitVaultIntake}>
               <input
@@ -509,7 +582,28 @@ export default function App() {
               </button>
             </form>
             <p>{vaultOperationStatus}</p>
-            <pre>{JSON.stringify(vaultRecords, null, 2)}</pre>
+            {vaultRecords?.artifacts.length ? (
+              <ul>
+                {vaultRecords.artifacts.map((artifact) => (
+                  <li key={artifact.acquisition_artifact_link_id}>
+                    <code>{artifact.sha256}</code> — {artifact.byte_size} bytes
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void parsePlainTextArtifact(artifact.acquisition_artifact_link_id)
+                      }
+                      disabled={!vaultParsers?.canonical_parser_available}
+                    >
+                      Parse as plain text
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No admitted artifacts are available.</p>
+            )}
+            <h3>Canonical documents</h3>
+            <pre>{JSON.stringify(vaultDocuments?.documents ?? [], null, 2)}</pre>
           </section>
 
           <section>

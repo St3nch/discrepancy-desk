@@ -96,11 +96,22 @@ export interface VaultArtifactAdmission {
   reused_existing: boolean;
 }
 
+export interface VaultArtifactRow {
+  id: string;
+  sha256: string;
+  byte_size: number;
+  storage_relative_path: string;
+  media_type_observed: string | null;
+  created_at: string;
+  acquisition_artifact_link_id: string;
+  acquisition_id: string;
+}
+
 export interface VaultIntakeRecords {
   api_version: string;
   vault_id: string;
   acquisitions: Array<Record<string, unknown>>;
-  artifacts: Array<Record<string, unknown>>;
+  artifacts: VaultArtifactRow[];
   rejections: Array<Record<string, unknown>>;
 }
 
@@ -131,6 +142,8 @@ export interface VaultParserStatus {
   format_id?: string;
   state: string;
   canonical_available: boolean;
+  admission_ready: boolean;
+  admission_manifest?: Record<string, string> | null;
   reason_code: string | null;
   package_schema_version: string;
   security_profile_id: string;
@@ -141,4 +154,51 @@ export interface VaultParsersResponse {
   vault_id: string;
   parsers: VaultParserStatus[];
   canonical_parser_available: boolean;
+}
+
+export interface VaultTextAdmissionResult {
+  api_version: string;
+  vault_id: string;
+  parser_admission_version_id: string;
+  parser_definition_id: string;
+  parser_configuration_version_id: string;
+  state: "owner_admitted";
+  canonical_available: boolean;
+  replayed: boolean;
+}
+
+export interface VaultTextParseResult {
+  api_version: string;
+  vault_id: string;
+  parser_execution_id: string;
+  normalized_package_id: string | null;
+  document_version_id: string | null;
+  package_sha256: string | null;
+  state: string;
+  terminal_outcome: string;
+  reused_package: boolean;
+  reused_document: boolean;
+  replayed: boolean;
+}
+
+export interface VaultDocumentSummary {
+  document_version_id: string;
+  acquisition_artifact_link_id: string;
+  normalized_package_id: string;
+  package_sha256: string;
+  source_artifact_sha256: string;
+  version_ordinal: number;
+  state: string;
+  parser_execution_id: string;
+  parser_admission_version_id: string;
+  terminal_outcome: string;
+  created_at: string;
+  element_count: number;
+  region_count: number;
+}
+
+export interface VaultDocumentsResponse {
+  api_version: string;
+  vault_id: string;
+  documents: VaultDocumentSummary[];
 }

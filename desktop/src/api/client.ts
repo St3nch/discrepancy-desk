@@ -12,10 +12,13 @@ import type {
   VaultBackupResult,
   VaultBackupVerification,
   VaultHealth,
+  VaultDocumentsResponse,
   VaultIntakeRecords,
   VaultIntakeStart,
   VaultParsersResponse,
   VaultSummary,
+  VaultTextAdmissionResult,
+  VaultTextParseResult,
 } from "./types";
 
 let session: BackendSession | null = null;
@@ -60,6 +63,41 @@ export const desktopClient = {
   vaultParsers: (vaultId: string) =>
     request<VaultParsersResponse>(
       `/desktop-api/v1/vaults/${encodeURIComponent(vaultId)}/parsers`,
+    ),
+  admitTextParser: (
+    vaultId: string,
+    confirmationText: string,
+    expectedManifest: Record<string, string>,
+  ) =>
+    request<VaultTextAdmissionResult>(
+      `/desktop-api/v1/vaults/${encodeURIComponent(vaultId)}/parsers/m06a.text.v1/admit`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          operation_key: operationKey("vault-text-admission"),
+          confirmation_text: confirmationText,
+          expected_manifest: expectedManifest,
+        }),
+      },
+    ),
+  parseTextArtifact: (
+    vaultId: string,
+    acquisitionArtifactLinkId: string,
+    expectedParserAdmissionVersionId: string,
+  ) =>
+    request<VaultTextParseResult>(
+      `/desktop-api/v1/vaults/${encodeURIComponent(vaultId)}/artifacts/${encodeURIComponent(acquisitionArtifactLinkId)}/parse-text`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          operation_key: operationKey("vault-text-parse"),
+          expected_parser_admission_version_id: expectedParserAdmissionVersionId,
+        }),
+      },
+    ),
+  vaultDocuments: (vaultId: string) =>
+    request<VaultDocumentsResponse>(
+      `/desktop-api/v1/vaults/${encodeURIComponent(vaultId)}/documents`,
     ),
   createVault: (displayName: string, relativeRoot: string) =>
     request<{ vault_id: string }>("/desktop-api/v1/vaults", {

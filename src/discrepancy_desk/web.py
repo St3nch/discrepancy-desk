@@ -27,7 +27,12 @@ from .editorial_queries import (
 from .db import connect
 from .migration_runner import run_guarded_upgrade
 from .migration_spec import central_migration_spec, vault_migration_spec
-from .parser_service import list_parser_status
+from .parser_service import (
+    admit_text_parser,
+    canonical_parse_text,
+    list_canonical_documents,
+    list_parser_status,
+)
 from .operator_service import (
     add_source_record,
     capture_work_item,
@@ -304,6 +309,142 @@ def create_app(
             }
         )
 
+    @app.post("/desktop-api/v1/vaults/{vault_id}/parsers/m06a.text.v1/admit")
+    async def desktop_admit_text_parser(
+        request: Request,
+        vault_id: str,
+        payload: Annotated[dict[str, object], Body()],
+    ) -> JSONResponse:
+        operation_key = str(payload.get("operation_key", "")).strip()
+        confirmation_text = str(payload.get("confirmation_text", ""))
+        expected_manifest = payload.get("expected_manifest")
+        if not operation_key or not isinstance(expected_manifest, dict):
+            return desktop_error("operation_key and expected_manifest are required")
+        connection = _connection(request)
+        try:
+            try:
+                with open_registered_vault(
+                    connection,
+                    vault_base=request.app.state.vault_base,
+                    vault_id=vault_id,
+                    migration_spec=request.app.state.vault_migration_spec,
+                ) as opened:
+                    result = admit_text_parser(
+                        opened.connection,
+                        actor=desktop_vault_actor(vault_id, operation_key),
+                        operation_key=operation_key,
+                        confirmation_text=confirmation_text,
+                        expected_manifest=expected_manifest,
+                        project_root=PROJECT_ROOT,
+                    )
+            except PermissionError:
+                return desktop_error("Plain-text owner admission was refused.", status_code=403)
+            except (FileNotFoundError, RuntimeError, ValueError, sqlite3.DatabaseError):
+                return desktop_error(
+                    "Plain-text owner admission requires corrected governed state.",
+                    status_code=409,
+                )
+        finally:
+            connection.close()
+        return JSONResponse(
+            status_code=200 if result.replayed else 201,
+            content={
+                "api_version": desktop_api_version,
+                "vault_id": vault_id,
+                "parser_admission_version_id": result.parser_admission_version_id,
+                "parser_definition_id": result.parser_definition_id,
+                "parser_configuration_version_id": result.parser_configuration_version_id,
+                "state": result.state,
+                "canonical_available": result.canonical_available,
+                "replayed": result.replayed,
+            },
+        )
+
+    @app.post(
+        "/desktop-api/v1/vaults/{vault_id}/artifacts/{acquisition_artifact_link_id}/parse-text"
+    )
+    async def desktop_parse_text_artifact(
+        request: Request,
+        vault_id: str,
+        acquisition_artifact_link_id: str,
+        payload: Annotated[dict[str, object], Body()],
+    ) -> JSONResponse:
+        operation_key = str(payload.get("operation_key", "")).strip()
+        expected_admission_id = str(
+            payload.get("expected_parser_admission_version_id", "")
+        ).strip()
+        if not operation_key or not expected_admission_id:
+            return desktop_error(
+                "operation_key and expected_parser_admission_version_id are required"
+            )
+        connection = _connection(request)
+        try:
+            try:
+                with open_registered_vault(
+                    connection,
+                    vault_base=request.app.state.vault_base,
+                    vault_id=vault_id,
+                    migration_spec=request.app.state.vault_migration_spec,
+                ) as opened:
+                    result = canonical_parse_text(
+                        opened.connection,
+                        vault_root=opened.root,
+                        actor=desktop_vault_actor(vault_id, operation_key),
+                        acquisition_artifact_link_id=acquisition_artifact_link_id,
+                        operation_key=operation_key,
+                        expected_parser_admission_version_id=expected_admission_id,
+                        project_root=PROJECT_ROOT,
+                    )
+            except ArtifactIntegrityError:
+                return desktop_error("Canonical artifact integrity verification failed.", status_code=409)
+            except PermissionError:
+                return desktop_error("Canonical plain-text parsing was refused.", status_code=403)
+            except (FileNotFoundError, RuntimeError, ValueError, sqlite3.DatabaseError):
+                return desktop_error(
+                    "Canonical plain-text parsing requires reconciliation or corrected input.",
+                    status_code=409,
+                )
+        finally:
+            connection.close()
+        return JSONResponse(
+            status_code=201 if result.state in {"succeeded", "succeeded_with_warnings"} else 200,
+            content={
+                "api_version": desktop_api_version,
+                "vault_id": vault_id,
+                "parser_execution_id": result.parser_execution_id,
+                "normalized_package_id": result.normalized_package_id,
+                "document_version_id": result.document_version_id,
+                "package_sha256": result.package_sha256,
+                "state": result.state,
+                "terminal_outcome": result.terminal_outcome,
+                "reused_package": result.reused_package,
+                "reused_document": result.reused_document,
+                "replayed": result.replayed,
+            },
+        )
+
+    @app.get("/desktop-api/v1/vaults/{vault_id}/documents")
+    async def desktop_vault_documents(request: Request, vault_id: str) -> JSONResponse:
+        connection = _connection(request)
+        try:
+            try:
+                with open_registered_vault(
+                    connection,
+                    vault_base=request.app.state.vault_base,
+                    vault_id=vault_id,
+                    migration_spec=request.app.state.vault_migration_spec,
+                ) as opened:
+                    documents = list_canonical_documents(
+                        opened.connection, vault_account_id=vault_id
+                    )
+            except (FileNotFoundError, PermissionError, RuntimeError, ValueError, sqlite3.DatabaseError):
+                return desktop_error("Vault document summaries are unavailable.", status_code=409)
+        finally:
+            connection.close()
+        return JSONResponse(
+            {"api_version": desktop_api_version, "vault_id": vault_id, "documents": documents}
+        )
+
     @app.post("/desktop-api/v1/vaults/{vault_id}/migrate")
     async def desktop_migrate_vault(
         request: Request,
@@ -485,6 +626,28 @@ def create_app(
                     rows = list_intake_records(
                         opened.connection, vault_account_id=vault_id
                     )
+                    migration_head = str(
+                        opened.connection.execute(
+                            "SELECT version_num FROM alembic_version"
+                        ).fetchone()[0]
+                    )
+                    if migration_head == "V0004":
+                        rows["artifacts"] = [
+                            dict(row)
+                            for row in opened.connection.execute(
+                                """SELECT ao.id, ao.sha256, ao.byte_size, ao.storage_relative_path,
+                                          ao.media_type_observed, ao.created_at,
+                                          link.id AS acquisition_artifact_link_id,
+                                          link.acquisition_id
+                                FROM acquisition_artifact_links link
+                                JOIN artifact_objects ao
+                                  ON ao.vault_account_id=link.vault_account_id
+                                 AND ao.id=link.artifact_object_id
+                                WHERE link.vault_account_id=?
+                                ORDER BY ao.created_at DESC, link.id DESC""",
+                                (vault_id,),
+                            )
+                        ]
             except (FileNotFoundError, PermissionError, RuntimeError, ValueError, sqlite3.DatabaseError):
                 return desktop_error("Vault intake records are unavailable.", status_code=409)
         finally:

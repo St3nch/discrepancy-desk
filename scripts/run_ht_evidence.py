@@ -441,6 +441,42 @@ M06A_PHASE3A_INVARIANTS = (
     Invariant("M06A-HT-096", "Inherited per-Vault backup isolation", "Backup and restore contain exactly one selected Vault and reject missing, extra, or cross-Vault package bytes.", ("tests/test_m06a_backup_restore.py::test_m06a_ht_096_backup_restore_is_per_vault", "tests/test_m06a_parser_packaging.py::test_package_backup_rejects_missing_extra_and_cross_vault_bytes")),
 )
 
+M06A_TEXT_V1_INVARIANTS = (
+    Invariant("M06A-TEXT-ADMIT-001", "Exact tuple and evidence manifest", "Owner admission binds the exact D039 tuple and evidence hashes.", ("tests/test_m06a_text_admission.py::test_m06a_text_admit_001_exact_tuple_and_evidence_manifest",)),
+    Invariant("M06A-TEXT-ADMIT-002", "Active human Vault-owner guard", "Disabled, non-human, or unauthorized actors cannot admit the parser.", ("tests/test_m06a_text_admission.py::test_m06a_text_admit_002_active_human_vault_owner_guard",)),
+    Invariant("M06A-TEXT-ADMIT-003", "Explicit confirmation required", "Admission fails without the exact D039 confirmation text.", ("tests/test_m06a_text_admission.py::test_m06a_text_admit_003_explicit_confirmation_required",)),
+    Invariant("M06A-TEXT-ADMIT-004", "Immutable admission successor", "The under-test row remains immutable and the owner-admitted row supersedes it.", ("tests/test_m06a_text_admission.py::test_m06a_text_admit_004_immutable_successor_preserves_under_test",)),
+    Invariant("M06A-TEXT-ADMIT-005", "Stale tuple or evidence refusal", "Any tuple or evidence-manifest mismatch fails before admission.", ("tests/test_m06a_text_admission.py::test_m06a_text_admit_005_stale_or_mismatched_material_refused",)),
+    Invariant("M06A-TEXT-ADMIT-006", "Current-successor ambiguity refusal", "A second or ambiguous current admission is refused.", ("tests/test_m06a_text_admission.py::test_m06a_text_admit_006_current_successor_refuses_second_admission",)),
+    Invariant("M06A-TEXT-ADMIT-007", "Per-Vault admission isolation", "Admission in one physical Vault does not admit another Vault.", ("tests/test_m06a_text_admission.py::test_m06a_text_admit_007_per_vault_isolation",)),
+    Invariant("M06A-TEXT-ADMIT-008", "Admission idempotency", "Exact replay returns the same admission and conflicting reuse fails.", ("tests/test_m06a_text_admission.py::test_m06a_text_admit_008_idempotent_replay_and_conflict",)),
+    Invariant("M06A-TEXT-ADMIT-009", "Admission creates no parser output", "Admission alone creates no execution, package, document, element, or region.", ("tests/test_m06a_text_admission.py::test_m06a_text_admit_009_admission_creates_no_parser_output",)),
+    Invariant("M06A-TEXT-ADMIT-010", "No automatic owner admission", "Fresh Vaults remain under-test until explicit human admission.", ("tests/test_m06a_text_admission.py::test_m06a_text_admit_010_no_automatic_owner_admission",)),
+    Invariant("M06A-TEXT-CANON-011", "V0004 desktop visibility", "Healthy V0004 Vaults expose parser, artifact, and document controls through Tauri/loopback.", ("tests/test_m06a_desktop_workflow.py::test_m06a_text_canon_011_v0004_desktop_visibility_and_end_to_end",)),
+    Invariant("M06A-TEXT-CANON-012", "Same-Vault retention and admission gate", "Wrong-Vault, missing-link, retention-ineligible, or non-admitted input fails before worker launch.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_012_same_vault_and_admission_gate",)),
+    Invariant("M06A-TEXT-CANON-013", "Artifact path size hash and reparse verification", "Canonical parsing refuses tampered or noncanonical artifact bytes before execution.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_013_artifact_hash_verification",)),
+    Invariant("M06A-TEXT-CANON-014", "Worker launches only after exact admission", "No worker starts before exact owner admission and artifact eligibility checks.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_014_worker_launches_only_after_admission",)),
+    Invariant("M06A-TEXT-CANON-015", "Source-worker canonical execution", "Human-triggered source-worker parsing creates exact canonical authority.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_015_source_worker_canonical_execution",)),
+    Invariant("M06A-TEXT-CANON-016", "Packaged-sidecar canonical execution", "The real PyInstaller sidecar executes the exact admitted canonical path.", ("tests/test_m06a_parser_packaging.py::test_m06a_text_canon_016_real_packaged_sidecar_canonical_execution",)),
+    Invariant("M06A-TEXT-CANON-017", "Deterministic package and exact coverage", "Separate workers produce one byte-identical package with exact source coverage.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_017_deterministic_package_and_coverage",)),
+    Invariant("M06A-TEXT-CANON-018", "Failure creates no package or document authority", "Worker or parent-classified failure preserves a failed execution but no canonical package or document.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_018_failure_creates_no_package_or_document", "tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_018_parent_worker_exception_fails_safely")),
+    Invariant("M06A-TEXT-CANON-019", "Execution idempotency", "Exact operation replay returns the same execution and conflicting reuse fails.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_019_operation_replay_and_conflict",)),
+    Invariant("M06A-TEXT-CANON-020", "Exact package reuse and execution link", "Identical reruns reuse one package and append exact execution-package links.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_020_exact_package_reuse_and_execution_link",)),
+    Invariant("M06A-TEXT-CANON-021", "Initial document and locator fidelity", "The initial document, elements, and regions preserve exact artifact lineage and ordinals.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_021_initial_document_elements_and_regions",)),
+    Invariant("M06A-TEXT-CANON-022", "No version noise on identical rerun", "Identical reruns retain one current version ordinal without supersession authority.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_022_identical_rerun_creates_no_version_noise",)),
+    Invariant("M06A-TEXT-CANON-023", "Package-before-database failure reconciliation", "A post-package database interruption leaves started execution and orphan bytes requiring reconciliation.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_023_package_before_database_requires_reconciliation",)),
+    Invariant("M06A-TEXT-CANON-024", "Backup and restore include canonical output", "Canonical package and database authority survive exact V0004 backup and disposable restore.", ("tests/test_m06a_text_canonical_execution.py::test_m06a_text_canon_024_backup_restore_includes_output",)),
+    Invariant("M06A-TEXT-CANON-025", "Missing extra tampered and cross-Vault output refusal", "Backup/package verification rejects missing, extra, tampered, or cross-Vault output.", ("tests/test_m06a_parser_packaging.py::test_canonical_package_backup_restore_and_tamper_fail_closed", "tests/test_m06a_parser_packaging.py::test_package_backup_rejects_missing_extra_and_cross_vault_bytes")),
+    Invariant("M06A-TEXT-CANON-026", "Exact API and UI mutation surface", "Only the D039 admission, per-artifact parse, and document-summary surfaces exist.", ("tests/test_m06a_desktop_workflow.py::test_m06a_text_canon_026_api_ui_mutation_surface_is_exact",)),
+    Invariant("M06A-TEXT-CANON-027", "No path secret evidence-location or content leakage", "Desktop responses and types expose safe IDs and summaries only.", ("tests/test_m06a_desktop_workflow.py::test_m06a_text_canon_027_no_path_secret_evidence_or_content_leakage",)),
+    Invariant("M06A-TEXT-CANON-028", "No later-parser or capability leakage", "No SRT, VTT, JSON, Phase 3B, provider, agent, or publication capability enters the package.", ("tests/test_m06a_desktop_workflow.py::test_m06a_text_canon_028_no_later_parser_or_capability_leakage",)),
+)
+
+M06A_TEXT_V1_EXPECTED_IDS = tuple(
+    [f"M06A-TEXT-ADMIT-{value:03d}" for value in range(1, 11)]
+    + [f"M06A-TEXT-CANON-{value:03d}" for value in range(11, 29)]
+)
+
 M06A_PHASE3A_EXPECTED_IDS = (
     "M06A-HT-032", "M06A-HT-033", "M06A-HT-034", "M06A-HT-035",
     "M06A-HT-039", "M06A-HT-040", "M06A-HT-041", "M06A-HT-042",
@@ -458,6 +494,7 @@ SUITES = {
     "m06a-phase1": M06A_PHASE1_INVARIANTS,
     "m06a-phase2": M06A_PHASE2_INVARIANTS,
     "m06a-phase3a": M06A_PHASE3A_INVARIANTS,
+    "m06a-text-v1": M06A_TEXT_V1_INVARIANTS,
 }
 
 
@@ -558,6 +595,35 @@ def phase3a_contract_metadata(results: list[dict[str, object]]) -> dict[str, obj
     }
 
 
+
+def text_v1_contract_metadata(results: list[dict[str, object]]) -> dict[str, object]:
+    from discrepancy_desk.migration_spec import central_migration_spec, vault_migration_spec
+    from discrepancy_desk.parser_service import load_parser_resources, text_admission_manifest
+
+    project_root = Path.cwd().resolve()
+    resources = load_parser_resources(project_root)
+    manifest = text_admission_manifest(project_root)
+    by_id = {str(result["invariant_id"]): result for result in results}
+    if any(by_id.get(value, {}).get("passed") is not True for value in M06A_TEXT_V1_EXPECTED_IDS):
+        raise RuntimeError("D039 contract metadata lacks a required passing proof")
+    return {
+        "runner_registry_sha256": sha256_path(Path(__file__).resolve()),
+        "parser_tuple": resources.parser_tuple().material(),
+        "admission_manifest": manifest,
+        "central_migration_head": central_migration_spec(project_root).expected_head,
+        "vault_migration_head": vault_migration_spec(project_root).expected_head,
+        "execution_modes": ["source-worker", "packaged-sidecar"],
+        "admission_is_per_vault": by_id["M06A-TEXT-ADMIT-007"]["passed"],
+        "automatic_owner_admission": False,
+        "canonical_execution_requires_human_action": True,
+        "package_reuse_proof": by_id["M06A-TEXT-CANON-020"]["passed"],
+        "document_version_noise_absent": by_id["M06A-TEXT-CANON-022"]["passed"],
+        "backup_restore_proof": by_id["M06A-TEXT-CANON-024"]["passed"],
+        "packaged_canonical_execution_proof": by_id["M06A-TEXT-CANON-016"]["passed"],
+        "api_ui_surface_proof": by_id["M06A-TEXT-CANON-026"]["passed"],
+        "later_capability_leakage_absent": by_id["M06A-TEXT-CANON-028"]["passed"],
+    }
+
 def validate_suite(name: str, invariants: tuple[Invariant, ...]) -> None:
     ids = [invariant.invariant_id for invariant in invariants]
     if not ids:
@@ -570,6 +636,8 @@ def validate_suite(name: str, invariants: tuple[Invariant, ...]) -> None:
         raise RuntimeError("M06-A Phase 2 invariant mapping diverges from the accepted set")
     if name == "m06a-phase3a" and tuple(ids) != M06A_PHASE3A_EXPECTED_IDS:
         raise RuntimeError("M06-A Phase 3A invariant mapping diverges from the accepted set")
+    if name == "m06a-text-v1" and tuple(ids) != M06A_TEXT_V1_EXPECTED_IDS:
+        raise RuntimeError("M06-A text-v1 invariant mapping diverges from the D039 set")
     for invariant in invariants:
         if invariant.disposition == "execute" and not invariant.tests:
             raise RuntimeError(f"{invariant.invariant_id} has no test mapping")
@@ -709,7 +777,7 @@ def main() -> int:
     expected_commit = git_sha()
     evidence_root = (
         Path("runtime/test-evidence/hammer") / args.suite
-        if args.suite == "m06a-phase3a"
+        if args.suite in {"m06a-phase3a", "m06a-text-v1"}
         else Path("runtime/test-evidence") / args.suite
     )
     evidence_root.mkdir(parents=True, exist_ok=True)
@@ -730,6 +798,7 @@ def main() -> int:
         for name in test_count_names
     }
     phase_contract = phase3a_contract_metadata(results) if args.suite == "m06a-phase3a" else None
+    text_v1_contract = text_v1_contract_metadata(results) if args.suite == "m06a-text-v1" else None
     payload = {
         "schema_version": 2,
         "suite": args.suite,
@@ -743,6 +812,7 @@ def main() -> int:
         "results": results,
         "test_counts": aggregate_test_counts,
         "phase3a_contract": phase_contract,
+        "text_v1_contract": text_v1_contract,
         "summary": {
             "required": len(invariants),
             "executed": sum(result["disposition"] == "execute" for result in results),
@@ -759,7 +829,7 @@ def main() -> int:
     if not dirty:
         immutable = (
             Path("runtime/test-evidence") / args.suite / "by-commit" / f"{expected_commit}.json"
-            if args.suite == "m06a-phase3a"
+            if args.suite in {"m06a-phase3a", "m06a-text-v1"}
             else output_root / "by-commit" / f"{expected_commit}.json"
         )
         immutable.parent.mkdir(parents=True, exist_ok=True)

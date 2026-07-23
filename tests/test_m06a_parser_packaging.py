@@ -22,8 +22,12 @@ from discrepancy_desk.parser_contract import (
 )
 from discrepancy_desk import parser_service as parser_service_module
 from discrepancy_desk.parser_service import (
+    TEXT_ADMISSION_CONFIRMATION,
+    admit_text_parser,
     assemble_under_test_package,
+    canonical_parse_text,
     load_parser_resources,
+    text_admission_manifest,
 )
 from discrepancy_desk.parser_worker import sanitized_worker_environment
 from discrepancy_desk.vault_backup import (
@@ -333,6 +337,38 @@ def test_m06a_ht_044_packaged_parser_authority_matches(tmp_path: Path) -> None:
     }
 
 
+
+def test_m06a_text_canon_016_real_packaged_sidecar_canonical_execution(
+    m06a_phase3a_vault, tmp_path: Path, monkeypatch
+) -> None:
+    _, opened = m06a_phase3a_vault
+    project_root = Path(__file__).resolve().parents[1]
+    executable = _build_packaged_sidecar(project_root)
+    admission_key = "admit:packaged-canonical"
+    admission = admit_text_parser(
+        opened.connection,
+        actor=_actor(opened.identity.vault_account_id, admission_key),
+        operation_key=admission_key,
+        confirmation_text=TEXT_ADMISSION_CONFIRMATION,
+        expected_manifest=text_admission_manifest(project_root),
+        project_root=project_root,
+    )
+    link_id, _ = _artifact(opened, key="packaged-canonical", content=b"packaged\n\ncanonical\n")
+    monkeypatch.setattr(parser_service_module.sys, "executable", str(executable))
+    monkeypatch.setattr(parser_service_module.sys, "frozen", True, raising=False)
+    result = canonical_parse_text(
+        opened.connection,
+        vault_root=opened.root,
+        actor=_actor(opened.identity.vault_account_id, "parse:packaged-canonical"),
+        acquisition_artifact_link_id=link_id,
+        operation_key="parse:packaged-canonical",
+        expected_parser_admission_version_id=admission.parser_admission_version_id,
+        project_root=project_root,
+    )
+    assert result.state in {"succeeded", "succeeded_with_warnings"}
+    assert result.document_version_id
+    assert result.package_sha256
+
 def test_canonical_package_backup_restore_and_tamper_fail_closed(
     m06a_phase3a_vault, tmp_path: Path
 ) -> None:
@@ -377,17 +413,23 @@ def test_parser_api_is_read_only_and_exposes_no_mutation_routes() -> None:
     project_root = Path(__file__).resolve().parents[1]
     source = (project_root / "src" / "discrepancy_desk" / "web.py").read_text(encoding="utf-8")
     assert '@app.get("/desktop-api/v1/vaults/{vault_id}/parsers")' in source
+    assert '/parsers/m06a.text.v1/admit' in source
+    assert '/parse-text' in source
+    assert '/documents' in source
     forbidden = (
-        '@app.post("/desktop-api/v1/vaults/{vault_id}/parsers',
-        '@app.put("/desktop-api/v1/vaults/{vault_id}/parsers',
-        '@app.patch("/desktop-api/v1/vaults/{vault_id}/parsers',
-        '@app.delete("/desktop-api/v1/vaults/{vault_id}/parsers',
-        "owner_admitted parser button",
+        "/parsers/suspend",
+        "/parsers/revoke",
+        "/parsers/retire",
+        "/parsers/prohibit",
+        "parse-all",
+        "admit-all",
     )
     assert not any(value in source for value in forbidden)
     app = (project_root / "desktop" / "src" / "App.tsx").read_text(encoding="utf-8")
     assert "Canonical use —" in app
-    assert "No parser execution or admission control is available" in app
+    assert "Admit plain text for this Vault" in app
+    assert "Parse as plain text" in app
+    assert "parser configuration" not in app.lower()
 
 
 def test_package_backup_rejects_missing_extra_and_cross_vault_bytes(

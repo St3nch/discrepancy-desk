@@ -81,6 +81,26 @@ def object_relative_path(sha256: str) -> str:
     return f"objects/sha256/{normalized[:2]}/{normalized[2:4]}/{normalized}"
 
 
+def verify_artifact_file(
+    vault_root: Path,
+    *,
+    artifact_sha256: str,
+    expected_size: int,
+    storage_relative_path: str,
+) -> Path:
+    expected_relative = object_relative_path(artifact_sha256)
+    if storage_relative_path != expected_relative:
+        raise ArtifactIntegrityError("artifact path does not match its content address")
+    path = vault_root / Path(storage_relative_path)
+    reject_reparse_chain(path, stop=vault_root)
+    _verify_existing(
+        path,
+        expected_sha256=artifact_sha256,
+        expected_size=expected_size,
+    )
+    return path
+
+
 def _prepare_operation_temp(vault_root: Path, operation_id: str) -> tuple[Path, Path]:
     if not operation_id or any(value in operation_id for value in ("/", "\\", ":", "..")):
         raise ValueError("artifact operation ID is invalid")

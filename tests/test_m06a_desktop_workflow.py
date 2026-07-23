@@ -194,3 +194,149 @@ def test_m06a_ht_108_tauri_api_uses_governed_service(
     ).read_text(encoding="utf-8")
     assert vault_id in marker_text
     assert "fabricated-request-actor" not in marker_text
+
+
+def test_m06a_text_canon_011_v0004_desktop_visibility_and_end_to_end(tmp_path: Path) -> None:
+    headers = {"x-discrepancy-desk-token": TOKEN}
+    with _client(tmp_path) as client:
+        created = client.post(
+            "/desktop-api/v1/vaults",
+            headers=headers,
+            json={
+                "display_name": "Canonical Text Vault",
+                "relative_root": "canonical-text",
+                "owned_account_ids": [],
+                "operation_key": "text:desktop:create",
+            },
+        )
+        assert created.status_code == 201
+        vault_id = created.json()["vault_id"]
+        health = client.get(
+            f"/desktop-api/v1/vaults/{vault_id}/health", headers=headers
+        )
+        assert health.status_code == 200
+        assert health.json()["migration"] == "V0004"
+
+        parser_status = client.get(
+            f"/desktop-api/v1/vaults/{vault_id}/parsers", headers=headers
+        )
+        assert parser_status.status_code == 200
+        parser = parser_status.json()["parsers"][0]
+        assert parser["admission_ready"] is True
+        manifest = parser["admission_manifest"]
+
+        admitted = client.post(
+            f"/desktop-api/v1/vaults/{vault_id}/parsers/m06a.text.v1/admit",
+            headers=headers,
+            json={
+                "operation_key": "text:desktop:admit",
+                "confirmation_text": manifest["confirmation_text"],
+                "expected_manifest": manifest,
+            },
+        )
+        assert admitted.status_code == 201
+        admission_id = admitted.json()["parser_admission_version_id"]
+        assert admitted.json()["canonical_available"] is True
+
+        intake = client.post(
+            f"/desktop-api/v1/vaults/{vault_id}/intake",
+            headers=headers,
+            json={
+                "source_kind": "manual_file",
+                "descriptor_class": "file",
+                "display_label": "canonical.txt",
+                "retention_classification": "preservation_compatible",
+                "policy_basis_reference": "D039 desktop synthetic proof",
+                "human_classification_note": "safe fixture",
+                "client_nonce": "text-desktop-nonce",
+                "operation_key": "text:desktop:intake",
+                "expects_bytes": True,
+                "supplied_filename": "canonical.txt",
+                "supplied_media_type": "text/plain",
+                "advisory_byte_size": 11,
+            },
+        )
+        assert intake.status_code == 201
+        acquisition_id = intake.json()["acquisition_id"]
+        uploaded = client.post(
+            f"/desktop-api/v1/vaults/{vault_id}/acquisitions/{acquisition_id}/artifact",
+            headers=headers,
+            data={
+                "upload_authorization_id": intake.json()["upload_authorization_id"],
+                "operation_key": "text:desktop:upload",
+            },
+            files={"artifact": ("canonical.txt", b"alpha\nbeta\n", "text/plain")},
+        )
+        assert uploaded.status_code == 201
+
+        records = client.get(
+            f"/desktop-api/v1/vaults/{vault_id}/intake", headers=headers
+        )
+        assert records.status_code == 200
+        link_id = records.json()["artifacts"][0]["acquisition_artifact_link_id"]
+        parsed = client.post(
+            f"/desktop-api/v1/vaults/{vault_id}/artifacts/{link_id}/parse-text",
+            headers=headers,
+            json={
+                "operation_key": "text:desktop:parse",
+                "expected_parser_admission_version_id": admission_id,
+            },
+        )
+        assert parsed.status_code == 201
+        assert parsed.json()["document_version_id"]
+
+        documents = client.get(
+            f"/desktop-api/v1/vaults/{vault_id}/documents", headers=headers
+        )
+        assert documents.status_code == 200
+        assert len(documents.json()["documents"]) == 1
+        assert "alpha" not in documents.text
+        assert str(tmp_path) not in documents.text
+
+
+def test_m06a_text_canon_026_api_ui_mutation_surface_is_exact(tmp_path: Path) -> None:
+    with _client(tmp_path) as client:
+        route_paths = {route.path for route in client.app.routes}
+    assert "/desktop-api/v1/vaults/{vault_id}/parsers/m06a.text.v1/admit" in route_paths
+    assert (
+        "/desktop-api/v1/vaults/{vault_id}/artifacts/{acquisition_artifact_link_id}/parse-text"
+        in route_paths
+    )
+    assert "/desktop-api/v1/vaults/{vault_id}/documents" in route_paths
+    forbidden = ("suspend", "revoke", "retire", "prohibit", "parse-all", "admit-all")
+    assert not any(any(value in path for value in forbidden) for path in route_paths)
+    app_source = Path("desktop/src/App.tsx").read_text(encoding="utf-8")
+    assert 'nextHealth.migration === "V0004"' in app_source
+    assert "ADMIT m06a.text.v1 FOR THIS VAULT" not in app_source
+    assert "Parse as plain text" in app_source
+    assert "parser configuration" not in app_source.lower()
+
+
+def test_m06a_text_canon_027_no_path_secret_evidence_or_content_leakage() -> None:
+    web_source = Path("src/discrepancy_desk/web.py").read_text(encoding="utf-8")
+    client_source = Path("desktop/src/api/client.ts").read_text(encoding="utf-8")
+    app_source = Path("desktop/src/App.tsx").read_text(encoding="utf-8")
+    combined = web_source + client_source + app_source
+    assert "evidence/" not in client_source
+    assert "runtime/test-evidence" not in combined
+    assert "fixture_manifest_sha256" not in app_source
+    assert "raw_text" not in client_source
+    assert "normalized_text" not in client_source
+
+
+def test_m06a_text_canon_028_no_later_parser_or_capability_leakage() -> None:
+    web_source = Path("src/discrepancy_desk/web.py").read_text(encoding="utf-8")
+    client_source = Path("desktop/src/api/client.ts").read_text(encoding="utf-8")
+    app_source = Path("desktop/src/App.tsx").read_text(encoding="utf-8")
+    combined = (web_source + client_source + app_source).lower()
+    for forbidden in (
+        "m06a.srt.v1",
+        "m06a.vtt.v1",
+        "m06a.json.v1",
+        "qdrant_client",
+        "/providers/",
+        "provider_client",
+        "parse-all",
+        "admit-all",
+    ):
+        assert forbidden not in combined
