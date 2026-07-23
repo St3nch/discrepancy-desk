@@ -6,20 +6,27 @@ import struct
 import sys
 from pathlib import Path
 
-from .parser_contract import ParserContractError, canonical_json, require_sha256, sha256_bytes
+from .parser_contract import (
+    PackagingMismatch,
+    ParserContractError,
+    canonical_json,
+    require_sha256,
+    sha256_bytes,
+)
 from .parser_worker import install_security_controls
 from .srt_contract import (
-    SRT_IMPLEMENTATION_SHA256,
     SRT_PARSER_ID,
     SRT_SECURITY_PROFILE_ID,
     SRT_WORKER_PROTOCOL_VERSION,
     validate_srt_candidate,
 )
+from .srt_service import SrtResources, load_srt_resources_from_root
 
 MAX_REQUEST_BYTES = 64 * 1024
 INPUT_NAME = "verified-input.bin"
 OUTPUT_NAME = "candidate-package.json"
 RECEIPT_NAME = "worker-receipt.json"
+DEPENDENCY_LOCK_NAME = "verified-dependency-lock.bin"
 
 
 def _resource_root() -> Path:
@@ -34,9 +41,20 @@ def _resource_root() -> Path:
         ]
     )
     for candidate in candidates:
-        if (candidate / "manifest.sha256").is_file():
+        if candidate.is_dir():
             return candidate.resolve()
     raise FileNotFoundError("packaged SRT parser resources are unavailable")
+
+
+def _dependency_lock_source(resource_root: Path) -> Path:
+    candidates = (
+        resource_root.parents[1] / "uv.lock",
+        Path(sys.executable).resolve().parent / "uv.lock",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError("packaged SRT dependency lock is unavailable")
 
 
 def _read_request() -> dict[str, object]:
@@ -92,44 +110,84 @@ def _write_receipt(operation_root: Path, payload: dict[str, object]) -> None:
     _write_exact(receipt, canonical_json(payload))
 
 
-def _validate_request(request: dict[str, object], *, operation_root: Path, resource_root: Path) -> Path:
+def _validate_request(
+    request: dict[str, object],
+    *,
+    operation_root: Path,
+    resources: SrtResources,
+) -> Path:
     if request["protocol_version"] != SRT_WORKER_PROTOCOL_VERSION:
         raise ValueError("SRT worker protocol version mismatch")
     if request["parser_id"] != SRT_PARSER_ID:
         raise ValueError("SRT worker parser identity mismatch")
-    if require_sha256(str(request["implementation_sha256"])) != SRT_IMPLEMENTATION_SHA256:
+    if (
+        require_sha256(str(request["implementation_sha256"]))
+        != resources.implementation_sha256
+    ):
         raise ValueError("SRT worker implementation hash mismatch")
     if request["security_profile_id"] != SRT_SECURITY_PROFILE_ID:
         raise ValueError("SRT worker security profile mismatch")
-    if request["verified_input_relative_name"] != INPUT_NAME or request["output_filename"] != OUTPUT_NAME:
-        raise ValueError("SRT worker filenames are not fixed")
-    config_path = resource_root / "config.json"
-    if require_sha256(str(request["config_sha256"])) != _sha256_file(config_path):
+    if (
+        require_sha256(str(request["config_sha256"]))
+        != resources.config_sha256
+    ):
         raise ValueError("SRT worker configuration hash mismatch")
+    if (
+        request["verified_input_relative_name"] != INPUT_NAME
+        or request["output_filename"] != OUTPUT_NAME
+    ):
+        raise ValueError("SRT worker filenames are not fixed")
     input_path = operation_root / INPUT_NAME
     if not input_path.is_file() or input_path.is_symlink():
         raise ValueError("verified SRT worker input is unavailable")
     expected_size = request["verified_input_size"]
-    if type(expected_size) is not int or expected_size < 0 or input_path.stat().st_size != expected_size:
+    if (
+        type(expected_size) is not int
+        or expected_size < 0
+        or input_path.stat().st_size != expected_size
+    ):
         raise ValueError("verified SRT worker input size mismatch")
-    if _sha256_file(input_path) != require_sha256(str(request["verified_input_sha256"])):
+    if _sha256_file(input_path) != require_sha256(
+        str(request["verified_input_sha256"])
+    ):
         raise ValueError("verified SRT worker input hash mismatch")
     return input_path
 
 
 def main() -> int:
     operation_root = Path.cwd().resolve()
-    resource_root = _resource_root()
     stage = "read_request"
     controls: tuple[str, ...] = ()
     try:
         request = _read_request()
+        stage = "locate_resource_root"
+        resource_root = _resource_root()
+        stage = "stage_dependency_lock"
+        dependency_lock_path = operation_root / DEPENDENCY_LOCK_NAME
+        _write_exact(
+            dependency_lock_path, _dependency_lock_source(resource_root).read_bytes()
+        )
         stage = "install_security_controls"
-        controls = install_security_controls(operation_root=operation_root, resource_root=resource_root)
+        controls = install_security_controls(
+            operation_root=operation_root, resource_root=resource_root
+        )
+        stage = "validate_packaged_resources"
+        try:
+            resources = load_srt_resources_from_root(
+                resource_root, dependency_lock_path=dependency_lock_path
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise PackagingMismatch(
+                "packaged SRT resource tuple does not match D040"
+            ) from exc
         stage = "validate_request"
-        input_path = _validate_request(request, operation_root=operation_root, resource_root=resource_root)
+        input_path = _validate_request(
+            request, operation_root=operation_root, resources=resources
+        )
         stage = "load_config"
-        config = json.loads((resource_root / "config.json").read_text(encoding="utf-8"))
+        config = json.loads(
+            (resources.root / "config.json").read_text(encoding="utf-8")
+        )
         stage = "import_parser"
         from .parsers.srt_v1 import parse_bytes
 

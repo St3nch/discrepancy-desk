@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -382,3 +383,51 @@ def test_m06a_srt_022_desktop_status_is_read_only_under_test(tmp_path: Path) -> 
     assert "SubRip (SRT)" not in app_source
     assert "Admit SRT" not in app_source
     assert "Parse as SRT" not in app_source
+
+
+def test_m06a_srt_c1_007_srt_resource_failure_preserves_plain_text_status(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    headers = {"x-discrepancy-desk-token": TOKEN}
+    with _client(tmp_path) as client:
+        created = client.post(
+            "/desktop-api/v1/vaults",
+            headers=headers,
+            json={
+                "display_name": "SRT Isolation Vault",
+                "relative_root": "srt-isolation-vault",
+                "owned_account_ids": [],
+                "operation_key": "d041:srt-status:create",
+            },
+        )
+        assert created.status_code == 201
+        vault_id = created.json()["vault_id"]
+
+        fake_project = tmp_path / "fake-project"
+        shutil.copytree(Path("parser_resources"), fake_project / "parser_resources")
+        shutil.copy2(Path("uv.lock"), fake_project / "uv.lock")
+        (fake_project / "parser_resources" / "m06a.srt.v1" / "schema.json").write_text(
+            '{"tampered":true}\n', encoding="utf-8", newline="\n"
+        )
+        monkeypatch.setattr(web_module, "PROJECT_ROOT", fake_project)
+
+        response = client.get(
+            f"/desktop-api/v1/vaults/{vault_id}/parsers",
+            headers=headers,
+        )
+        assert response.status_code == 200
+        parsers = response.json()["parsers"]
+        plain_text = [row for row in parsers if row["parser_id"] == "m06a.text.v1"]
+        srt = [row for row in parsers if row["parser_id"] == "m06a.srt.v1"]
+        assert len(plain_text) == 1
+        assert plain_text[0]["state"] == "under_test"
+        assert plain_text[0]["admission_ready"] is True
+        assert plain_text[0]["admission_manifest"] is not None
+        assert len(srt) == 1
+        assert srt[0]["state"] == "unavailable"
+        assert srt[0]["canonical_available"] is False
+        assert srt[0]["admission_ready"] is False
+        assert srt[0]["admission_manifest"] is None
+        assert srt[0]["reason_code"] == "packaged_tuple_mismatch"
+        assert str(tmp_path) not in response.text
+        assert "tampered" not in response.text

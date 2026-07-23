@@ -15,10 +15,14 @@ from .parser_contract import ParserTuple, canonical_json, load_canonical_json_by
 from .parser_worker import sanitized_worker_environment
 from .srt_contract import (
     INITIAL_SRT_CONFIG,
+    SRT_CONFIG_SHA256,
+    SRT_DEPENDENCY_LOCK_SHA256,
     SRT_IMPLEMENTATION_SHA256,
     SRT_IMPLEMENTATION_VERSION,
     SRT_PACKAGE_SCHEMA_VERSION,
     SRT_PARSER_ID,
+    SRT_RESOURCE_MANIFEST_SHA256,
+    SRT_SCHEMA_SHA256,
     SRT_SECURITY_PROFILE_ID,
     SRT_WARNING_POLICY_VERSION,
     SRT_WORKER_PROTOCOL_VERSION,
@@ -103,9 +107,13 @@ def _parse_manifest(path: Path) -> dict[tuple[str, str], str]:
     return entries
 
 
-def load_srt_resources(project_root: Path | None = None) -> SrtResources:
-    root = locate_srt_resources(project_root)
-    manifest_path = root / "manifest.sha256"
+def load_srt_resources_from_root(
+    root: Path, *, dependency_lock_path: Path | None = None
+) -> SrtResources:
+    resolved_root = root.resolve(strict=True)
+    manifest_path = resolved_root / "manifest.sha256"
+    if not manifest_path.is_file() or sha256_file(manifest_path) != SRT_RESOURCE_MANIFEST_SHA256:
+        raise ValueError("SRT parser resource manifest does not match D040")
     entries = _parse_manifest(manifest_path)
     required = {
         ("config", "config.json"),
@@ -115,41 +123,69 @@ def load_srt_resources(project_root: Path | None = None) -> SrtResources:
     }
     if set(entries) != required:
         raise ValueError("SRT parser manifest entries diverge from the D040 set")
-    config_path = root / "config.json"
-    schema_path = root / "schema.json"
+    expected_entries = {
+        ("config", "config.json"): SRT_CONFIG_SHA256,
+        ("dependency-lock", "uv.lock"): SRT_DEPENDENCY_LOCK_SHA256,
+        ("implementation", "discrepancy_desk.parsers.srt_v1"): SRT_IMPLEMENTATION_SHA256,
+        ("schema", "schema.json"): SRT_SCHEMA_SHA256,
+    }
+    if entries != expected_entries:
+        raise ValueError("SRT parser manifest hashes diverge from D040")
+
+    config_path = resolved_root / "config.json"
+    schema_path = resolved_root / "schema.json"
     config_sha = sha256_file(config_path)
     schema_sha = sha256_file(schema_path)
-    if config_sha != entries[("config", "config.json")]:
+    if config_sha != SRT_CONFIG_SHA256:
         raise ValueError("SRT parser configuration hash mismatch")
-    if schema_sha != entries[("schema", "schema.json")]:
+    if schema_sha != SRT_SCHEMA_SHA256:
         raise ValueError("SRT parser schema hash mismatch")
     config_bytes = config_path.read_bytes()
-    if config_bytes != canonical_srt_config_bytes() or json.loads(config_bytes.decode("utf-8")) != INITIAL_SRT_CONFIG:
+    if (
+        config_bytes != canonical_srt_config_bytes()
+        or json.loads(config_bytes.decode("utf-8")) != INITIAL_SRT_CONFIG
+    ):
         raise ValueError("SRT parser configuration bytes are not canonical")
-    implementation_sha = entries[("implementation", "discrepancy_desk.parsers.srt_v1")]
-    if implementation_sha != SRT_IMPLEMENTATION_SHA256:
-        raise ValueError("SRT parser implementation manifest hash mismatch")
-    source_path = Path(__file__).resolve().parent / "parsers" / "srt_v1.py"
-    if not source_path.is_file() or sha256_file(source_path) != implementation_sha:
-        raise ValueError("SRT parser implementation bytes diverge from the manifest")
-    dependency_sha = entries[("dependency-lock", "uv.lock")]
-    lock_candidates = [root.parents[1] / "uv.lock", Path(sys.executable).resolve().parent / "uv.lock"]
-    lock_path = next((path for path in lock_candidates if path.is_file()), None)
+
+    package_root = Path(__file__).resolve().parent
+    implementation_path = package_root / "parsers" / "srt_v1.py"
+    if (
+        not implementation_path.is_file()
+        or sha256_file(implementation_path) != SRT_IMPLEMENTATION_SHA256
+    ):
+        raise ValueError("SRT parser implementation bytes diverge from D040")
+
+    lock_candidates = (
+        [dependency_lock_path]
+        if dependency_lock_path is not None
+        else [
+            resolved_root.parents[1] / "uv.lock",
+            Path(sys.executable).resolve().parent / "uv.lock",
+        ]
+    )
+    lock_path = next(
+        (path for path in lock_candidates if path is not None and path.is_file()), None
+    )
     if lock_path is None:
         raise FileNotFoundError("SRT dependency lock bytes are unavailable")
-    if sha256_file(lock_path) != dependency_sha:
-        raise ValueError("SRT dependency lock bytes diverge from the manifest")
+    if sha256_file(lock_path) != SRT_DEPENDENCY_LOCK_SHA256:
+        raise ValueError("SRT dependency lock bytes diverge from D040")
+
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     if schema.get("$id") != "urn:discrepancy-desk:m06a.normalized-package.srt.v1":
         raise ValueError("SRT parser schema identity mismatch")
     return SrtResources(
-        root=root,
-        manifest_sha256=sha256_file(manifest_path),
-        config_sha256=config_sha,
-        schema_sha256=schema_sha,
-        implementation_sha256=implementation_sha,
-        dependency_lock_sha256=dependency_sha,
+        root=resolved_root,
+        manifest_sha256=SRT_RESOURCE_MANIFEST_SHA256,
+        config_sha256=SRT_CONFIG_SHA256,
+        schema_sha256=SRT_SCHEMA_SHA256,
+        implementation_sha256=SRT_IMPLEMENTATION_SHA256,
+        dependency_lock_sha256=SRT_DEPENDENCY_LOCK_SHA256,
     )
+
+
+def load_srt_resources(project_root: Path | None = None) -> SrtResources:
+    return load_srt_resources_from_root(locate_srt_resources(project_root))
 
 
 def _candidate_ids(resources: SrtResources) -> tuple[str, str, str]:
@@ -327,13 +363,31 @@ def install_under_test_srt_candidate(
     return definition_id, config_id, admission_id
 
 
+def _unavailable_srt_status() -> dict[str, object]:
+    return {
+        "parser_definition_id": "parser-definition-m06a-srt-v1-unavailable",
+        "parser_id": SRT_PARSER_ID,
+        "display_name": "SubRip (SRT)",
+        "state": "unavailable",
+        "canonical_available": False,
+        "admission_ready": False,
+        "admission_manifest": None,
+        "reason_code": "packaged_tuple_mismatch",
+        "package_schema_version": SRT_PACKAGE_SCHEMA_VERSION,
+        "security_profile_id": SRT_SECURITY_PROFILE_ID,
+    }
+
+
 def list_srt_status(
     connection: sqlite3.Connection,
     *,
     vault_account_id: str,
     project_root: Path | None = None,
 ) -> dict[str, object]:
-    resources = load_srt_resources(project_root)
+    try:
+        resources = load_srt_resources(project_root)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return _unavailable_srt_status()
     definition_id, config_id, admission_id = _candidate_ids(resources)
     row = connection.execute(
         """SELECT a.state
@@ -358,7 +412,9 @@ def list_srt_status(
         "canonical_available": False,
         "admission_ready": False,
         "admission_manifest": None,
-        "reason_code": "owner_admission_not_authorized" if row is not None else "candidate_not_installed",
+        "reason_code": (
+            "owner_admission_not_authorized" if row is not None else "candidate_not_installed"
+        ),
         "package_schema_version": SRT_PACKAGE_SCHEMA_VERSION,
         "security_profile_id": SRT_SECURITY_PROFILE_ID,
     }

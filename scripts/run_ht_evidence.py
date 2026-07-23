@@ -501,6 +501,21 @@ M06A_SRT_V1_INVARIANTS = (
 
 M06A_SRT_V1_EXPECTED_IDS = tuple(f"M06A-SRT-{value:03d}" for value in range(1, 25))
 
+M06A_SRT_V1_C1_INVARIANTS = (
+    Invariant("M06A-SRT-C1-001", "Exact D040 resource constants", "The pinned manifest, config, schema, implementation, and dependency-lock hashes match the live D040 bytes.", ("tests/test_m06a_srt_packaging.py::test_m06a_srt_c1_001_exact_resource_constants_match_live_bytes",)),
+    Invariant("M06A-SRT-C1-002", "Packaged schema tamper refusal", "A modified packaged SRT schema produces a failed receipt and no candidate.", ("tests/test_m06a_srt_packaging.py::test_m06a_srt_c1_002_packaged_schema_tamper_fails",)),
+    Invariant("M06A-SRT-C1-003", "Self-authorizing config tamper refusal", "A modified packaged config fails even when the request supplies the modified config hash.", ("tests/test_m06a_srt_packaging.py::test_m06a_srt_c1_003_packaged_config_self_hash_tamper_fails",)),
+    Invariant("M06A-SRT-C1-004", "Manifest and dependency-lock tamper refusal", "Modified packaged manifest or dependency-lock bytes fail before parsing with no candidate.", ("tests/test_m06a_srt_packaging.py::test_m06a_srt_c1_004_packaged_manifest_and_lock_tamper_fail",)),
+    Invariant("M06A-SRT-C1-005", "Implementation-byte tamper refusal", "Modified packaged SRT implementation bytes fail before parsing with no candidate.", ("tests/test_m06a_srt_packaging.py::test_m06a_srt_c1_005_packaged_implementation_tamper_fails",)),
+    Invariant("M06A-SRT-C1-006", "Valid packaged execution retained", "The exact untampered packaged SRT worker remains executable with inherited denial controls.", ("tests/test_m06a_srt_packaging.py::test_m06a_srt_c1_006_valid_packaged_execution_remains_green",)),
+    Invariant("M06A-SRT-C1-007", "Per-parser status isolation", "SRT-only resource failure returns one safe unavailable row while healthy D039 plain-text status remains visible.", ("tests/test_m06a_desktop_workflow.py::test_m06a_srt_c1_007_srt_resource_failure_preserves_plain_text_status",)),
+    Invariant("M06A-SRT-C1-008", "No SRT authority expansion", "The correction adds no SRT admission, canonical, bulk, background, or later-parser mutation surface.", ("tests/test_m06a_srt_packaging.py::test_m06a_srt_c1_008_no_srt_mutation_or_canonical_authority",)),
+)
+
+M06A_SRT_V1_C1_EXPECTED_IDS = tuple(
+    f"M06A-SRT-C1-{value:03d}" for value in range(1, 9)
+)
+
 M06A_TEXT_V1_EXPECTED_IDS = tuple(
     [f"M06A-TEXT-ADMIT-{value:03d}" for value in range(1, 11)]
     + [f"M06A-TEXT-CANON-{value:03d}" for value in range(11, 29)]
@@ -525,6 +540,7 @@ SUITES = {
     "m06a-phase3a": M06A_PHASE3A_INVARIANTS,
     "m06a-text-v1": M06A_TEXT_V1_INVARIANTS,
     "m06a-srt-v1": M06A_SRT_V1_INVARIANTS,
+    "m06a-srt-v1-c1": M06A_SRT_V1_C1_INVARIANTS,
 }
 
 
@@ -699,6 +715,53 @@ def srt_v1_contract_metadata(results: list[dict[str, object]]) -> dict[str, obje
     }
 
 
+
+def srt_v1_c1_contract_metadata(results: list[dict[str, object]]) -> dict[str, object]:
+    from discrepancy_desk.srt_contract import (
+        SRT_CONFIG_SHA256,
+        SRT_DEPENDENCY_LOCK_SHA256,
+        SRT_IMPLEMENTATION_SHA256,
+        SRT_RESOURCE_MANIFEST_SHA256,
+        SRT_SCHEMA_SHA256,
+    )
+
+    project_root = Path.cwd().resolve()
+    by_id = {str(result["invariant_id"]): result for result in results}
+    if any(
+        by_id.get(value, {}).get("passed") is not True
+        for value in M06A_SRT_V1_C1_EXPECTED_IDS
+    ):
+        raise RuntimeError("D041 SRT C1 metadata lacks a required passing proof")
+    package = (
+        project_root.parent
+        / "discrepancy-desk-docs"
+        / "05-implementation-planning"
+        / "m06a-srt-v1-c1-self-review-correction-package.md"
+    )
+    if not package.is_file():
+        raise RuntimeError("D041 SRT C1 correction package is unavailable")
+    return {
+        "runner_registry_sha256": sha256_path(Path(__file__).resolve()),
+        "correction_package_sha256": sha256_path(package),
+        "resource_manifest_sha256": SRT_RESOURCE_MANIFEST_SHA256,
+        "config_sha256": SRT_CONFIG_SHA256,
+        "schema_sha256": SRT_SCHEMA_SHA256,
+        "implementation_sha256": SRT_IMPLEMENTATION_SHA256,
+        "dependency_lock_sha256": SRT_DEPENDENCY_LOCK_SHA256,
+        "packaged_schema_tamper_refused": by_id["M06A-SRT-C1-002"]["passed"],
+        "self_authorizing_config_tamper_refused": by_id["M06A-SRT-C1-003"]["passed"],
+        "manifest_and_lock_tamper_refused": by_id["M06A-SRT-C1-004"]["passed"],
+        "implementation_tamper_refused": by_id["M06A-SRT-C1-005"]["passed"],
+        "valid_packaged_execution": by_id["M06A-SRT-C1-006"]["passed"],
+        "per_parser_status_isolation": by_id["M06A-SRT-C1-007"]["passed"],
+        "srt_admission_authorized": False,
+        "srt_canonical_execution_authorized": False,
+        "later_capability_leakage_absent": by_id["M06A-SRT-C1-008"]["passed"],
+        "review_type": "project-steward-self-review",
+        "independent_review_claim": False,
+    }
+
+
 def validate_suite(name: str, invariants: tuple[Invariant, ...]) -> None:
     ids = [invariant.invariant_id for invariant in invariants]
     if not ids:
@@ -715,6 +778,8 @@ def validate_suite(name: str, invariants: tuple[Invariant, ...]) -> None:
         raise RuntimeError("M06-A text-v1 invariant mapping diverges from the D039 set")
     if name == "m06a-srt-v1" and tuple(ids) != M06A_SRT_V1_EXPECTED_IDS:
         raise RuntimeError("M06-A SRT-v1 invariant mapping diverges from the D040 set")
+    if name == "m06a-srt-v1-c1" and tuple(ids) != M06A_SRT_V1_C1_EXPECTED_IDS:
+        raise RuntimeError("M06-A SRT-v1 C1 mapping diverges from the D041 set")
     for invariant in invariants:
         if invariant.disposition == "execute" and not invariant.tests:
             raise RuntimeError(f"{invariant.invariant_id} has no test mapping")
@@ -854,7 +919,9 @@ def main() -> int:
     expected_commit = git_sha()
     evidence_root = (
         Path("runtime/test-evidence/hammer") / args.suite
-        if args.suite in {"m06a-phase3a", "m06a-text-v1", "m06a-srt-v1"}
+        if args.suite in {
+            "m06a-phase3a", "m06a-text-v1", "m06a-srt-v1", "m06a-srt-v1-c1"
+        }
         else Path("runtime/test-evidence") / args.suite
     )
     evidence_root.mkdir(parents=True, exist_ok=True)
@@ -877,6 +944,11 @@ def main() -> int:
     phase_contract = phase3a_contract_metadata(results) if args.suite == "m06a-phase3a" else None
     text_v1_contract = text_v1_contract_metadata(results) if args.suite == "m06a-text-v1" else None
     srt_v1_contract = srt_v1_contract_metadata(results) if args.suite == "m06a-srt-v1" else None
+    srt_v1_c1_contract = (
+        srt_v1_c1_contract_metadata(results)
+        if args.suite == "m06a-srt-v1-c1"
+        else None
+    )
     payload = {
         "schema_version": 2,
         "suite": args.suite,
@@ -892,6 +964,7 @@ def main() -> int:
         "phase3a_contract": phase_contract,
         "text_v1_contract": text_v1_contract,
         "srt_v1_contract": srt_v1_contract,
+        "srt_v1_c1_contract": srt_v1_c1_contract,
         "summary": {
             "required": len(invariants),
             "executed": sum(result["disposition"] == "execute" for result in results),
@@ -908,7 +981,9 @@ def main() -> int:
     if not dirty:
         immutable = (
             Path("runtime/test-evidence") / args.suite / "by-commit" / f"{expected_commit}.json"
-            if args.suite in {"m06a-phase3a", "m06a-text-v1", "m06a-srt-v1"}
+            if args.suite in {
+                "m06a-phase3a", "m06a-text-v1", "m06a-srt-v1", "m06a-srt-v1-c1"
+            }
             else output_root / "by-commit" / f"{expected_commit}.json"
         )
         immutable.parent.mkdir(parents=True, exist_ok=True)
