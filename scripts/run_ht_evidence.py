@@ -519,7 +519,7 @@ M06A_SRT_V1_C1_EXPECTED_IDS = tuple(
 M06A_VTT_V1_INVARIANTS = (
     Invariant("M06A-VTT-001", "Closed text/SRT tuple preservation", "Every closed D039/D040/D041 tuple input remains byte-identical to application commit 6a808225.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_001_closed_text_and_srt_tuple_inputs_are_byte_identical",)),
     Invariant("M06A-VTT-002", "Parser-scoped VTT resource tuple", "The VTT config, schema, implementation, and dependency lock are bound exactly.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_002_scoped_manifest_is_complete_and_exact",)),
-    Invariant("M06A-VTT-003", "Packaged full-tuple tamper refusal", "Manifest, config, schema, implementation, and lock tamper fail before parsing with no candidate.", ("tests/test_m06a_vtt_packaging.py::test_m06a_vtt_003_packaged_worker_rejects_full_tuple_tamper",)),
+    Invariant("M06A-VTT-003", "Source and packaged full-tuple tamper refusal", "Manifest, config, schema, implementation, and lock tamper fail before parsing with no candidate in source and packaged execution.", ("tests/test_m06a_vtt_packaging.py::test_m06a_vtt_c1_005_source_full_tuple_tamper_fails_before_worker_launch", "tests/test_m06a_vtt_packaging.py::test_m06a_vtt_003_packaged_worker_rejects_full_tuple_tamper")),
     Invariant("M06A-VTT-004", "Fresh V0004 under-test authority only", "A fresh V0004 Vault installs one immutable VTT under-test candidate and zero owner admissions.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_004_fresh_v0004_vault_installs_under_test_only",)),
     Invariant("M06A-VTT-005", "No VTT mutation or canonical surface", "No admit, parse, lifecycle, bulk, background, or canonical VTT surface exists.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_005_no_admission_or_canonical_surface",)),
     Invariant("M06A-VTT-006", "Exact signature and header framing", "The WEBVTT signature, optional header text, and required blank separation are exact.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_006_signature_header_and_blank_separation",)),
@@ -537,7 +537,7 @@ M06A_VTT_V1_INVARIANTS = (
     Invariant("M06A-VTT-018", "Payload inertness", "Cue markup and entities remain exact inert text and are never rendered or fetched.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_018_payload_markup_is_preserved_inert",)),
     Invariant("M06A-VTT-019", "Malformed structure refusal", "Malformed signature, timing, separation, payload, or arrow fails with no partial candidate.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_019_malformed_structure_fails",)),
     Invariant("M06A-VTT-020", "Exact limits", "Input, line, cue, element, region, header, note, identifier, and setting limits fail closed.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_020_all_limits_fail_closed",)),
-    Invariant("M06A-VTT-021", "Independent locator reconciliation", "Tampered cue and nested payload locators are detected independently.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_021_coverage_reconciliation_detects_tamper",)),
+    Invariant("M06A-VTT-021", "Independent locator/count/warning reconciliation", "Tampered cue, nested, line, count, line-ending, and warning facts are detected independently even when the parser repeats them.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_021_coverage_reconciliation_detects_tamper", "tests/test_m06a_vtt_parser.py::test_m06a_vtt_c1_003_independent_line_reconciliation_rejects_parser_repetition", "tests/test_m06a_vtt_parser.py::test_m06a_vtt_c1_004_independent_counts_and_warnings_reject_parser_repetition")),
     Invariant("M06A-VTT-022", "Deterministic source execution", "Separate source workers produce byte-identical candidates and packages.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_022_source_worker_and_package_are_deterministic",)),
     Invariant("M06A-VTT-023", "Source worker denial controls", "Source worker denials and malformed failure receipts preserve no candidate.", ("tests/test_m06a_vtt_packaging.py::test_m06a_vtt_023_source_worker_denials_and_failure_receipt",)),
     Invariant("M06A-VTT-024", "Real packaged authority parity", "The real packaged sidecar validates exact VTT resources and denial controls.", ("tests/test_m06a_vtt_packaging.py::test_m06a_vtt_024_real_packaged_sidecar_uses_exact_resources",)),
@@ -548,6 +548,22 @@ M06A_VTT_V1_INVARIANTS = (
 )
 
 M06A_VTT_V1_EXPECTED_IDS = tuple(f"M06A-VTT-{value:03d}" for value in range(1, 29))
+
+M06A_VTT_V1_C1_INVARIANTS = (
+    Invariant("M06A-VTT-C1-001", "Corrected exact resource constants", "The corrected implementation and parser-scoped manifest constants match live config, schema, implementation, and lock bytes.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_c1_001_corrected_resource_constants_match_live_bytes",)),
+    Invariant("M06A-VTT-C1-002", "ASCII-only numeric grammar", "Source and real packaged workers reject Arabic-Indic, extended Arabic-Indic, full-width, Devanagari, and other non-ASCII decimal digits in timestamps and recognized numeric settings.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_c1_002_non_ascii_numeric_grammar_is_rejected", "tests/test_m06a_vtt_packaging.py::test_m06a_vtt_c1_002_packaged_non_ascii_numeric_grammar_is_rejected")),
+    Invariant("M06A-VTT-C1-003", "Independent line-locator reconciliation", "Fabricated top-level and nested line locators fail even when a substituted parser repeats them.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_c1_003_independent_line_reconciliation_rejects_parser_repetition",)),
+    Invariant("M06A-VTT-C1-004", "Independent counts and warning facts", "Fabricated decoded counts, source-line counts, line-ending profiles, and warnings fail even when a substituted parser repeats them.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_c1_004_independent_counts_and_warnings_reject_parser_repetition",)),
+    Invariant("M06A-VTT-C1-005", "Source full-tuple tamper refusal", "Source manifest, config, schema, implementation, and lock tamper fail before worker launch.", ("tests/test_m06a_vtt_packaging.py::test_m06a_vtt_c1_005_source_full_tuple_tamper_fails_before_worker_launch",)),
+    Invariant("M06A-VTT-C1-006", "Packaged full-tuple tamper refusal", "The real packaged sidecar continues to reject manifest, self-hashed config, schema, implementation, and lock tamper with no candidate.", ("tests/test_m06a_vtt_packaging.py::test_m06a_vtt_003_packaged_worker_rejects_full_tuple_tamper",)),
+    Invariant("M06A-VTT-C1-007", "Expanded exact corpus coverage", "The sealed corpus directly covers LF/CRLF/CR headers, mixed multiline payload, NOTE positions, active-looking payload, and non-ASCII numeric refusal.", ("tests/test_m06a_vtt_parser.py::test_m06a_vtt_c1_007_expanded_fixture_corpus_and_direct_mappings", "tests/test_m06a_vtt_parser.py::test_m06a_vtt_007_header_only_is_valid_with_complete_coverage", "tests/test_m06a_vtt_parser.py::test_m06a_vtt_016_note_blocks_are_inert_regions", "tests/test_m06a_vtt_parser.py::test_m06a_vtt_018_payload_markup_is_preserved_inert")),
+    Invariant("M06A-VTT-C1-008", "Valid source and packaged execution retained", "Corrected source and packaged execution remain deterministic and denial-controlled.", ("tests/test_m06a_vtt_packaging.py::test_m06a_vtt_c1_008_valid_source_and_packaged_execution_remain_green",)),
+    Invariant("M06A-VTT-C1-009", "No authority expansion", "The correction changes only the exact eight-path surface and adds no admission, canonical, retrofit, JSON, Phase 3B, or later authority.", ("tests/test_m06a_vtt_packaging.py::test_m06a_vtt_c1_009_no_authority_or_later_capability_expansion",)),
+)
+
+M06A_VTT_V1_C1_EXPECTED_IDS = tuple(
+    f"M06A-VTT-C1-{value:03d}" for value in range(1, 10)
+)
 
 M06A_TEXT_V1_EXPECTED_IDS = tuple(
     [f"M06A-TEXT-ADMIT-{value:03d}" for value in range(1, 11)]
@@ -575,6 +591,7 @@ SUITES = {
     "m06a-srt-v1": M06A_SRT_V1_INVARIANTS,
     "m06a-srt-v1-c1": M06A_SRT_V1_C1_INVARIANTS,
     "m06a-vtt-v1": M06A_VTT_V1_INVARIANTS,
+    "m06a-vtt-v1-c1": M06A_VTT_V1_C1_INVARIANTS,
 }
 
 
@@ -836,6 +853,57 @@ def vtt_v1_contract_metadata(results: list[dict[str, object]]) -> dict[str, obje
     }
 
 
+
+def vtt_v1_c1_contract_metadata(results: list[dict[str, object]]) -> dict[str, object]:
+    from discrepancy_desk.vtt_contract import (
+        VTT_CONFIG_SHA256,
+        VTT_DEPENDENCY_LOCK_SHA256,
+        VTT_IMPLEMENTATION_SHA256,
+        VTT_RESOURCE_MANIFEST_SHA256,
+        VTT_SCHEMA_SHA256,
+    )
+
+    project_root = Path.cwd().resolve()
+    by_id = {str(result["invariant_id"]): result for result in results}
+    if any(
+        by_id.get(value, {}).get("passed") is not True
+        for value in M06A_VTT_V1_C1_EXPECTED_IDS
+    ):
+        raise RuntimeError("D047 VTT C1 metadata lacks a required passing proof")
+    package = (
+        project_root.parent
+        / "discrepancy-desk-docs"
+        / "05-implementation-planning"
+        / "m06a-vtt-v1-c1-self-review-correction-package.md"
+    )
+    fixture_manifest = project_root / "tests/fixtures/m06a/parsers/vtt/manifest.sha256"
+    if not package.is_file() or not fixture_manifest.is_file():
+        raise RuntimeError("D047 VTT C1 evidence resources are unavailable")
+    return {
+        "runner_registry_sha256": sha256_path(Path(__file__).resolve()),
+        "correction_package_sha256": sha256_path(package),
+        "fixture_manifest_sha256": sha256_path(fixture_manifest),
+        "resource_manifest_sha256": VTT_RESOURCE_MANIFEST_SHA256,
+        "config_sha256": VTT_CONFIG_SHA256,
+        "schema_sha256": VTT_SCHEMA_SHA256,
+        "implementation_sha256": VTT_IMPLEMENTATION_SHA256,
+        "dependency_lock_sha256": VTT_DEPENDENCY_LOCK_SHA256,
+        "ascii_numeric_grammar_proof": by_id["M06A-VTT-C1-002"]["passed"],
+        "independent_line_reconciliation": by_id["M06A-VTT-C1-003"]["passed"],
+        "independent_count_warning_reconciliation": by_id["M06A-VTT-C1-004"]["passed"],
+        "source_full_tuple_tamper_refused": by_id["M06A-VTT-C1-005"]["passed"],
+        "packaged_full_tuple_tamper_refused": by_id["M06A-VTT-C1-006"]["passed"],
+        "expanded_corpus_proof": by_id["M06A-VTT-C1-007"]["passed"],
+        "valid_source_packaged_execution": by_id["M06A-VTT-C1-008"]["passed"],
+        "vtt_admission_authorized": False,
+        "vtt_canonical_execution_authorized": False,
+        "existing_vault_retrofit": False,
+        "later_capability_leakage_absent": by_id["M06A-VTT-C1-009"]["passed"],
+        "review_type": "project-steward-self-review",
+        "independent_review_claim": False,
+    }
+
+
 def validate_suite(name: str, invariants: tuple[Invariant, ...]) -> None:
     ids = [invariant.invariant_id for invariant in invariants]
     if not ids:
@@ -856,6 +924,8 @@ def validate_suite(name: str, invariants: tuple[Invariant, ...]) -> None:
         raise RuntimeError("M06-A SRT-v1 C1 mapping diverges from the D041 set")
     if name == "m06a-vtt-v1" and tuple(ids) != M06A_VTT_V1_EXPECTED_IDS:
         raise RuntimeError("M06-A VTT-v1 mapping diverges from the D045 set")
+    if name == "m06a-vtt-v1-c1" and tuple(ids) != M06A_VTT_V1_C1_EXPECTED_IDS:
+        raise RuntimeError("M06-A VTT-v1 C1 mapping diverges from the D047 set")
     for invariant in invariants:
         if invariant.disposition == "execute" and not invariant.tests:
             raise RuntimeError(f"{invariant.invariant_id} has no test mapping")
@@ -996,7 +1066,7 @@ def main() -> int:
     evidence_root = (
         Path("runtime/test-evidence/hammer") / args.suite
         if args.suite in {
-            "m06a-phase3a", "m06a-text-v1", "m06a-srt-v1", "m06a-srt-v1-c1", "m06a-vtt-v1"
+            "m06a-phase3a", "m06a-text-v1", "m06a-srt-v1", "m06a-srt-v1-c1", "m06a-vtt-v1", "m06a-vtt-v1-c1"
         }
         else Path("runtime/test-evidence") / args.suite
     )
@@ -1026,6 +1096,11 @@ def main() -> int:
         else None
     )
     vtt_v1_contract = vtt_v1_contract_metadata(results) if args.suite == "m06a-vtt-v1" else None
+    vtt_v1_c1_contract = (
+        vtt_v1_c1_contract_metadata(results)
+        if args.suite == "m06a-vtt-v1-c1"
+        else None
+    )
     payload = {
         "schema_version": 2,
         "suite": args.suite,
@@ -1043,6 +1118,7 @@ def main() -> int:
         "srt_v1_contract": srt_v1_contract,
         "srt_v1_c1_contract": srt_v1_c1_contract,
         "vtt_v1_contract": vtt_v1_contract,
+        "vtt_v1_c1_contract": vtt_v1_c1_contract,
         "summary": {
             "required": len(invariants),
             "executed": sum(result["disposition"] == "execute" for result in results),
@@ -1060,7 +1136,7 @@ def main() -> int:
         immutable = (
             Path("runtime/test-evidence") / args.suite / "by-commit" / f"{expected_commit}.json"
             if args.suite in {
-                "m06a-phase3a", "m06a-text-v1", "m06a-srt-v1", "m06a-srt-v1-c1", "m06a-vtt-v1"
+                "m06a-phase3a", "m06a-text-v1", "m06a-srt-v1", "m06a-srt-v1-c1", "m06a-vtt-v1", "m06a-vtt-v1-c1"
             }
             else output_root / "by-commit" / f"{expected_commit}.json"
         )

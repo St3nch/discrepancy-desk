@@ -8,7 +8,7 @@ from discrepancy_desk.parser_contract import EncodingFailure, LimitExceeded, Mal
 
 _LINE_PATTERN = re.compile(r"[^\r\n]*(?:\r\n|\r|\n|$)")
 _SIGNATURE = re.compile(r"^WEBVTT(?:[ \t](?P<header>.*))?$")
-_TIMESTAMP_TOKEN = r"(?:(?P<{p}h>\d{{2,}}):)?(?P<{p}m>\d{{2}}):(?P<{p}s>\d{{2}})\.(?P<{p}ms>\d{{3}})"
+_TIMESTAMP_TOKEN = r"(?:(?P<{p}h>[0-9]{{2,}}):)?(?P<{p}m>[0-9]{{2}}):(?P<{p}s>[0-9]{{2}})\.(?P<{p}ms>[0-9]{{3}})"
 _TIMING = re.compile(
     "^"
     + _TIMESTAMP_TOKEN.format(p="s")
@@ -17,9 +17,9 @@ _TIMING = re.compile(
     + r"(?P<settings>(?:[ \t]+.*)?)$"
 )
 _SETTING_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*$")
-_PERCENTAGE = re.compile(r"^(?P<value>\d{1,3})%$")
-_LINE_VALUE = re.compile(r"^(?P<base>-?\d+|\d{1,3}%)(?:,(?P<anchor>start|center|end))?$")
-_POSITION_VALUE = re.compile(r"^(?P<base>\d{1,3}%)(?:,(?P<anchor>line-left|center|line-right))?$")
+_PERCENTAGE = re.compile(r"^(?P<value>[0-9]{1,3})%$")
+_LINE_VALUE = re.compile(r"^(?P<base>-?[0-9]+|[0-9]{1,3}%)(?:,(?P<anchor>start|center|end))?$")
+_POSITION_VALUE = re.compile(r"^(?P<base>[0-9]{1,3}%)(?:,(?P<anchor>line-left|center|line-right))?$")
 
 
 @dataclass(frozen=True, slots=True)

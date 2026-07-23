@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import codecs
+import re
 from pathlib import Path
 
 from .parser_contract import (
@@ -16,8 +17,8 @@ from .parser_contract import (
 
 VTT_PARSER_ID = "m06a.vtt.v1"
 VTT_IMPLEMENTATION_VERSION = "0.1.0"
-VTT_IMPLEMENTATION_SHA256 = "8e98ac8552ba6048af37adb1f0c2cc1946bf5153537bc019dcd0056ae145b350"
-VTT_RESOURCE_MANIFEST_SHA256 = "9eb1be7efda9707d9eaeebb5f69e68f32fce6da816b11c8183fdea6b1368dbb7"
+VTT_IMPLEMENTATION_SHA256 = "291c6389a39683a7dab2a471a58773ecc90de711a667e3afb6f0a652d3da850a"
+VTT_RESOURCE_MANIFEST_SHA256 = "2723624c58b5bdbfeffd8404b49261ee96de820f0d4a7244e4ae338cce8bc18b"
 VTT_CONFIG_SHA256 = "2caf5a54bbf13c470c09428d191921203cbe23443168211dc76c9068a89afce5"
 VTT_SCHEMA_SHA256 = "1121baef45ab0f8582ee7d2005b81f235beb720520cab36791eb3d52fd595aa9"
 VTT_DEPENDENCY_LOCK_SHA256 = "feb1aea2f45166a25c6b1618798790f65656db9490dc63d77481c519c8765351"
@@ -100,6 +101,89 @@ def _offsets(text: str, bom_size: int) -> list[int]:
     return result
 
 
+_CONTRACT_TIMESTAMP_TOKEN = r"(?:(?P<{p}h>[0-9]{{2,}}):)?(?P<{p}m>[0-9]{{2}}):(?P<{p}s>[0-9]{{2}})\.(?P<{p}ms>[0-9]{{3}})"
+_CONTRACT_TIMING = re.compile(
+    "^"
+    + _CONTRACT_TIMESTAMP_TOKEN.format(p="s")
+    + r"[ \t]+-->[ \t]+"
+    + _CONTRACT_TIMESTAMP_TOKEN.format(p="e")
+    + r"(?P<settings>(?:[ \t]+.*)?)$"
+)
+_RECOGNIZED_SETTINGS = frozenset({"vertical", "line", "position", "size", "align"})
+
+
+def _logical_line_spans(text: str) -> list[tuple[int, int, int]]:
+    result: list[tuple[int, int, int]] = []
+    cursor = 0
+    number = 1
+    while cursor < len(text):
+        start = cursor
+        while cursor < len(text) and text[cursor] not in "\r\n":
+            cursor += 1
+        if cursor < len(text):
+            if text[cursor] == "\r" and cursor + 1 < len(text) and text[cursor + 1] == "\n":
+                cursor += 2
+            else:
+                cursor += 1
+        result.append((start, cursor, number))
+        number += 1
+    return result
+
+
+def _line_ending_profile(text: str) -> str:
+    has_crlf = "\r\n" in text
+    remaining = text.replace("\r\n", "")
+    values = [
+        name
+        for present, name in (
+            (has_crlf, "CRLF"),
+            ("\r" in remaining, "CR"),
+            ("\n" in remaining, "LF"),
+        )
+        if present
+    ]
+    if not values:
+        return "none"
+    return values[0] if len(values) == 1 else "mixed:" + ",".join(values)
+
+
+def _strip_line_ending(raw: str) -> str:
+    if raw.endswith("\r\n"):
+        return raw[:-2]
+    if raw.endswith(("\r", "\n")):
+        return raw[:-1]
+    return raw
+
+
+def _timestamp_from_match(match: re.Match[str], prefix: str) -> int:
+    hours = int(match.group(prefix + "h") or "0")
+    minutes = int(match.group(prefix + "m"))
+    seconds = int(match.group(prefix + "s"))
+    milliseconds = int(match.group(prefix + "ms"))
+    if minutes >= 60 or seconds >= 60:
+        raise PackagingMismatch("VTT timing source fields are invalid")
+    return ((hours * 60 + minutes) * 60 + seconds) * 1000 + milliseconds
+
+
+def _validate_exact_line_locator(
+    locator: dict[str, int],
+    *,
+    char_start: int,
+    char_end: int,
+    starts: dict[int, int],
+    ends: dict[int, int],
+) -> None:
+    expected_start = starts.get(char_start)
+    expected_end = ends.get(char_end)
+    if expected_start is None or expected_end is None or expected_end < expected_start:
+        raise PartialOutputFailure("VTT locator does not align to complete logical lines")
+    if (
+        locator["source_line_start"] != expected_start
+        or locator["source_line_end"] != expected_end
+    ):
+        raise PartialOutputFailure("VTT line locator does not reproduce source lines")
+
+
 def _locator(value: object, *, input_size: int, allow_zero: bool = False) -> dict[str, int]:
     required = {
         "source_byte_end", "source_byte_start", "source_character_end",
@@ -113,6 +197,8 @@ def _locator(value: object, *, input_size: int, allow_zero: bool = False) -> dic
     if allow_zero and result["source_character_start"] == result["source_character_end"] == 0:
         if not (0 <= result["source_byte_start"] < result["source_byte_end"] <= input_size):
             raise PartialOutputFailure("VTT zero-character locator is outside the input")
+        if result["source_line_start"] != 0 or result["source_line_end"] != 0:
+            raise PartialOutputFailure("VTT encoding preamble line locator is invalid")
         return result
     if not (0 <= result["source_byte_start"] < result["source_byte_end"] <= input_size):
         raise PartialOutputFailure("VTT byte locator is outside the input")
@@ -167,6 +253,16 @@ def validate_vtt_candidate(candidate: object, *, input_bytes: bytes) -> dict[str
 
     text, bom_size = _source(input_bytes)
     offsets = _offsets(text, bom_size)
+    logical_lines = _logical_line_spans(text)
+    line_starts = {start: number for start, _end, number in logical_lines}
+    line_ends = {end: number for _start, end, number in logical_lines}
+    profile = _line_ending_profile(text)
+    if coverage["decoded_character_count"] != len(text):
+        raise PartialOutputFailure("VTT decoded-character count diverges from source")
+    if coverage["source_line_count"] != len(logical_lines):
+        raise PartialOutputFailure("VTT source-line count diverges from source")
+    if candidate.get("line_ending_profile") != profile:
+        raise PartialOutputFailure("VTT line-ending profile diverges from source")
     byte_spans: list[tuple[int, int]] = []
     char_spans: list[tuple[int, int]] = []
     preambles = 0
@@ -189,6 +285,13 @@ def validate_vtt_candidate(candidate: object, *, input_bytes: bytes) -> dict[str
         if kind == "encoding_preamble":
             preambles += 1
         else:
+            _validate_exact_line_locator(
+                region["source_locator"],
+                char_start=cs,
+                char_end=ce,
+                starts=line_starts,
+                ends=line_ends,
+            )
             char_spans.append((cs, ce))
 
     element_fields = {
@@ -210,6 +313,13 @@ def validate_vtt_candidate(candidate: object, *, input_bytes: bytes) -> dict[str
             raise PackagingMismatch("VTT cue content hash is invalid")
         byte_spans.append((bs, be))
         char_spans.append((cs, ce))
+        _validate_exact_line_locator(
+            element["source_locator"],
+            char_start=cs,
+            char_end=ce,
+            starts=line_starts,
+            ends=line_ends,
+        )
         for locator_name, raw_name in (
             ("timing_line_source_locator", "timing_line_raw"),
             ("cue_payload_source_locator", "cue_payload_raw"),
@@ -220,14 +330,50 @@ def validate_vtt_candidate(candidate: object, *, input_bytes: bytes) -> dict[str
             )
             if not (bs <= nbs < nbe <= be and cs <= ncs < nce <= ce):
                 raise PartialOutputFailure("VTT nested cue locator escapes its cue")
+            _validate_exact_line_locator(
+                element[locator_name],
+                char_start=ncs,
+                char_end=nce,
+                starts=line_starts,
+                ends=line_ends,
+            )
+        timing_content = _strip_line_ending(str(element["timing_line_raw"]))
+        timing_match = _CONTRACT_TIMING.fullmatch(timing_content)
+        if timing_match is None:
+            raise PackagingMismatch("VTT timing source does not match the independent grammar")
+        independent_start = _timestamp_from_match(timing_match, "s")
+        independent_end = _timestamp_from_match(timing_match, "e")
+        if (
+            element.get("start_milliseconds") != independent_start
+            or element.get("end_milliseconds") != independent_end
+        ):
+            raise PartialOutputFailure("VTT emitted timestamps diverge from timing source")
+        payload = str(element["cue_payload_raw"])
+        if element.get("normalized_text") != payload.replace("\r\n", "\n").replace("\r", "\n"):
+            raise PartialOutputFailure("VTT normalized payload diverges from source")
         settings = element.get("settings")
         if not isinstance(settings, list):
             raise PackagingMismatch("VTT settings are malformed")
-        for setting_ordinal, setting in enumerate(settings):
+        raw_settings = timing_match.group("settings").strip()
+        setting_tokens = re.split(r"[ \t]+", raw_settings) if raw_settings else []
+        if len(settings) != len(setting_tokens):
+            raise PartialOutputFailure("VTT setting records diverge from timing source")
+        for setting_ordinal, (setting, token) in enumerate(zip(settings, setting_tokens, strict=True)):
             if not isinstance(setting, dict) or set(setting) != {"name", "ordinal", "raw_text", "recognized", "value"}:
                 raise PackagingMismatch("VTT setting fields are invalid")
             if setting.get("ordinal") != setting_ordinal or type(setting.get("recognized")) is not bool:
                 raise PackagingMismatch("VTT setting metadata is invalid")
+            if token.count(":") != 1:
+                raise PackagingMismatch("VTT timing source contains a malformed setting")
+            name, value = token.split(":", 1)
+            expected_recognized = name in _RECOGNIZED_SETTINGS
+            if (
+                setting.get("raw_text") != token
+                or setting.get("name") != name
+                or setting.get("value") != value
+                or setting.get("recognized") is not expected_recognized
+            ):
+                raise PartialOutputFailure("VTT setting metadata diverges from timing source")
 
     if preambles != (1 if bom_size else 0):
         raise PartialOutputFailure("VTT encoding preamble coverage is incomplete")
@@ -242,6 +388,29 @@ def validate_vtt_candidate(candidate: object, *, input_bytes: bytes) -> dict[str
             cursor = end
         if cursor != expected:
             raise PartialOutputFailure(f"VTT {label} locators omit source content")
+
+    expected_warnings: set[str] = set()
+    if bom_size:
+        expected_warnings.add("encoding_bom_removed")
+    if profile not in {"none", "LF"}:
+        expected_warnings.add("line_ending_normalized")
+    previous_end: int | None = None
+    for element in elements:
+        start_value = int(element["start_milliseconds"])
+        end_value = int(element["end_milliseconds"])
+        if previous_end is not None and start_value < previous_end:
+            expected_warnings.add("overlapping_cues")
+        previous_end = end_value
+        payload = str(element["cue_payload_raw"])
+        if "<" in payload or "&" in payload:
+            expected_warnings.add("cue_markup_preserved_inert")
+        if any(setting.get("recognized") is False for setting in element["settings"]):
+            expected_warnings.add("unsupported_cue_setting_preserved")
+    if warnings != sorted(expected_warnings):
+        raise PartialOutputFailure("VTT warning facts diverge from source")
+    for element in elements:
+        if element.get("warnings") != warnings:
+            raise PartialOutputFailure("VTT element warnings diverge from candidate warnings")
 
     from .parsers.vtt_v1 import parse_bytes
 

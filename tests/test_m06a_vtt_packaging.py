@@ -23,9 +23,13 @@ from discrepancy_desk.vtt_contract import (
 from discrepancy_desk.vtt_service import run_under_test_vtt_worker
 
 
-def _fixture() -> bytes:
+def _fixture_named(name: str) -> bytes:
     with zipfile.ZipFile("tests/fixtures/m06a/parsers/vtt/corpus.zip") as archive:
-        return archive.read("valid-basic.vtt")
+        return archive.read(name)
+
+
+def _fixture() -> bytes:
+    return _fixture_named("valid-basic.vtt")
 
 
 def _build_sidecar(project_root: Path) -> Path:
@@ -52,9 +56,13 @@ def _copy_sidecar(executable: Path, target: Path) -> Path:
 
 
 def _run(
-    executable: Path, operation_root: Path, *, config_sha256: str = VTT_CONFIG_SHA256
+    executable: Path,
+    operation_root: Path,
+    *,
+    config_sha256: str = VTT_CONFIG_SHA256,
+    data: bytes | None = None,
 ) -> tuple[int, dict[str, object], bytes | None]:
-    data = _fixture()
+    data = _fixture() if data is None else data
     operation_root.mkdir(parents=True)
     (operation_root / "verified-input.bin").write_bytes(data)
     request = {
@@ -182,3 +190,141 @@ def test_m06a_vtt_028_inherited_and_no_later_capability_surface() -> None:
         "/parsers/m06a.vtt.v1/admit", "/parse-vtt",
     ):
         assert forbidden not in combined
+
+
+@pytest.mark.parametrize(
+    "name",
+    (
+        "nonascii-arabic-indic-timestamp.vtt",
+        "nonascii-extended-arabic-timestamp.vtt",
+        "nonascii-fullwidth-timestamp.vtt",
+        "nonascii-devanagari-timestamp.vtt",
+        "nonascii-arabic-line.vtt",
+        "nonascii-fullwidth-size.vtt",
+        "nonascii-devanagari-position.vtt",
+    ),
+)
+def test_m06a_vtt_c1_002_packaged_non_ascii_numeric_grammar_is_rejected(
+    name: str, tmp_path: Path, packaged_vtt_sidecar: Path
+) -> None:
+    code, receipt, candidate = _run(
+        packaged_vtt_sidecar,
+        tmp_path / name.replace(".vtt", "-operation"),
+        data=_fixture_named(name),
+    )
+    assert code != 0
+    assert receipt["state"] == "failed"
+    assert receipt["terminal_outcome"] == "malformed_input"
+    assert candidate is None
+
+
+def _copy_source_project(target: Path) -> Path:
+    root = target / "source-project"
+    shutil.copytree("src/discrepancy_desk", root / "src/discrepancy_desk")
+    shutil.copytree(
+        "parser_resources/m06a.vtt.v1",
+        root / "parser_resources/m06a.vtt.v1",
+    )
+    shutil.copy2("uv.lock", root / "uv.lock")
+    return root
+
+
+def _run_source_resource_probe(root: Path) -> subprocess.CompletedProcess[str]:
+    script = f"""
+import sys
+from pathlib import Path
+sys.path.insert(0, {str(root / 'src')!r})
+from discrepancy_desk.vtt_service import load_vtt_resources_from_root
+load_vtt_resources_from_root(Path({str(root / 'parser_resources/m06a.vtt.v1')!r}))
+print('VALID')
+"""
+    return subprocess.run(
+        [sys.executable, "-I", "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+
+
+def test_m06a_vtt_c1_005_source_full_tuple_tamper_fails_before_worker_launch(
+    tmp_path: Path,
+) -> None:
+    clean = _copy_source_project(tmp_path / "clean")
+    clean_result = _run_source_resource_probe(clean)
+    assert clean_result.returncode == 0, clean_result.stderr
+    assert clean_result.stdout.strip() == "VALID"
+
+    cases = ("schema", "config", "manifest", "lock", "implementation")
+    for name in cases:
+        root = _copy_source_project(tmp_path / name)
+        if name == "schema":
+            target = root / "parser_resources/m06a.vtt.v1/schema.json"
+            target.write_text('{"tampered":true}', encoding="utf-8")
+        elif name == "config":
+            target = root / "parser_resources/m06a.vtt.v1/config.json"
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            payload["cue_limit"] += 1
+            target.write_text(
+                json.dumps(payload, separators=(",", ":"), sort_keys=True),
+                encoding="utf-8",
+            )
+        elif name == "manifest":
+            target = root / "parser_resources/m06a.vtt.v1/manifest.sha256"
+            target.write_bytes(target.read_bytes() + b"\nD047-source-tamper\n")
+        elif name == "lock":
+            target = root / "uv.lock"
+            target.write_bytes(target.read_bytes() + b"\nD047-source-tamper\n")
+        else:
+            target = root / "src/discrepancy_desk/parsers/vtt_v1.py"
+            target.write_bytes(target.read_bytes() + b"\n# D047 source tamper\n")
+        result = _run_source_resource_probe(root)
+        assert result.returncode != 0, name
+        assert "VALID" not in result.stdout
+
+
+def test_m06a_vtt_c1_008_valid_source_and_packaged_execution_remain_green(
+    tmp_path: Path, packaged_vtt_sidecar: Path
+) -> None:
+    data = _fixture_named("multiline-mixed.vtt")
+    first = run_under_test_vtt_worker(data)
+    second = run_under_test_vtt_worker(data)
+    assert first.exit_code == second.exit_code == 0
+    assert first.candidate_bytes == second.candidate_bytes
+    code, receipt, candidate = _run(
+        packaged_vtt_sidecar, tmp_path / "c1-valid-packaged", data=data
+    )
+    assert code == 0
+    assert receipt["state"] == "succeeded"
+    assert candidate is not None
+    assert set(receipt["controls"]) >= {
+        "socket_denied", "dns_denied", "subprocess_denied",
+        "filesystem_mutation_denied", "exec_denied", "bounded_filesystem",
+        "audit_hook_installed", "self_tested_denials",
+    }
+
+
+def test_m06a_vtt_c1_009_no_authority_or_later_capability_expansion() -> None:
+    changed = subprocess.run(
+        ["git", "diff", "--name-only", "a96928f482f7b6c308da81061f0e8f64c6ef2966"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    allowed = {
+        "src/discrepancy_desk/parsers/vtt_v1.py",
+        "src/discrepancy_desk/vtt_contract.py",
+        "parser_resources/m06a.vtt.v1/manifest.sha256",
+        "tests/fixtures/m06a/parsers/vtt/corpus.zip",
+        "tests/fixtures/m06a/parsers/vtt/manifest.sha256",
+        "tests/test_m06a_vtt_parser.py",
+        "tests/test_m06a_vtt_packaging.py",
+        "scripts/run_ht_evidence.py",
+    }
+    assert set(changed) <= allowed
+    for forbidden in (
+        "pyproject.toml", "uv.lock", "migrations/", "vault_migrations/",
+        "desktop/", "src/discrepancy_desk/vtt_service.py",
+        "src/discrepancy_desk/vtt_worker.py", "src/discrepancy_desk/web.py",
+    ):
+        assert not any(path == forbidden or path.startswith(forbidden) for path in changed)

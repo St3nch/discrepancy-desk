@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+import discrepancy_desk.parsers.vtt_v1 as vtt_parser_module
+
 from discrepancy_desk.parser_contract import (
     EncodingFailure,
     LimitExceeded,
@@ -16,7 +18,15 @@ from discrepancy_desk.parser_contract import (
     canonical_json,
 )
 from discrepancy_desk.parsers.vtt_v1 import parse_bytes
-from discrepancy_desk.vtt_contract import INITIAL_VTT_CONFIG, validate_vtt_candidate
+from discrepancy_desk.vtt_contract import (
+    INITIAL_VTT_CONFIG,
+    VTT_CONFIG_SHA256,
+    VTT_DEPENDENCY_LOCK_SHA256,
+    VTT_IMPLEMENTATION_SHA256,
+    VTT_RESOURCE_MANIFEST_SHA256,
+    VTT_SCHEMA_SHA256,
+    validate_vtt_candidate,
+)
 from discrepancy_desk.vtt_service import (
     assemble_under_test_vtt_package,
     list_vtt_status,
@@ -72,9 +82,16 @@ def test_m06a_vtt_002_scoped_manifest_is_complete_and_exact() -> None:
     assert hashlib.sha256((fixture_root / filename).read_bytes()).hexdigest() == digest
     with zipfile.ZipFile(fixture_root / filename) as archive:
         assert set(archive.namelist()) >= {
-            "valid-basic.vtt", "header-only.vtt", "notes-settings.vtt",
-            "style.vtt", "region.vtt", "utf16-le.vtt", "invalid-utf8.vtt",
-            "boundary-recipes.json",
+            "valid-basic.vtt", "header-only.vtt", "header-only-crlf.vtt",
+            "header-only-cr.vtt", "multiline-mixed.vtt", "notes-all-positions.vtt",
+            "active-looking-payload.vtt", "notes-settings.vtt", "style.vtt",
+            "region.vtt", "utf16-le.vtt", "invalid-utf8.vtt",
+            "nonascii-arabic-indic-timestamp.vtt",
+            "nonascii-extended-arabic-timestamp.vtt",
+            "nonascii-fullwidth-timestamp.vtt",
+            "nonascii-devanagari-timestamp.vtt",
+            "nonascii-arabic-line.vtt", "nonascii-fullwidth-size.vtt",
+            "nonascii-devanagari-position.vtt", "boundary-recipes.json",
         }
         assert all(".." not in Path(name).parts and not Path(name).is_absolute() for name in archive.namelist())
 
@@ -117,12 +134,19 @@ def test_m06a_vtt_006_signature_header_and_blank_separation() -> None:
     validate_vtt_candidate(candidate, input_bytes=data)
 
 
-def test_m06a_vtt_007_header_only_is_valid_with_complete_coverage() -> None:
-    data = _fixture("header-only.vtt")
+@pytest.mark.parametrize(
+    ("name", "profile"),
+    (("header-only.vtt", "LF"), ("header-only-crlf.vtt", "CRLF"), ("header-only-cr.vtt", "CR")),
+)
+def test_m06a_vtt_007_header_only_is_valid_with_complete_coverage(
+    name: str, profile: str
+) -> None:
+    data = _fixture(name)
     candidate = parse_bytes(data, INITIAL_VTT_CONFIG)
     assert candidate["elements"] == []
     assert candidate["coverage"]["complete"] is True
     assert candidate["coverage"]["input_byte_count"] == len(data)
+    assert candidate["line_ending_profile"] == profile
     validate_vtt_candidate(candidate, input_bytes=data)
 
 
@@ -210,11 +234,16 @@ def test_m06a_vtt_015_unknown_setting_is_preserved_inert() -> None:
 
 
 def test_m06a_vtt_016_note_blocks_are_inert_regions() -> None:
-    candidate = parse_bytes(_fixture("notes-settings.vtt"), INITIAL_VTT_CONFIG)
+    data = _fixture("notes-all-positions.vtt")
+    candidate = parse_bytes(data, INITIAL_VTT_CONFIG)
     notes = [row for row in candidate["regions"] if row["kind"] == "note_block"]
-    assert len(notes) == 1
-    assert notes[0]["raw_text"].startswith("NOTE retained note")
-    assert "retained note" not in candidate["elements"][0]["normalized_text"]
+    assert len(notes) == 3
+    assert [row["raw_text"].splitlines()[0] for row in notes] == [
+        "NOTE before", "NOTE between", "NOTE after"
+    ]
+    assert [row["normalized_text"].strip() for row in candidate["elements"]] == ["One", "Two"]
+    assert all("body" not in row["normalized_text"] for row in candidate["elements"])
+    validate_vtt_candidate(candidate, input_bytes=data)
 
 
 def test_m06a_vtt_017_style_region_and_timeline_mapping_fail() -> None:
@@ -226,11 +255,14 @@ def test_m06a_vtt_017_style_region_and_timeline_mapping_fail() -> None:
 
 
 def test_m06a_vtt_018_payload_markup_is_preserved_inert() -> None:
-    candidate = parse_bytes(_fixture("notes-settings.vtt"), INITIAL_VTT_CONFIG)
-    payload = candidate["elements"][0]["cue_payload_raw"]
-    assert payload == "<c.green>Hello &amp; world</c>\n"
-    assert candidate["elements"][0]["normalized_text"] == payload
-    assert "cue_markup_preserved_inert" in candidate["warnings"]
+    for name in ("notes-settings.vtt", "active-looking-payload.vtt"):
+        data = _fixture(name)
+        candidate = parse_bytes(data, INITIAL_VTT_CONFIG)
+        payload = candidate["elements"][0]["cue_payload_raw"]
+        assert candidate["elements"][0]["normalized_text"] == payload.replace("\r\n", "\n").replace("\r", "\n")
+        assert "cue_markup_preserved_inert" in candidate["warnings"]
+        validate_vtt_candidate(candidate, input_bytes=data)
+    assert b"https://example.invalid" in _fixture("active-looking-payload.vtt")
 
 
 @pytest.mark.parametrize(
@@ -320,3 +352,112 @@ def test_m06a_vtt_026_under_test_creates_no_vault_output_authority(m06a_phase3a_
     )
     for table in ("parser_executions", "normalized_packages", "document_versions", "elements", "regions"):
         assert opened.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
+
+
+def test_m06a_vtt_c1_001_corrected_resource_constants_match_live_bytes() -> None:
+    resources = load_vtt_resources()
+    assert resources.manifest_sha256 == VTT_RESOURCE_MANIFEST_SHA256
+    assert resources.config_sha256 == VTT_CONFIG_SHA256
+    assert resources.schema_sha256 == VTT_SCHEMA_SHA256
+    assert resources.implementation_sha256 == VTT_IMPLEMENTATION_SHA256
+    assert resources.dependency_lock_sha256 == VTT_DEPENDENCY_LOCK_SHA256
+    assert hashlib.sha256(Path("src/discrepancy_desk/parsers/vtt_v1.py").read_bytes()).hexdigest() == VTT_IMPLEMENTATION_SHA256
+    assert hashlib.sha256((resources.root / "manifest.sha256").read_bytes()).hexdigest() == VTT_RESOURCE_MANIFEST_SHA256
+
+
+@pytest.mark.parametrize(
+    "name",
+    (
+        "nonascii-arabic-indic-timestamp.vtt",
+        "nonascii-extended-arabic-timestamp.vtt",
+        "nonascii-fullwidth-timestamp.vtt",
+        "nonascii-devanagari-timestamp.vtt",
+        "nonascii-arabic-line.vtt",
+        "nonascii-fullwidth-size.vtt",
+        "nonascii-devanagari-position.vtt",
+    ),
+)
+def test_m06a_vtt_c1_002_non_ascii_numeric_grammar_is_rejected(name: str) -> None:
+    data = _fixture(name)
+    with pytest.raises(MalformedInput):
+        parse_bytes(data, INITIAL_VTT_CONFIG)
+    worker = run_under_test_vtt_worker(data)
+    assert worker.exit_code != 0
+    assert worker.candidate is None
+    assert worker.receipt["terminal_outcome"] == "malformed_input"
+
+
+def _validate_with_parser_repeating(
+    monkeypatch: pytest.MonkeyPatch, candidate: dict[str, object], data: bytes
+) -> None:
+    monkeypatch.setattr(vtt_parser_module, "parse_bytes", lambda *_args, **_kwargs: candidate)
+    validate_vtt_candidate(candidate, input_bytes=data)
+
+
+def test_m06a_vtt_c1_003_independent_line_reconciliation_rejects_parser_repetition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = _fixture("multiline-mixed.vtt")
+    base = parse_bytes(data, INITIAL_VTT_CONFIG)
+    cases: list[dict[str, object]] = []
+    for locator_path in (
+        ("elements", 0, "source_locator"),
+        ("elements", 0, "timing_line_source_locator"),
+        ("elements", 0, "cue_payload_source_locator"),
+        ("regions", 0, "source_locator"),
+    ):
+        candidate = copy.deepcopy(base)
+        locator = candidate[locator_path[0]][locator_path[1]][locator_path[2]]
+        locator["source_line_start"] = 999
+        locator["source_line_end"] = 999
+        cases.append(candidate)
+    for candidate in cases:
+        with pytest.raises(PartialOutputFailure):
+            _validate_with_parser_repeating(monkeypatch, candidate, data)
+
+
+def test_m06a_vtt_c1_004_independent_counts_and_warnings_reject_parser_repetition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = _fixture("valid-basic.vtt")
+    base = parse_bytes(data, INITIAL_VTT_CONFIG)
+    mutations = []
+    candidate = copy.deepcopy(base)
+    candidate["coverage"]["source_line_count"] = 999
+    mutations.append(candidate)
+    candidate = copy.deepcopy(base)
+    candidate["coverage"]["decoded_character_count"] = 999
+    mutations.append(candidate)
+    candidate = copy.deepcopy(base)
+    candidate["line_ending_profile"] = "CR"
+    mutations.append(candidate)
+    candidate = copy.deepcopy(base)
+    candidate["warnings"] = ["overlapping_cues"]
+    for element in candidate["elements"]:
+        element["warnings"] = ["overlapping_cues"]
+    mutations.append(candidate)
+    for candidate in mutations:
+        with pytest.raises(PartialOutputFailure):
+            _validate_with_parser_repeating(monkeypatch, candidate, data)
+
+
+def test_m06a_vtt_c1_007_expanded_fixture_corpus_and_direct_mappings() -> None:
+    fixture_root = Path("tests/fixtures/m06a/parsers/vtt")
+    digest, filename = (fixture_root / "manifest.sha256").read_text(encoding="utf-8").strip().split("  ")
+    archive_path = fixture_root / filename
+    assert hashlib.sha256(archive_path.read_bytes()).hexdigest() == digest
+    with zipfile.ZipFile(archive_path) as archive:
+        names = set(archive.namelist())
+        required = {
+            "header-only.vtt", "header-only-crlf.vtt", "header-only-cr.vtt",
+            "multiline-mixed.vtt", "notes-all-positions.vtt",
+            "active-looking-payload.vtt", "nonascii-arabic-indic-timestamp.vtt",
+            "nonascii-extended-arabic-timestamp.vtt", "nonascii-fullwidth-timestamp.vtt",
+            "nonascii-devanagari-timestamp.vtt", "nonascii-arabic-line.vtt",
+            "nonascii-fullwidth-size.vtt", "nonascii-devanagari-position.vtt",
+        }
+        assert required <= names
+    mixed = parse_bytes(_fixture("multiline-mixed.vtt"), INITIAL_VTT_CONFIG)
+    assert mixed["line_ending_profile"] == "mixed:CRLF,CR,LF"
+    assert mixed["elements"][0]["normalized_text"] == "Line one\nLine two\n"
+    validate_vtt_candidate(mixed, input_bytes=_fixture("multiline-mixed.vtt"))
