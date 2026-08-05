@@ -3,17 +3,28 @@ import {
   approveRun,
   cancelRun,
   createCase,
+  createOperatorOpenQuestion,
   createRun,
+  decideOpenQuestion,
   getCase,
+  getRunClose,
   listCases,
   type CaseRecord,
   type GetCaseResult,
+  type GetRunCloseResult,
+  type OpenQuestionRecord,
   type RunRecord,
 } from "./api.ts";
 
 /** D9 / F-29 — must appear on every suspended run panel. */
 export const INSTANCE_VS_CLASS_NOTICE =
   "This answer resolves this run instance only. If the same uncertainty keeps recurring, amend the relevant rubric separately.";
+
+const DISPOSITIONS = [
+  "not-yet-worked",
+  "unresolved-awaiting-external-development",
+  "unresolved-likely-permanent",
+] as const;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -34,7 +45,8 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 type View =
   | { kind: "list" }
-  | { kind: "detail"; caseId: number };
+  | { kind: "detail"; caseId: number }
+  | { kind: "run-close"; caseId: number; runId: number };
 
 export function mount(root: HTMLElement): void {
   let view: View = { kind: "list" };
@@ -50,8 +62,10 @@ export function mount(root: HTMLElement): void {
     main.replaceChildren();
     if (view.kind === "list") {
       await renderList();
-    } else {
+    } else if (view.kind === "detail") {
       await renderDetail(view.caseId);
+    } else {
+      await renderRunClose(view.caseId, view.runId);
     }
   }
 
@@ -152,6 +166,18 @@ export function mount(root: HTMLElement): void {
         })();
       });
       row.append(document.createTextNode(" "), approveBtn);
+    }
+
+    if (run.status === "complete") {
+      const closeBtn = el("button", {
+        type: "button",
+        text: "Open run close (agenda)",
+      });
+      closeBtn.addEventListener("click", () => {
+        view = { kind: "run-close", caseId: run.case_id, runId: run.run_id };
+        void render();
+      });
+      row.append(document.createTextNode(" "), closeBtn);
     }
 
     const cancellable = ["draft", "approved", "claimed", "suspended"].includes(
@@ -257,6 +283,326 @@ export function mount(root: HTMLElement): void {
     return row;
   }
 
+  function dispositionSelect(id: string): HTMLSelectElement {
+    const sel = el("select", {
+      "aria-label": "Disposition",
+      id,
+    }) as HTMLSelectElement;
+    for (const d of DISPOSITIONS) {
+      const opt = document.createElement("option");
+      opt.value = d;
+      opt.textContent = d;
+      sel.append(opt);
+    }
+    return sel;
+  }
+
+  function renderAgendaItem(
+    item: OpenQuestionRecord,
+    onChange: () => void,
+  ): HTMLElement {
+    const card = el("li", { className: "agenda-item" }, [
+      el("div", {
+        className: `status-chip decision-${item.agenda_decision}`,
+        text: item.agenda_decision,
+      }),
+      el("p", {
+        className: "agenda-text",
+        text: item.proposed_text,
+      }),
+      el("p", {
+        className: "meta",
+        text: `Why: ${item.rationale}`,
+      }),
+      el("p", {
+        className: "meta",
+        text: `Proposed scope: ${item.proposed_scope}`,
+      }),
+      el("p", {
+        className: "meta",
+        text: `Lineage: run #${item.introduced_by_run_id} · “${item.source_run_question}”`,
+      }),
+    ]);
+
+    if (item.agenda_decision !== "pending") {
+      if (item.disposition) {
+        card.append(
+          el("p", {
+            className: "meta",
+            text: `Disposition: ${item.disposition}`,
+          }),
+        );
+      }
+      if (item.settled_text) {
+        card.append(
+          el("p", {
+            className: "meta",
+            text: `Settled: ${item.settled_text} (scope: ${item.settled_scope ?? "—"})`,
+          }),
+        );
+      }
+      return card;
+    }
+
+    const textInput = el("textarea", {
+      rows: "2",
+      "aria-label": "Edit or replace question text",
+      placeholder: "Edit text (approve) or write replacement",
+    }) as HTMLTextAreaElement;
+    textInput.value = item.proposed_text;
+    const scopeInput = el("textarea", {
+      rows: "2",
+      "aria-label": "Edit or replace scope",
+      placeholder: "Edit scope (approve) or write replacement scope",
+    }) as HTMLTextAreaElement;
+    scopeInput.value = item.proposed_scope;
+    const disp = dispositionSelect(`disp-${item.open_question_id}`);
+
+    const approveBtn = el("button", { type: "button", text: "Approve" });
+    approveBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          await decideOpenQuestion(item.open_question_id, "approve", {
+            disposition: disp.value,
+            text: textInput.value,
+            scope: scopeInput.value,
+          });
+          await setStatus(`Approved open question #${item.open_question_id}.`);
+          onChange();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    const replaceBtn = el("button", {
+      type: "button",
+      className: "secondary",
+      text: "Replace with mine",
+    });
+    replaceBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          await decideOpenQuestion(item.open_question_id, "replace", {
+            disposition: disp.value,
+            text: textInput.value,
+            scope: scopeInput.value,
+          });
+          await setStatus(`Replaced open question #${item.open_question_id}.`);
+          onChange();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    const rejectBtn = el("button", {
+      type: "button",
+      className: "secondary",
+      text: "Reject",
+    });
+    rejectBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          await decideOpenQuestion(item.open_question_id, "reject");
+          await setStatus(`Rejected open question #${item.open_question_id}.`);
+          onChange();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    card.append(
+      el("div", { className: "agenda-actions" }, [
+        el("label", {}, ["Text ", textInput]),
+        el("label", {}, ["Scope ", scopeInput]),
+        el("label", {}, ["Disposition ", disp]),
+        el("div", { className: "row" }, [approveBtn, replaceBtn, rejectBtn]),
+      ]),
+    );
+    return card;
+  }
+
+  async function renderRunClose(caseId: number, runId: number): Promise<void> {
+    let close: GetRunCloseResult | null = null;
+    try {
+      close = await getRunClose(runId);
+      await setStatus(`Run close #${runId} — agenda first (D13).`);
+    } catch (err) {
+      await setStatus(err instanceof Error ? err.message : String(err), true);
+    }
+
+    const backBtn = el("button", { type: "button", text: "← Back to case" });
+    backBtn.addEventListener("click", () => {
+      view = { kind: "detail", caseId };
+      void render();
+    });
+
+    if (!close) {
+      main.append(
+        el("section", { className: "panel" }, [
+          backBtn,
+          el("p", { text: "Could not load run close." }),
+        ]),
+      );
+      return;
+    }
+
+    // D13 order: 1 agenda, 2 counts, 3 low confidence, 4 detail behind fold.
+    const agendaList = el("ul", { className: "agenda-list" });
+    if (close.agenda.length === 0) {
+      agendaList.append(
+        el("li", {
+          className: "empty",
+          text: "No open questions proposed for this run. You may write your own below — the executor does not define the space of possible agendas.",
+        }),
+      );
+    } else {
+      for (const item of close.agenda) {
+        agendaList.append(
+          renderAgendaItem(item, () => {
+            void render();
+          }),
+        );
+      }
+    }
+
+    // F-31: operator can always originate, including when the proposed list is empty.
+    const ownText = el("textarea", {
+      rows: "2",
+      "aria-label": "Your own open question",
+      placeholder: "Write your own open question (not only react to proposals)",
+    }) as HTMLTextAreaElement;
+    const ownScope = el("textarea", {
+      rows: "2",
+      "aria-label": "Scope for your open question",
+      placeholder: "Bounded scope",
+    }) as HTMLTextAreaElement;
+    const ownDisp = dispositionSelect(`own-disp-${runId}`);
+    const ownBtn = el("button", {
+      type: "button",
+      text: "Add my open question",
+    });
+    ownBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          await createOperatorOpenQuestion(
+            runId,
+            ownText.value,
+            ownScope.value,
+            ownDisp.value,
+          );
+          await setStatus("Added operator-authored open question.");
+          await render();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+    const ownForm = el("div", { className: "operator-own-question" }, [
+      el("h3", { text: "Write your own (D5)" }),
+      el("p", {
+        className: "meta",
+        text: "You are not limited to the executor's proposals. This works even when the agenda is empty.",
+      }),
+      el("label", {}, ["Question ", ownText]),
+      el("label", {}, ["Scope ", ownScope]),
+      el("label", {}, ["Disposition ", ownDisp]),
+      el("div", { className: "row" }, [ownBtn]),
+    ]);
+
+    const fold = el("details", { className: "close-fold" }, [
+      el("summary", {
+        text: "Claims and captures (detail — not for confirmation here)",
+      }),
+      el("p", {
+        className: "fold-warning",
+        text: "Claim confirmation is not available at run close. Confirm only when an angle needs them.",
+      }),
+      el("h3", { text: "Claims (unconfirmed)" }),
+      close.claims.length === 0
+        ? el("p", { className: "empty", text: "No claims." })
+        : el(
+            "ul",
+            { className: "claim-list" },
+            close.claims.map((cl) =>
+              el("li", { className: "claim-card claim-unconfirmed" }, [
+                el("p", {
+                  className: "claim-proposition",
+                  text: `#${cl.claim_id}: ${cl.proposition}`,
+                }),
+                el("p", {
+                  className: "meta",
+                  text: `run #${cl.run_id} · from “${cl.source_run_question}” · ${cl.posture}`,
+                }),
+              ]),
+            ),
+          ),
+      el("h3", { text: "Captures" }),
+      close.captures.length === 0
+        ? el("p", { className: "empty", text: "No captures." })
+        : el(
+            "ul",
+            { className: "empty-slots" },
+            close.captures.map((c) =>
+              el("li", {
+                text: `#${c.capture_id} ${c.status} ${c.url}`,
+              }),
+            ),
+          ),
+    ]);
+
+    main.append(
+      el("section", { className: "panel" }, [
+        backBtn,
+        el("h2", { text: `Run close #${runId}` }),
+        el("p", {
+          className: "meta",
+          text: `Research question: ${close.run.question}`,
+        }),
+      ]),
+      // 1. Agenda first
+      el("section", { className: "panel panel-agenda" }, [
+        el("h2", { text: "1. Agenda — decide next questions" }),
+        el("p", {
+          className: "subtitle",
+          text: "Approve, reject, edit, or replace proposals — or write your own. Dispositions distinguish permanent from pending. Only not-yet-worked is a to-do.",
+        }),
+        agendaList,
+        ownForm,
+      ]),
+      // 2. Counts only
+      el("section", { className: "panel" }, [
+        el("h2", { text: "2. What the run did" }),
+        el("p", {
+          className: "run-counts",
+          text: `${close.captures_count} capture(s) · ${close.claims_count} claim(s) proposed`,
+        }),
+        el("p", {
+          className: "meta",
+          text: "Counts only — contents are behind the fold so claim review is not one click away.",
+        }),
+      ]),
+      // 3. Low confidence
+      el("section", { className: "panel" }, [
+        el("h2", { text: "3. Self-reported low confidence" }),
+        close.low_confidence_areas.length === 0
+          ? el("p", { className: "empty", text: "None reported." })
+          : el(
+              "ul",
+              { className: "empty-slots" },
+              close.low_confidence_areas.map((s) => el("li", { text: s })),
+            ),
+      ]),
+      // 4. Behind fold
+      el("section", { className: "panel" }, [
+        el("h2", { text: "4. Everything else" }),
+        fold,
+      ]),
+    );
+  }
+
   async function renderDetail(caseId: number): Promise<void> {
     let detail: GetCaseResult | null = null;
     try {
@@ -325,6 +671,25 @@ export function mount(root: HTMLElement): void {
       }
     }
 
+    const openQList = el("ul", { className: "empty-slots" });
+    if (detail.open_questions.length === 0) {
+      openQList.append(el("li", { className: "empty", text: "None yet." }));
+    } else {
+      for (const oq of detail.open_questions) {
+        const label =
+          oq.agenda_decision === "pending"
+            ? oq.proposed_text
+            : (oq.settled_text ?? oq.proposed_text);
+        openQList.append(
+          el("li", {
+            text: `#${oq.open_question_id} [${oq.agenda_decision}${
+              oq.disposition ? ` · ${oq.disposition}` : ""
+            }] ${label}`,
+          }),
+        );
+      }
+    }
+
     main.append(
       el("section", { className: "panel" }, [
         backBtn,
@@ -348,15 +713,19 @@ export function mount(root: HTMLElement): void {
         el("h2", { text: "Runs" }),
         el("p", {
           className: "subtitle",
-          text: "Statuses: draft · approved · claimed · suspended (full vocabulary includes complete, abandoned, cancelled). Suspended runs need your answer before work continues.",
+          text: "Complete runs open the agenda-first close screen. Suspended runs need your answer before work continues.",
         }),
         runsList,
+      ]),
+      el("section", { className: "panel" }, [
+        el("h2", { text: "Open questions on this case" }),
+        openQList,
       ]),
       el("section", { className: "panel" }, [
         el("h2", { text: "Claims" }),
         el("p", {
           className: "subtitle",
-          text: "Model-proposed claims stay unconfirmed until angle work (ticket 11). Unconfirmed is always loud.",
+          text: "Model-proposed claims stay unconfirmed until angle work (ticket 11). Unconfirmed is always loud. Do not confirm at run close.",
         }),
         detail.claims.length === 0
           ? el("p", { className: "empty", text: "No claims yet." })
@@ -387,7 +756,7 @@ export function mount(root: HTMLElement): void {
                     }),
                     el("p", {
                       className: "meta",
-                      text: `run #${cl.run_id} · ${cl.posture} · ${cl.source_basis} · ${cl.certainty}`,
+                      text: `run #${cl.run_id} · from “${cl.source_run_question}” · ${cl.posture} · ${cl.source_basis} · ${cl.certainty}`,
                     }),
                   ],
                 );
@@ -398,7 +767,6 @@ export function mount(root: HTMLElement): void {
         el("h2", { text: "Also on this case" }),
         el("ul", { className: "empty-slots" }, [
           el("li", { text: `Captures: ${detail.captures.length}` }),
-          el("li", { text: `Open questions: ${detail.open_questions.length}` }),
           el("li", { text: `Angles: ${detail.angles.length}` }),
           el("li", { text: `Renditions: ${detail.renditions.length}` }),
         ]),

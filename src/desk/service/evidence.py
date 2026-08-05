@@ -77,3 +77,9 @@ QUALIFICATION_REQUIRED_POSTURES: Final[frozenset[str]] = frozenset(
 INFERENCE_SOURCE_BASIS: Final[str] = "desk_inference"
 
 CONFIRMATION_STATUSES: Final[frozenset[str]] = frozenset({"unconfirmed", "confirmed"})
+
+# Capture examination states (ADR 1 / ticket 04–08). Examined is set only by
+# explicit executor report at close_run (F-32), never inferred from uncited-ness.
+CAPTURE_STATUSES: Final[frozenset[str]] = frozenset(
+    {"unexamined", "examined", "cited"}
+)

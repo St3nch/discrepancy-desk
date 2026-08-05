@@ -241,6 +241,106 @@ button.secondary:hover {
   color: #5c1010;
 }
 
+.status-complete {
+  background: #d0e8d8;
+  color: #0a3d1a;
+}
+
+.panel-agenda {
+  border: 2px solid #1a4a8a;
+}
+
+.agenda-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.agenda-item {
+  border: 1px solid #d8d2c4;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  background: #faf8f4;
+}
+
+.agenda-text {
+  margin: 0.4rem 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.agenda-actions {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #ccc;
+}
+
+.decision-pending {
+  background: #f5d76e;
+  color: #5c3b00;
+}
+
+.decision-approved {
+  background: #d4e8c8;
+  color: #1a4a0a;
+}
+
+.decision-rejected {
+  background: #e8d4d4;
+  color: #5c1010;
+}
+
+.decision-replaced {
+  background: #cfe0f5;
+  color: #0d2d5c;
+}
+
+.run-counts {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0.35rem 0;
+}
+
+.close-fold {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #f7f5f0;
+  border: 1px dashed #bbb;
+  border-radius: 4px;
+}
+
+.close-fold summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #555;
+}
+
+.fold-warning {
+  color: #7a2e00;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0.5rem 0;
+}
+
+select {
+  font: inherit;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+}
+
+.operator-own-question {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 2px solid #1a4a8a;
+}
+
+.operator-own-question h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
 .claim-list {
   list-style: none;
   padding: 0;

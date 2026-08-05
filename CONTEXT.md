@@ -79,8 +79,10 @@ _Avoid_: fetch, scrape, download, snapshot
 
 **Cited / examined / unexamined**
 The three states of a capture. Cited — a claim binds to it (`propose_claim` sets
-this). Examined — a run looked and found nothing worth claiming (set at run close,
-ticket 08 — not yet written). Unexamined — nobody has looked.
+this). Examined — the executor explicitly reported at `close_run` that it looked
+and found nothing worth claiming (`examined_capture_ids`; F-32). Unexamined —
+nobody confirmed looking. Uncited is not examined; a truncated locator map alone
+is not examination. Cancel does not change capture status.
 _Avoid_: promoted, relevant, used, processed
 
 **Locator**
@@ -157,7 +159,32 @@ _Avoid_: prompt, template, guidelines, instructions
 **Open question**
 A first-class worked object recording something the case does not know, carrying a
 disposition that distinguishes permanently unresolved from not yet worked.
+Proposed by the executor at `close_run`; the operator approves, rejects, edits, or
+replaces each item. Lineage records which run introduced it and which research
+question prompted that run.
+
+Dispositions (set on approve/replace only):
+
+| Disposition | Meaning |
+|---|---|
+| `not-yet-worked` | A to-do — may become a later run |
+| `unresolved-awaiting-external-development` | Parked; waiting on the world |
+| `unresolved-likely-permanent` | Honestly labelled; may stay open |
+
+A case can be publication-ready with many open questions if they are not all
+`not-yet-worked`. Rejected proposals are not open questions.
 _Avoid_: todo, gap, unknown, issue
+
+**Run close (D13)**
+When a run completes, the operator screen leads with the agenda (new open
+questions), then counts of captures/claims, then self-reported low confidence,
+then claim/capture detail *behind a fold*. Claim confirmation must not feel
+available at close — confirmation needs an angle purpose (ticket 11). The
+operator may approve/reject/edit/replace proposals *or write their own* open
+question (D5 / F-31), including when the executor proposed none. At close, only
+captures listed in `examined_capture_ids` become `examined`; other uncited
+captures stay `unexamined`.
+_Avoid_: run summary, debrief (alone)
 
 **Lead**
 A URL dropped into the inbox unattached to any case, captured on drop, holding

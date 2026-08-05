@@ -12,6 +12,9 @@ API_ONLY: frozenset[str] = frozenset(
         "list_runs",
         "answer_suspended_run",
         "cancel_run",
+        "get_run_close",
+        "decide_open_question",
+        "create_operator_open_question",
     }
 )
 
@@ -25,6 +28,7 @@ MCP_ONLY: frozenset[str] = frozenset(
         "read_capture",
         "propose_claim",
         "suspend_run",
+        "close_run",
     }
 )
 

@@ -13,6 +13,7 @@ from desk.refusals import DeskRefusal
 from desk.service import (
     capture_url,
     claim_next_run,
+    close_run,
     propose_claim,
     read_capture,
     read_case_context,
@@ -21,8 +22,10 @@ from desk.service import (
 from desk.service.models import (
     CaptureUrlInput,
     ClaimNextRunInput,
+    CloseRunInput,
     EvidenceDimensions,
     ProposeClaimInput,
+    ProposedOpenQuestionInput,
     QuoteBindingInput,
     ReadCaptureInput,
     ReadCaseContextInput,
@@ -208,6 +211,47 @@ def build_mcp_server(engine: Engine, *, vault: VaultStore | None = None) -> MCPS
                         question=question,
                         uncertainty=uncertainty,
                         default_action=default_action,
+                    ),
+                )
+            return result.model_dump()
+        except DeskRefusal as refusal:
+            raise_tool_refusal(refusal)
+
+    @server.tool(
+        name="close_run",
+        description=(
+            "Close a claimed run: propose new open questions (text, rationale, "
+            "scope), report low-confidence areas, list uncited capture ids you "
+            "examined and found nothing worth claiming (only those become "
+            "examined; omit any you did not look at), and set status complete. "
+            "Requires claim_token."
+        ),
+    )
+    def close_run_tool(
+        run_id: int,
+        claim_token: str,
+        proposed_questions: list[dict[str, Any]] | None = None,
+        low_confidence_areas: list[str] | None = None,
+        examined_capture_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
+        try:
+            props = [
+                ProposedOpenQuestionInput(
+                    text=str(p["text"]),
+                    rationale=str(p["rationale"]),
+                    proposed_scope=str(p["proposed_scope"]),
+                )
+                for p in (proposed_questions or [])
+            ]
+            with connection_scope(engine) as conn:
+                result = close_run(
+                    conn,
+                    CloseRunInput(
+                        run_id=run_id,
+                        claim_token=claim_token,
+                        proposed_questions=props,
+                        low_confidence_areas=list(low_confidence_areas or []),
+                        examined_capture_ids=list(examined_capture_ids or []),
                     ),
                 )
             return result.model_dump()

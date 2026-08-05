@@ -16,6 +16,7 @@ from desk.db.schema import cases, runs
 from desk.refusals import DeskRefusal
 from desk.service.captures import list_capture_summaries_for_case
 from desk.service.claims import list_claims_for_case
+from desk.service.close import list_open_questions_for_case
 from desk.service.lease import validate_claim
 from desk.service.models import (
     CaseRecord,
@@ -136,7 +137,7 @@ def read_case_context(
         held_run=held_run,
         claims=list_claims_for_case(conn, params.case_id),
         captures=list_capture_summaries_for_case(conn, params.case_id),
-        open_questions=[],
+        open_questions=list_open_questions_for_case(conn, params.case_id),
         angles=[],
         renditions=[],
     )

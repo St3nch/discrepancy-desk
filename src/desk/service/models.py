@@ -311,6 +311,8 @@ class ClaimRecord(_StrictModel):
     claim_id: int
     case_id: int
     run_id: int
+    # Lineage: research question that prompted the introducing run (ticket 08).
+    source_run_question: str
     proposition: str
     confirmation_status: str
     source_basis: str
@@ -329,6 +331,143 @@ class ProposeClaimResult(ClaimRecord):
     pass
 
 
+# --- Run close / open questions (ticket 08 / D13) ---
+
+
+OPEN_QUESTION_DISPOSITIONS: frozenset[str] = frozenset(
+    {
+        "unresolved-likely-permanent",
+        "unresolved-awaiting-external-development",
+        "not-yet-worked",
+    }
+)
+
+AGENDA_DECISIONS: frozenset[str] = frozenset(
+    {"pending", "approved", "rejected", "replaced"}
+)
+
+
+class ProposedOpenQuestionInput(_StrictModel):
+    """One agenda item the executor proposes at close_run."""
+
+    text: str
+    rationale: str
+    proposed_scope: str
+
+
+class OpenQuestionRecord(_StrictModel):
+    open_question_id: int
+    case_id: int
+    introduced_by_run_id: int
+    source_run_question: str
+    ordinal: int
+    proposed_text: str
+    rationale: str
+    proposed_scope: str
+    agenda_decision: str
+    disposition: str | None = None
+    settled_text: str | None = None
+    settled_scope: str | None = None
+    created_at: str
+    decided_at: str | None = None
+
+
+class CloseRunInput(_StrictModel):
+    """Executor close packet.
+
+    ``examined_capture_ids``: uncited captures the executor looked at and found
+    nothing worth claiming. Only these become ``examined`` (F-32). Uncited
+    captures omitted stay ``unexamined``.
+    """
+
+    run_id: int
+    claim_token: str
+    proposed_questions: list[ProposedOpenQuestionInput] = Field(default_factory=list)
+    low_confidence_areas: list[str] = Field(default_factory=list)
+    examined_capture_ids: list[int] = Field(default_factory=list)
+
+
+class CloseRunResult(_StrictModel):
+    run: RunRecord
+    agenda: list[OpenQuestionRecord]
+    captures_count: int
+    claims_count: int
+    captures_marked_examined: int
+    low_confidence_areas: list[str]
+
+
+class DecideOpenQuestionInput(_StrictModel):
+    """Human-only: approve / reject / replace one proposed agenda item."""
+
+    open_question_id: int
+    decision: str  # approve | reject | replace
+    disposition: str | None = None
+    text: str | None = None
+    scope: str | None = None
+
+
+class DecideOpenQuestionBody(_StrictModel):
+    """HTTP path carries open_question_id; body is the decision fields."""
+
+    decision: str
+    disposition: str | None = None
+    text: str | None = None
+    scope: str | None = None
+
+
+class DecideOpenQuestionResult(OpenQuestionRecord):
+    pass
+
+
+class CreateOperatorOpenQuestionInput(_StrictModel):
+    """Human-only: operator originates an open question on a completed run (F-31).
+
+    Does not require a prior executor proposal. Settles immediately with disposition.
+    """
+
+    run_id: int
+    text: str
+    scope: str
+    disposition: str
+
+
+class CreateOperatorOpenQuestionBody(_StrictModel):
+    """HTTP path carries run_id; body is text/scope/disposition."""
+
+    text: str
+    scope: str
+    disposition: str
+
+
+class CreateOperatorOpenQuestionResult(OpenQuestionRecord):
+    pass
+
+
+class CaptureCloseRecord(_StrictModel):
+    capture_id: int
+    run_id: int
+    url: str
+    status: str
+    created_at: str
+
+
+class GetRunCloseInput(_StrictModel):
+    run_id: int
+
+
+class GetRunCloseResult(_StrictModel):
+    """D13 ordering: agenda → counts → low confidence → detail behind fold."""
+
+    run: RunRecord
+    agenda: list[OpenQuestionRecord]
+    captures_count: int
+    claims_count: int
+    low_confidence_areas: list[str]
+    # Behind the fold — not the primary decision surface.
+    claims: list[ClaimRecord]
+    captures: list[CaptureCloseRecord]
+
+
 class GetCaseResult(_StrictModel):
     """Case detail projection — incomplete by design; grows ticket by ticket."""
 
@@ -336,7 +475,7 @@ class GetCaseResult(_StrictModel):
     runs: list[RunRecord]
     captures: list[str]
     claims: list[ClaimRecord]
-    open_questions: list[str]
+    open_questions: list[OpenQuestionRecord]
     angles: list[str]
     renditions: list[str]
 
@@ -379,6 +518,6 @@ class ReadCaseContextResult(_StrictModel):
     held_run: ExecutorHeldRun
     claims: list[ClaimRecord]
     captures: list[str]
-    open_questions: list[str]
+    open_questions: list[OpenQuestionRecord]
     angles: list[str]
     renditions: list[str]

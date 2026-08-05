@@ -8,17 +8,20 @@ get a disposition and lineage back to the run and question that produced them.
 
 **Blocked by:** 03 — Run dispatch and claim, 04 — Capture (Vault), 05 — Claim proposal
 
-**Status:** ready-for-agent
+**Status:** implemented (pending review; F-30–F-32 addressed)
 
-- [ ] `close_run(run_id, questions, ...)` accepts the executor's proposed new open questions
+- [x] `close_run(run_id, questions, ...)` accepts the executor's proposed new open questions
       and self-reported low-confidence areas, and moves the run to `complete`.
-- [ ] The run-close view in the browser client leads with the proposed agenda, not with
+- [x] The run-close view in the browser client leads with the proposed agenda, not with
       claims — claim/capture detail sits behind a fold, not one click from the top.
-- [ ] Operator can approve, reject, edit the scope of, or replace each proposed open
+- [x] Operator can approve, reject, edit the scope of, or replace each proposed open
       question.
-- [ ] Approved open questions are recorded with a disposition:
+- [x] Operator can author an open question with no prior proposal (F-31 / D5).
+- [x] Approved open questions are recorded with a disposition:
       unresolved-likely-permanent, unresolved-awaiting-external-development, or
       not-yet-worked.
-- [ ] Each open question and each claim records which run introduced it and which question
+- [x] Each open question and each claim records which run introduced it and which question
       prompted that run.
-- [ ] The governed operations are tested at the agreed seam.
+- [x] Only executor-reported `examined_capture_ids` become `examined` (F-32); omitted uncited stay unexamined.
+- [x] CHECK enum reconciliation is parameterised across all constrained columns (F-30).
+- [x] The governed operations are tested at the agreed seam.

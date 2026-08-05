@@ -145,3 +145,33 @@ claim_inference_citations = Table(
     Column("cited_claim_id", Integer, ForeignKey("claims.id"), nullable=False),
     Column("ordinal", Integer, nullable=False),
 )
+
+# Open questions proposed at run close (ticket 08 / D13). Disposition set on approve.
+open_questions = Table(
+    "open_questions",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("case_id", Integer, ForeignKey("cases.id"), nullable=False),
+    Column("introduced_by_run_id", Integer, ForeignKey("runs.id"), nullable=False),
+    # Lineage: the research question that prompted the introducing run.
+    Column("source_run_question", Text, nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("proposed_text", Text, nullable=False),
+    Column("rationale", Text, nullable=False),
+    Column("proposed_scope", Text, nullable=False),
+    Column("agenda_decision", Text, nullable=False),
+    Column("disposition", Text, nullable=True),
+    Column("settled_text", Text, nullable=True),
+    Column("settled_scope", Text, nullable=True),
+    Column("created_at", Text, nullable=False),
+    Column("decided_at", Text, nullable=True),
+)
+
+run_low_confidence = Table(
+    "run_low_confidence",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("run_id", Integer, ForeignKey("runs.id"), nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("statement", Text, nullable=False),
+)

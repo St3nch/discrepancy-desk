@@ -71,6 +71,7 @@ export type ClaimRecord = {
   claim_id: number;
   case_id: number;
   run_id: number;
+  source_run_question: string;
   proposition: string;
   confirmation_status: string;
   source_basis: string;
@@ -90,12 +91,47 @@ export type ClaimRecord = {
   created_at: string;
 };
 
+export type OpenQuestionRecord = {
+  open_question_id: number;
+  case_id: number;
+  introduced_by_run_id: number;
+  source_run_question: string;
+  ordinal: number;
+  proposed_text: string;
+  rationale: string;
+  proposed_scope: string;
+  agenda_decision: string;
+  disposition?: string | null;
+  settled_text?: string | null;
+  settled_scope?: string | null;
+  created_at: string;
+  decided_at?: string | null;
+};
+
+export type CaptureCloseRecord = {
+  capture_id: number;
+  run_id: number;
+  url: string;
+  status: string;
+  created_at: string;
+};
+
+export type GetRunCloseResult = {
+  run: RunRecord;
+  agenda: OpenQuestionRecord[];
+  captures_count: number;
+  claims_count: number;
+  low_confidence_areas: string[];
+  claims: ClaimRecord[];
+  captures: CaptureCloseRecord[];
+};
+
 export type GetCaseResult = {
   case: CaseRecord;
   runs: RunRecord[];
   captures: string[];
   claims: ClaimRecord[];
-  open_questions: string[];
+  open_questions: OpenQuestionRecord[];
   angles: string[];
   renditions: string[];
 };
@@ -161,4 +197,45 @@ export async function answerSuspendedRun(
 export async function cancelRun(runId: number): Promise<RunRecord> {
   const response = await fetch(`/api/runs/${runId}/cancel`, { method: "POST" });
   return parseJson<RunRecord>(response);
+}
+
+export async function getRunClose(runId: number): Promise<GetRunCloseResult> {
+  const response = await fetch(`/api/runs/${runId}/close`);
+  return parseJson<GetRunCloseResult>(response);
+}
+
+export async function decideOpenQuestion(
+  openQuestionId: number,
+  decision: string,
+  options: {
+    disposition?: string;
+    text?: string;
+    scope?: string;
+  } = {},
+): Promise<OpenQuestionRecord> {
+  const response = await fetch(`/api/open-questions/${openQuestionId}/decide`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      decision,
+      disposition: options.disposition ?? null,
+      text: options.text ?? null,
+      scope: options.scope ?? null,
+    }),
+  });
+  return parseJson<OpenQuestionRecord>(response);
+}
+
+export async function createOperatorOpenQuestion(
+  runId: number,
+  text: string,
+  scope: string,
+  disposition: string,
+): Promise<OpenQuestionRecord> {
+  const response = await fetch(`/api/runs/${runId}/open-questions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, scope, disposition }),
+  });
+  return parseJson<OpenQuestionRecord>(response);
 }

@@ -13,8 +13,11 @@ from desk.service import (
     approve_run,
     cancel_run,
     create_case,
+    create_operator_open_question,
     create_run,
+    decide_open_question,
     get_case,
+    get_run_close,
     list_cases,
     list_runs,
 )
@@ -28,10 +31,18 @@ from desk.service.models import (
     CancelRunResult,
     CreateCaseInput,
     CreateCaseResult,
+    CreateOperatorOpenQuestionBody,
+    CreateOperatorOpenQuestionInput,
+    CreateOperatorOpenQuestionResult,
     CreateRunInput,
     CreateRunResult,
+    DecideOpenQuestionBody,
+    DecideOpenQuestionInput,
+    DecideOpenQuestionResult,
     GetCaseInput,
     GetCaseResult,
+    GetRunCloseInput,
+    GetRunCloseResult,
     ListCasesInput,
     ListCasesResult,
     ListRunsInput,
@@ -158,3 +169,60 @@ def api_cancel_run(
     """Human-only: cancel a draft/approved/claimed/suspended run (F-26)."""
     with connection_scope(engine) as conn:
         return cancel_run(conn, CancelRunInput(run_id=run_id))
+
+
+@router.get(
+    "/runs/{run_id}/close",
+    response_model=GetRunCloseResult,
+    name="get_run_close",
+)
+def api_get_run_close(
+    run_id: int,
+    engine: EngineDep,
+) -> GetRunCloseResult:
+    """Human-only: D13 run-close view (agenda first, detail behind fold)."""
+    with connection_scope(engine) as conn:
+        return get_run_close(conn, GetRunCloseInput(run_id=run_id))
+
+
+@router.post(
+    "/open-questions/{open_question_id}/decide",
+    response_model=DecideOpenQuestionResult,
+    name="decide_open_question",
+)
+def api_decide_open_question(
+    open_question_id: int,
+    body: DecideOpenQuestionBody,
+    engine: EngineDep,
+) -> DecideOpenQuestionResult:
+    """Human-only: approve / reject / replace a pending agenda item."""
+    payload = DecideOpenQuestionInput(
+        open_question_id=open_question_id,
+        decision=body.decision,
+        disposition=body.disposition,
+        text=body.text,
+        scope=body.scope,
+    )
+    with connection_scope(engine) as conn:
+        return decide_open_question(conn, payload)
+
+
+@router.post(
+    "/runs/{run_id}/open-questions",
+    response_model=CreateOperatorOpenQuestionResult,
+    name="create_operator_open_question",
+)
+def api_create_operator_open_question(
+    run_id: int,
+    body: CreateOperatorOpenQuestionBody,
+    engine: EngineDep,
+) -> CreateOperatorOpenQuestionResult:
+    """Human-only: originate an open question (works when proposed agenda is empty)."""
+    payload = CreateOperatorOpenQuestionInput(
+        run_id=run_id,
+        text=body.text,
+        scope=body.scope,
+        disposition=body.disposition,
+    )
+    with connection_scope(engine) as conn:
+        return create_operator_open_question(conn, payload)

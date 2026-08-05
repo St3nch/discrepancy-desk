@@ -670,6 +670,9 @@ def cancel_run(conn: Connection, params: CancelRunInput) -> CancelRunResult:
 
     Allowed from draft, approved, claimed, or suspended. Clears lease and
     claim_token. Captures and claims (and suspension history) are preserved.
+    Capture status (unexamined / examined / cited) is deliberately untouched —
+    cancel is not a close judgement about what was looked at; only close_run
+    may mark examined, and only for ids the executor explicitly reports (F-32).
     Not reachable from MCP — an executor cannot abandon its own work this way.
     """
     reclaim_expired_leases(conn)

@@ -266,6 +266,7 @@ def propose_claim(conn: Connection, params: ProposeClaimInput) -> ProposeClaimRe
             runs.c.id,
             runs.c.case_id,
             runs.c.status,
+            runs.c.question,
             runs.c.rubric_version,
         ).where(runs.c.id == params.run_id)
     ).one_or_none()
@@ -279,6 +280,7 @@ def propose_claim(conn: Connection, params: ProposeClaimInput) -> ProposeClaimRe
         )
 
     case_id = int(run_row.case_id)
+    source_run_question = str(run_row.question)
     dims = params.dimensions
     is_inference = dims.source_basis == INFERENCE_SOURCE_BASIS
     bindings = _normalize_bindings(params)
@@ -438,6 +440,7 @@ def propose_claim(conn: Connection, params: ProposeClaimInput) -> ProposeClaimRe
         quote_bindings=quote_records,
         cited_claim_ids=cited,
         created_at=now,
+        source_run_question=source_run_question,
     )
 
 
@@ -458,7 +461,9 @@ def list_claims_for_case(conn: Connection, case_id: int) -> list[ClaimRecord]:
             claims.c.publication_risk,
             claims.c.rubric_version,
             claims.c.created_at,
+            runs.c.question.label("source_run_question"),
         )
+        .select_from(claims.join(runs, claims.c.run_id == runs.c.id))
         .where(claims.c.case_id == case_id)
         .order_by(claims.c.id.asc())
     ).all()
@@ -485,6 +490,79 @@ def list_claims_for_case(conn: Connection, case_id: int) -> list[ClaimRecord]:
                 claim_id=claim_id,
                 case_id=int(row.case_id),
                 run_id=int(row.run_id),
+                source_run_question=str(row.source_run_question),
+                proposition=str(row.proposition),
+                confirmation_status=str(row.confirmation_status),
+                source_basis=str(row.source_basis),
+                corroboration=str(row.corroboration),
+                certainty=str(row.certainty),
+                posture=str(row.posture),
+                qualification=str(row.qualification),
+                publication_risk=str(row.publication_risk),
+                rubric_version=str(row.rubric_version),
+                quote_bindings=[
+                    QuoteBindingRecord(
+                        capture_id=int(q.capture_id),
+                        locator=str(q.locator),
+                        quoted_text=str(q.quoted_text),
+                        ordinal=int(q.ordinal),
+                    )
+                    for q in qrows
+                ],
+                cited_claim_ids=[int(i.cited_claim_id) for i in irows],
+                created_at=str(row.created_at),
+            )
+        )
+    return out
+
+
+def list_claims_for_run(conn: Connection, run_id: int) -> list[ClaimRecord]:
+    """Claims introduced by one run, oldest first."""
+    rows = conn.execute(
+        select(
+            claims.c.id,
+            claims.c.case_id,
+            claims.c.run_id,
+            claims.c.proposition,
+            claims.c.confirmation_status,
+            claims.c.source_basis,
+            claims.c.corroboration,
+            claims.c.certainty,
+            claims.c.posture,
+            claims.c.qualification,
+            claims.c.publication_risk,
+            claims.c.rubric_version,
+            claims.c.created_at,
+            runs.c.question.label("source_run_question"),
+        )
+        .select_from(claims.join(runs, claims.c.run_id == runs.c.id))
+        .where(claims.c.run_id == run_id)
+        .order_by(claims.c.id.asc())
+    ).all()
+    out: list[ClaimRecord] = []
+    for row in rows:
+        claim_id = int(row.id)
+        qrows = conn.execute(
+            select(
+                claim_quote_bindings.c.capture_id,
+                claim_quote_bindings.c.locator,
+                claim_quote_bindings.c.quoted_text,
+                claim_quote_bindings.c.ordinal,
+            )
+            .where(claim_quote_bindings.c.claim_id == claim_id)
+            .order_by(claim_quote_bindings.c.ordinal.asc())
+        ).all()
+        irows = conn.execute(
+            select(claim_inference_citations.c.cited_claim_id)
+            .where(claim_inference_citations.c.claim_id == claim_id)
+            .order_by(claim_inference_citations.c.ordinal.asc())
+        ).all()
+        out.append(
+            ClaimRecord(
+                claim_id=claim_id,
+                case_id=int(row.case_id),
+                run_id=int(row.run_id),
+                source_run_question=str(row.source_run_question),
                 proposition=str(row.proposition),
                 confirmation_status=str(row.confirmation_status),
                 source_basis=str(row.source_basis),
