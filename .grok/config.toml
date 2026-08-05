@@ -1,0 +1,13 @@
+[mcp_servers.linux-vedaops]
+command = "uv"
+args = [
+    "--directory",
+    "/home/chaz/projects/mcp/linux-vedaops-mcp",
+    "run",
+    "vedaops-mcp",
+    "stdio",
+]
+enabled = true
+
+[mcp_servers.linux-vedaops.env]
+VEDAOPS_AGENT_ID = "grok-build"
