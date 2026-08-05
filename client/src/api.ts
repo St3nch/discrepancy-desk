@@ -32,6 +32,18 @@ export type CaseRecord = {
   created_at: string;
 };
 
+export type SuspensionRecord = {
+  suspension_id: number;
+  run_id: number;
+  ordinal: number;
+  question: string;
+  uncertainty: string;
+  default_action: string;
+  suspended_at: string;
+  human_answer?: string | null;
+  answered_at?: string | null;
+};
+
 export type RunRecord = {
   run_id: number;
   case_id: number;
@@ -44,6 +56,15 @@ export type RunRecord = {
   captures_used?: number;
   created_at: string;
   updated_at: string;
+  lease_expires_at?: string | null;
+  suspension_question?: string | null;
+  suspension_uncertainty?: string | null;
+  suspension_default_action?: string | null;
+  suspended_at?: string | null;
+  human_answer?: string | null;
+  answered_at?: string | null;
+  suspensions?: SuspensionRecord[];
+  instance_vs_class_notice?: string | null;
 };
 
 export type ClaimRecord = {
@@ -123,4 +144,21 @@ export async function listRuns(
 ): Promise<{ case_id: number; runs: RunRecord[] }> {
   const response = await fetch(`/api/cases/${caseId}/runs`);
   return parseJson<{ case_id: number; runs: RunRecord[] }>(response);
+}
+
+export async function answerSuspendedRun(
+  runId: number,
+  answer: string,
+): Promise<RunRecord> {
+  const response = await fetch(`/api/runs/${runId}/answer-suspension`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answer }),
+  });
+  return parseJson<RunRecord>(response);
+}
+
+export async function cancelRun(runId: number): Promise<RunRecord> {
+  const response = await fetch(`/api/runs/${runId}/cancel`, { method: "POST" });
+  return parseJson<RunRecord>(response);
 }

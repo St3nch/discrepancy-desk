@@ -34,6 +34,29 @@ runs = Table(
     Column("lease_expires_at", Text, nullable=True),
     # Opaque claim-instance token (not executor identity). Cleared on reclaim.
     Column("claim_token", Text, nullable=True),
+    # Projection of the latest/open suspension for list rendering (F-28).
+    # Authoritative history lives in run_suspensions.
+    Column("suspension_question", Text, nullable=True),
+    Column("suspension_uncertainty", Text, nullable=True),
+    Column("suspension_default_action", Text, nullable=True),
+    Column("suspended_at", Text, nullable=True),
+    Column("human_answer", Text, nullable=True),
+    Column("answered_at", Text, nullable=True),
+)
+
+# Durable suspend-and-ask instances (ticket 07 / F-28). Ordered per run.
+run_suspensions = Table(
+    "run_suspensions",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("run_id", Integer, ForeignKey("runs.id"), nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("question", Text, nullable=False),
+    Column("uncertainty", Text, nullable=False),
+    Column("default_action", Text, nullable=False),
+    Column("suspended_at", Text, nullable=False),
+    Column("human_answer", Text, nullable=True),
+    Column("answered_at", Text, nullable=True),
 )
 
 # Vault capture envelope (ADR 1). Raw bytes live on the governed filesystem.

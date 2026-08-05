@@ -1,5 +1,7 @@
 import {
+  answerSuspendedRun,
   approveRun,
+  cancelRun,
   createCase,
   createRun,
   getCase,
@@ -8,6 +10,10 @@ import {
   type GetCaseResult,
   type RunRecord,
 } from "./api.ts";
+
+/** D9 / F-29 — must appear on every suspended run panel. */
+export const INSTANCE_VS_CLASS_NOTICE =
+  "This answer resolves this run instance only. If the same uncertainty keeps recurring, amend the relevant rubric separately.";
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -123,7 +129,9 @@ export function mount(root: HTMLElement): void {
   }
 
   function renderRunRow(run: RunRecord, onChange: () => void): HTMLElement {
-    const row = el("li", { className: "run-row" }, [
+    const rowClass =
+      run.status === "suspended" ? "run-row run-suspended" : "run-row";
+    const row = el("li", { className: rowClass }, [
       el("strong", { text: `#${run.run_id} ` }),
       el("span", { className: `status-chip status-${run.status}`, text: run.status }),
       document.createTextNode(` — ${run.question}`),
@@ -144,6 +152,106 @@ export function mount(root: HTMLElement): void {
         })();
       });
       row.append(document.createTextNode(" "), approveBtn);
+    }
+
+    const cancellable = ["draft", "approved", "claimed", "suspended"].includes(
+      run.status,
+    );
+    if (cancellable) {
+      const cancelBtn = el("button", {
+        type: "button",
+        className: "secondary",
+        text: "Cancel run",
+      });
+      cancelBtn.addEventListener("click", () => {
+        void (async () => {
+          try {
+            await cancelRun(run.run_id);
+            await setStatus(`Cancelled run #${run.run_id}. Captures and claims kept.`);
+            onChange();
+          } catch (err) {
+            await setStatus(err instanceof Error ? err.message : String(err), true);
+          }
+        })();
+      });
+      row.append(document.createTextNode(" "), cancelBtn);
+    }
+
+    if (run.status === "suspended") {
+      const notice =
+        run.instance_vs_class_notice?.trim() || INSTANCE_VS_CLASS_NOTICE;
+      row.append(
+        el("div", { className: "suspension-panel" }, [
+          el("div", {
+            className: "suspension-banner",
+            text: "Suspended — awaiting your answer before the executor can continue",
+          }),
+          el("p", {
+            className: "suspension-q",
+            text: run.suspension_question ?? "(no question recorded)",
+          }),
+          el("p", {
+            className: "meta",
+            text: `Uncertain between: ${run.suspension_uncertainty ?? "—"}`,
+          }),
+          el("p", {
+            className: "meta",
+            text: `Default action: ${run.suspension_default_action ?? "—"}`,
+          }),
+          el("p", {
+            className: "instance-vs-class-notice",
+            text: notice,
+          }),
+        ]),
+      );
+
+      const answerInput = el("textarea", {
+        rows: "3",
+        "aria-label": `Answer for suspended run ${run.run_id}`,
+        placeholder: "Your answer for the executor (this instance only)",
+      }) as HTMLTextAreaElement;
+      const answerBtn = el("button", {
+        type: "button",
+        text: "Answer and resume",
+      });
+      answerBtn.addEventListener("click", () => {
+        void (async () => {
+          try {
+            await answerSuspendedRun(run.run_id, answerInput.value);
+            await setStatus(
+              `Answered run #${run.run_id}; status is claimed again for the executor.`,
+            );
+            onChange();
+          } catch (err) {
+            await setStatus(err instanceof Error ? err.message : String(err), true);
+          }
+        })();
+      });
+      row.append(
+        el("div", { className: "suspension-answer" }, [
+          el("label", {}, ["Answer ", answerInput]),
+          el("div", { className: "row" }, [answerBtn]),
+        ]),
+      );
+    }
+
+    const history = run.suspensions ?? [];
+    if (history.length > 0) {
+      const items = history.map((s) => {
+        const answered = s.human_answer
+          ? ` → ${s.human_answer}`
+          : " → (awaiting answer)";
+        return el("li", {
+          className: "meta",
+          text: `#${s.ordinal}: ${s.question}${answered}`,
+        });
+      });
+      row.append(
+        el("div", { className: "suspension-history" }, [
+          el("div", { className: "meta", text: "Suspension history:" }),
+          el("ul", { className: "suspension-history-list" }, items),
+        ]),
+      );
     }
 
     return row;
@@ -240,7 +348,7 @@ export function mount(root: HTMLElement): void {
         el("h2", { text: "Runs" }),
         el("p", {
           className: "subtitle",
-          text: "Statuses: draft · approved · claimed (full vocabulary includes suspended, complete, abandoned, cancelled).",
+          text: "Statuses: draft · approved · claimed · suspended (full vocabulary includes complete, abandoned, cancelled). Suspended runs need your answer before work continues.",
         }),
         runsList,
       ]),

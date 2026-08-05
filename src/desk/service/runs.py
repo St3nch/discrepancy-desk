@@ -1,4 +1,16 @@
-"""Governed Run operations — dispatch is human-only; claim is executor pull."""
+"""Governed Run operations — dispatch is human-only; claim is executor pull.
+
+Ticket 07: suspend_run (MCP), answer_suspended_run / cancel_run (HTTP).
+
+While suspended the run holds no lease (waiting is not abandonment) but keeps
+claim_token so the same claim instance continues after the operator answers.
+
+F-26: cancel_run is the escape hatch when a suspension (or any open run) must
+die without an answer — human-only, clears lease and token, preserves work.
+
+F-28: each suspend is a durable run_suspensions row; runs keep a projection of
+the latest for list rendering only.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +18,7 @@ from datetime import datetime
 
 from sqlalchemy import Connection, func, insert, select, update
 
-from desk.db.schema import captures, cases, claims, runs
+from desk.db.schema import captures, cases, claims, run_suspensions, runs
 from desk.refusals import DeskRefusal
 from desk.service.lease import (
     LEASE_TTL_SECONDS,
@@ -15,10 +27,16 @@ from desk.service.lease import (
     new_claim_token,
     reclaim_expired_leases,
     utc_now,
+    validate_claim,
 )
 from desk.service.models import (
+    INSTANCE_VS_CLASS_NOTICE,
+    AnswerSuspendedRunInput,
+    AnswerSuspendedRunResult,
     ApproveRunInput,
     ApproveRunResult,
+    CancelRunInput,
+    CancelRunResult,
     ClaimedRunPacket,
     ClaimNextRunInput,
     ClaimNextRunResult,
@@ -27,6 +45,9 @@ from desk.service.models import (
     ListRunsInput,
     ListRunsResult,
     RunRecord,
+    SuspendRunInput,
+    SuspendRunResult,
+    SuspensionRecord,
 )
 from desk.service.run_status import (
     ACTIVE_CLAIM_STATUSES,
@@ -35,6 +56,9 @@ from desk.service.run_status import (
 )
 
 DEFAULT_CAPTURE_BUDGET = 20
+
+# Statuses from which a human may cancel (F-26). Terminal statuses refuse.
+_CANCELLABLE_STATUSES = frozenset({"draft", "approved", "claimed", "suspended"})
 
 
 def _utc_now() -> str:
@@ -55,12 +79,57 @@ def _claims_made(conn: Connection, run_id: int) -> int:
     return int(value)
 
 
-def _row_to_run(row: object, *, captures_used: int) -> RunRecord:
+def _opt_str(value: object | None) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _list_suspensions(conn: Connection, run_id: int) -> list[SuspensionRecord]:
+    rows = conn.execute(
+        select(
+            run_suspensions.c.id,
+            run_suspensions.c.run_id,
+            run_suspensions.c.ordinal,
+            run_suspensions.c.question,
+            run_suspensions.c.uncertainty,
+            run_suspensions.c.default_action,
+            run_suspensions.c.suspended_at,
+            run_suspensions.c.human_answer,
+            run_suspensions.c.answered_at,
+        )
+        .where(run_suspensions.c.run_id == run_id)
+        .order_by(run_suspensions.c.ordinal.asc())
+    ).all()
+    return [
+        SuspensionRecord(
+            suspension_id=int(r.id),
+            run_id=int(r.run_id),
+            ordinal=int(r.ordinal),
+            question=str(r.question),
+            uncertainty=str(r.uncertainty),
+            default_action=str(r.default_action),
+            suspended_at=str(r.suspended_at),
+            human_answer=_opt_str(r.human_answer),
+            answered_at=_opt_str(r.answered_at),
+        )
+        for r in rows
+    ]
+
+
+def _row_to_run(
+    conn: Connection,
+    row: object,
+    *,
+    captures_used: int,
+) -> RunRecord:
     lease = getattr(row, "lease_expires_at", None)
+    status = row.status  # type: ignore[attr-defined]
+    run_id = int(row.id)  # type: ignore[attr-defined]
     return RunRecord(
-        run_id=int(row.id),  # type: ignore[attr-defined]
+        run_id=run_id,
         case_id=int(row.case_id),  # type: ignore[attr-defined]
-        status=row.status,  # type: ignore[attr-defined]
+        status=status,
         question=str(row.question),  # type: ignore[attr-defined]
         scope=str(row.scope),  # type: ignore[attr-defined]
         rubric_version=str(row.rubric_version),  # type: ignore[attr-defined]
@@ -70,6 +139,18 @@ def _row_to_run(row: object, *, captures_used: int) -> RunRecord:
         created_at=str(row.created_at),  # type: ignore[attr-defined]
         updated_at=str(row.updated_at),  # type: ignore[attr-defined]
         lease_expires_at=str(lease) if lease is not None else None,
+        suspension_question=_opt_str(getattr(row, "suspension_question", None)),
+        suspension_uncertainty=_opt_str(getattr(row, "suspension_uncertainty", None)),
+        suspension_default_action=_opt_str(
+            getattr(row, "suspension_default_action", None)
+        ),
+        suspended_at=_opt_str(getattr(row, "suspended_at", None)),
+        human_answer=_opt_str(getattr(row, "human_answer", None)),
+        answered_at=_opt_str(getattr(row, "answered_at", None)),
+        suspensions=_list_suspensions(conn, run_id),
+        instance_vs_class_notice=(
+            INSTANCE_VS_CLASS_NOTICE if str(status) == "suspended" else None
+        ),
     )
 
 
@@ -86,6 +167,12 @@ _RUN_COLUMNS = (
     runs.c.updated_at,
     runs.c.lease_expires_at,
     runs.c.claim_token,
+    runs.c.suspension_question,
+    runs.c.suspension_uncertainty,
+    runs.c.suspension_default_action,
+    runs.c.suspended_at,
+    runs.c.human_answer,
+    runs.c.answered_at,
 )
 
 
@@ -96,6 +183,12 @@ def _select_run(conn: Connection, run_id: int) -> object | None:
 def _case_exists(conn: Connection, case_id: int) -> bool:
     row = conn.execute(select(cases.c.id).where(cases.c.id == case_id)).one_or_none()
     return row is not None
+
+
+def _load_run_result(conn: Connection, run_id: int) -> RunRecord:
+    row = _select_run(conn, run_id)
+    assert row is not None
+    return _row_to_run(conn, row, captures_used=_captures_used(conn, run_id))
 
 
 def create_run(conn: Connection, params: CreateRunInput) -> CreateRunResult:
@@ -170,14 +263,11 @@ def create_run(conn: Connection, params: CreateRunInput) -> CreateRunResult:
     if pk is None or pk[0] is None:
         raise RuntimeError("insert into runs did not return a primary key")
     run_id = int(pk[0])
-    row = _select_run(conn, run_id)
-    assert row is not None
-    return CreateRunResult.model_validate(_row_to_run(row, captures_used=0).model_dump())
+    return CreateRunResult.model_validate(_load_run_result(conn, run_id).model_dump())
 
 
 def approve_run(conn: Connection, params: ApproveRunInput) -> ApproveRunResult:
     """Human-only: draft → approved. Makes the run claimable via pull."""
-    # Evaluate leases so an expired claimed run does not look "claimed" forever.
     reclaim_expired_leases(conn)
 
     row = _select_run(conn, params.run_id)
@@ -190,7 +280,9 @@ def approve_run(conn: Connection, params: ApproveRunInput) -> ApproveRunResult:
             what_you_can_do="List runs for the case and approve an existing draft run_id.",
         )
 
-    current = _row_to_run(row, captures_used=_captures_used(conn, params.run_id))
+    current = _row_to_run(
+        conn, row, captures_used=_captures_used(conn, params.run_id)
+    )
     if current.status != "draft":
         raise DeskRefusal(
             code="RUN_NOT_DRAFT",
@@ -232,10 +324,8 @@ def approve_run(conn: Connection, params: ApproveRunInput) -> ApproveRunResult:
             claim_token=None,
         )
     )
-    updated = _select_run(conn, params.run_id)
-    assert updated is not None
     return ApproveRunResult.model_validate(
-        _row_to_run(updated, captures_used=_captures_used(conn, params.run_id)).model_dump()
+        _load_run_result(conn, params.run_id).model_dump()
     )
 
 
@@ -257,7 +347,10 @@ def list_runs(conn: Connection, params: ListRunsInput) -> ListRunsResult:
     ).all()
     return ListRunsResult(
         case_id=params.case_id,
-        runs=[_row_to_run(row, captures_used=_captures_used(conn, int(row.id))) for row in rows],
+        runs=[
+            _row_to_run(conn, row, captures_used=_captures_used(conn, int(row.id)))
+            for row in rows
+        ],
     )
 
 
@@ -307,6 +400,10 @@ def claim_next_run(
 
     used = _captures_used(conn, run_id)
     claims_count = _claims_made(conn, run_id)
+    suspensions = _list_suspensions(conn, run_id)
+    human_answer = _opt_str(getattr(row, "human_answer", None))
+    suspension_question = _opt_str(getattr(row, "suspension_question", None))
+    is_resume = used > 0 or claims_count > 0 or len(suspensions) > 0
     return ClaimNextRunResult(
         run=ClaimedRunPacket(
             run_id=run_id,
@@ -319,8 +416,308 @@ def claim_next_run(
             capture_budget=int(row.capture_budget),
             captures_used=used,
             claims_made=claims_count,
-            is_resume=(used > 0 or claims_count > 0),
+            is_resume=is_resume,
             lease_expires_at=expires,
             claim_token=token,
+            suspension_question=suspension_question,
+            suspension_uncertainty=_opt_str(
+                getattr(row, "suspension_uncertainty", None)
+            ),
+            suspension_default_action=_opt_str(
+                getattr(row, "suspension_default_action", None)
+            ),
+            human_answer=human_answer,
+            suspensions=suspensions,
         )
+    )
+
+
+def suspend_run(conn: Connection, params: SuspendRunInput) -> SuspendRunResult:
+    """Executor: claimed → suspended. Appends a durable suspension instance (F-28).
+
+    Clears the lease so the wait is not treated as abandonment, but keeps
+    claim_token so the same claim instance can continue after the answer.
+    Work tools refuse while suspended (status is not claimed).
+    """
+    # Validate only — do not refresh a lease we are about to clear.
+    validate_claim(conn, params.run_id, params.claim_token, refresh=False)
+
+    question = params.question.strip()
+    if not question:
+        raise DeskRefusal(
+            code="SUSPEND_QUESTION_EMPTY",
+            what_happened="Suspension question was empty after trimming whitespace.",
+            what_was_preserved="The run remains claimed with its current lease.",
+            what_was_not_changed="Run status remains 'claimed'.",
+            what_you_can_do="Retry with an explicit question for the operator.",
+        )
+
+    uncertainty = params.uncertainty.strip()
+    if not uncertainty:
+        raise DeskRefusal(
+            code="SUSPEND_UNCERTAINTY_EMPTY",
+            what_happened="Suspension uncertainty was empty after trimming whitespace.",
+            what_was_preserved="The run remains claimed with its current lease.",
+            what_was_not_changed="Run status remains 'claimed'.",
+            what_you_can_do=(
+                "State what the executor is uncertain between (the alternatives)."
+            ),
+        )
+
+    default_action = params.default_action.strip()
+    if not default_action:
+        raise DeskRefusal(
+            code="SUSPEND_DEFAULT_ACTION_EMPTY",
+            what_happened="Default action was empty after trimming whitespace.",
+            what_was_preserved="The run remains claimed with its current lease.",
+            what_was_not_changed="Run status remains 'claimed'.",
+            what_you_can_do="State what the executor would do by default if unanswered.",
+        )
+
+    presented = params.claim_token.strip()
+    now = _utc_now()
+
+    # Next ordinal for this run (1-based). Prior rows are never overwritten.
+    max_ord = conn.execute(
+        select(func.max(run_suspensions.c.ordinal)).where(
+            run_suspensions.c.run_id == params.run_id
+        )
+    ).scalar_one()
+    ordinal = int(max_ord or 0) + 1
+
+    # Refuse a second open suspension (should not happen if status is claimed).
+    open_row = conn.execute(
+        select(run_suspensions.c.id)
+        .where(run_suspensions.c.run_id == params.run_id)
+        .where(run_suspensions.c.answered_at.is_(None))
+    ).first()
+    if open_row is not None:
+        raise DeskRefusal(
+            code="SUSPEND_ALREADY_OPEN",
+            what_happened=(
+                f"Run {params.run_id} already has an unanswered suspension "
+                f"(id {int(open_row.id)})."
+            ),
+            what_was_preserved="Existing suspension instances are unchanged.",
+            what_was_not_changed="No new suspension was written; run status unchanged.",
+            what_you_can_do="Wait for the operator to answer, or cancel the run.",
+        )
+
+    ins = conn.execute(
+        insert(run_suspensions).values(
+            run_id=params.run_id,
+            ordinal=ordinal,
+            question=question,
+            uncertainty=uncertainty,
+            default_action=default_action,
+            suspended_at=now,
+            human_answer=None,
+            answered_at=None,
+        )
+    )
+    pk = ins.inserted_primary_key
+    if pk is None or pk[0] is None:
+        raise RuntimeError("insert into run_suspensions did not return a primary key")
+
+    # Atomic status flip + projection update. History lives in run_suspensions.
+    result = conn.execute(
+        update(runs)
+        .where(runs.c.id == params.run_id)
+        .where(runs.c.status == "claimed")
+        .where(runs.c.claim_token == presented)
+        .values(
+            status="suspended",
+            updated_at=now,
+            lease_expires_at=None,
+            suspension_question=question,
+            suspension_uncertainty=uncertainty,
+            suspension_default_action=default_action,
+            suspended_at=now,
+            human_answer=None,
+            answered_at=None,
+        )
+    )
+    if result.rowcount != 1:
+        raise DeskRefusal(
+            code="RUN_CLAIM_STALE",
+            what_happened=(
+                f"Could not suspend run {params.run_id}; claim is no longer active."
+            ),
+            what_was_preserved="Partial work is intact.",
+            what_was_not_changed="Run status was not set to suspended.",
+            what_you_can_do=(
+                "Call claim_next_run again and use the new claim_token; "
+                "do not retry with the old token."
+            ),
+        )
+
+    return SuspendRunResult.model_validate(
+        _load_run_result(conn, params.run_id).model_dump()
+    )
+
+
+def answer_suspended_run(
+    conn: Connection,
+    params: AnswerSuspendedRunInput,
+    *,
+    now: datetime | None = None,
+    lease_ttl_seconds: int = LEASE_TTL_SECONDS,
+) -> AnswerSuspendedRunResult:
+    """Human-only: answer the open suspension instance; suspended → claimed.
+
+    Writes the answer onto the durable open suspension row, refreshes the run
+    projection, and restores a lease with the same claim_token.
+    """
+    answer = params.answer.strip()
+    if not answer:
+        raise DeskRefusal(
+            code="SUSPEND_ANSWER_EMPTY",
+            what_happened="Operator answer was empty after trimming whitespace.",
+            what_was_preserved="The run remains suspended awaiting an answer.",
+            what_was_not_changed="Run status remains 'suspended'.",
+            what_you_can_do="Retry with a non-empty answer for the executor.",
+        )
+
+    row = _select_run(conn, params.run_id)
+    if row is None:
+        raise DeskRefusal(
+            code="RUN_NOT_FOUND",
+            what_happened=f"No run exists with id {params.run_id}.",
+            what_was_preserved="Existing cases and runs are unchanged.",
+            what_was_not_changed="Nothing was written.",
+            what_you_can_do="List runs for the case and answer an existing suspended run.",
+        )
+
+    if str(row.status) != "suspended":  # type: ignore[attr-defined]
+        raise DeskRefusal(
+            code="RUN_NOT_SUSPENDED",
+            what_happened=(
+                f"Run {params.run_id} is in status {row.status!r}, not 'suspended'."  # type: ignore[attr-defined]
+            ),
+            what_was_preserved="The run was not re-claimed or re-answered.",
+            what_was_not_changed=f"Run status remains {row.status!r}.",  # type: ignore[attr-defined]
+            what_you_can_do="Only a suspended run can receive an operator answer.",
+        )
+
+    open_suspension = conn.execute(
+        select(run_suspensions.c.id)
+        .where(run_suspensions.c.run_id == params.run_id)
+        .where(run_suspensions.c.answered_at.is_(None))
+        .order_by(run_suspensions.c.ordinal.desc())
+        .limit(1)
+    ).one_or_none()
+    if open_suspension is None:
+        raise DeskRefusal(
+            code="SUSPEND_NO_OPEN",
+            what_happened=(
+                f"Run {params.run_id} is suspended but has no open suspension row."
+            ),
+            what_was_preserved="Existing suspension history is unchanged.",
+            what_was_not_changed="Nothing was written.",
+            what_you_can_do="Cancel the run or inspect the database; this is inconsistent state.",
+        )
+
+    base = now or utc_now()
+    now_s = format_utc(base)
+    expires = lease_deadline(base, ttl_seconds=lease_ttl_seconds)
+    suspension_id = int(open_suspension.id)
+
+    ans = conn.execute(
+        update(run_suspensions)
+        .where(run_suspensions.c.id == suspension_id)
+        .where(run_suspensions.c.answered_at.is_(None))
+        .values(human_answer=answer, answered_at=now_s)
+    )
+    if ans.rowcount != 1:
+        raise DeskRefusal(
+            code="SUSPEND_NO_OPEN",
+            what_happened=f"Open suspension {suspension_id} was answered concurrently.",
+            what_was_preserved="Existing suspension history is unchanged.",
+            what_was_not_changed="Nothing was written.",
+            what_you_can_do="Reload the case and check whether the run is still suspended.",
+        )
+
+    result = conn.execute(
+        update(runs)
+        .where(runs.c.id == params.run_id)
+        .where(runs.c.status == "suspended")
+        .values(
+            status="claimed",
+            updated_at=now_s,
+            lease_expires_at=expires,
+            human_answer=answer,
+            answered_at=now_s,
+        )
+    )
+    if result.rowcount != 1:
+        raise DeskRefusal(
+            code="RUN_NOT_SUSPENDED",
+            what_happened=(
+                f"Could not resume run {params.run_id}; it is no longer suspended."
+            ),
+            what_was_preserved="Existing cases and runs are unchanged.",
+            what_was_not_changed="Nothing was written.",
+            what_you_can_do="Reload the case and answer only if status is still suspended.",
+        )
+
+    return AnswerSuspendedRunResult.model_validate(
+        _load_run_result(conn, params.run_id).model_dump()
+    )
+
+
+def cancel_run(conn: Connection, params: CancelRunInput) -> CancelRunResult:
+    """Human-only: move a run to cancelled (F-26).
+
+    Allowed from draft, approved, claimed, or suspended. Clears lease and
+    claim_token. Captures and claims (and suspension history) are preserved.
+    Not reachable from MCP — an executor cannot abandon its own work this way.
+    """
+    reclaim_expired_leases(conn)
+
+    row = _select_run(conn, params.run_id)
+    if row is None:
+        raise DeskRefusal(
+            code="RUN_NOT_FOUND",
+            what_happened=f"No run exists with id {params.run_id}.",
+            what_was_preserved="Existing cases and runs are unchanged.",
+            what_was_not_changed="Nothing was written.",
+            what_you_can_do="List runs and cancel an existing cancellable run_id.",
+        )
+
+    status = str(row.status)  # type: ignore[attr-defined]
+    if status not in _CANCELLABLE_STATUSES:
+        raise DeskRefusal(
+            code="RUN_NOT_CANCELLABLE",
+            what_happened=(
+                f"Run {params.run_id} is in status {status!r}; only draft, "
+                "approved, claimed, or suspended runs can be cancelled."
+            ),
+            what_was_preserved="The run was not cancelled.",
+            what_was_not_changed=f"Run status remains {status!r}.",
+            what_you_can_do="Leave complete/cancelled/abandoned runs as they are.",
+        )
+
+    now = _utc_now()
+    result = conn.execute(
+        update(runs)
+        .where(runs.c.id == params.run_id)
+        .where(runs.c.status.in_(tuple(_CANCELLABLE_STATUSES)))
+        .values(
+            status="cancelled",
+            updated_at=now,
+            lease_expires_at=None,
+            claim_token=None,
+        )
+    )
+    if result.rowcount != 1:
+        raise DeskRefusal(
+            code="RUN_NOT_CANCELLABLE",
+            what_happened=f"Could not cancel run {params.run_id}; status changed concurrently.",
+            what_was_preserved="Existing cases and runs are unchanged.",
+            what_was_not_changed="Nothing was written.",
+            what_you_can_do="Reload the case and try again if still cancellable.",
+        )
+
+    return CancelRunResult.model_validate(
+        _load_run_result(conn, params.run_id).model_dump()
     )

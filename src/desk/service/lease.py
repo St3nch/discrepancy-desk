@@ -68,18 +68,26 @@ def new_claim_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def validate_and_refresh_claim(
+def validate_claim(
     conn: Connection,
     run_id: int,
     claim_token: str,
     *,
     now: datetime | None = None,
     ttl_seconds: int = LEASE_TTL_SECONDS,
+    refresh: bool = True,
+    allow_suspended: bool = False,
 ) -> None:
-    """Validate claim token + unexpired lease, then refresh the lease.
+    """Validate claim token (and lease when claimed).
 
-    Shared choke point for capture_url, read_capture, propose_claim, and later
-    run-touching tools. Never extends an expired or foreign claim.
+    Shared choke point for run-touching executor tools.
+
+    * ``refresh=True`` (default): extend the lease when status is claimed.
+      Use ``refresh=False`` when the next write will clear the lease (e.g.
+      suspend_run) so validation does not perform a pointless write.
+    * ``allow_suspended=True``: accept status suspended with a matching token
+      and no lease (human wait). Work tools that mutate captures/claims must
+      leave this false.
     """
     base = now or utc_now()
     row = conn.execute(
@@ -98,12 +106,20 @@ def validate_and_refresh_claim(
             what_was_not_changed="Nothing was written.",
             what_you_can_do="Call claim_next_run to obtain a work packet.",
         )
-    if str(row.status) != "claimed":
+
+    status = str(row.status)
+    allowed = {"claimed", "suspended"} if allow_suspended else {"claimed"}
+    if status not in allowed:
         raise DeskRefusal(
             code="RUN_NOT_CLAIMED",
             what_happened=(
-                f"Run {run_id} is in status {row.status!r}; only a claimed run "
+                f"Run {run_id} is in status {status!r}; only a claimed run "
                 "accepts executor work tools."
+                if not allow_suspended
+                else (
+                    f"Run {run_id} is in status {status!r}; this tool requires "
+                    "a claimed or suspended run held by this claim_token."
+                )
             ),
             what_was_preserved="No run lease or token was changed.",
             what_was_not_changed="Nothing was written.",
@@ -126,6 +142,10 @@ def validate_and_refresh_claim(
                 "do not retry with the old token."
             ),
         )
+
+    # Suspended: token holds identity; no lease to check or refresh.
+    if status == "suspended":
+        return
 
     expires_raw = row.lease_expires_at
     if expires_raw is None:
@@ -153,7 +173,9 @@ def validate_and_refresh_claim(
             ),
         )
 
-    # Valid unexpired claim with matching token — refresh.
+    if not refresh:
+        return
+
     new_expires = lease_deadline(base, ttl_seconds=ttl_seconds)
     conn.execute(
         update(runs)
@@ -161,6 +183,29 @@ def validate_and_refresh_claim(
         .where(runs.c.status == "claimed")
         .where(runs.c.claim_token == presented)
         .values(lease_expires_at=new_expires, updated_at=format_utc(base))
+    )
+
+
+def validate_and_refresh_claim(
+    conn: Connection,
+    run_id: int,
+    claim_token: str,
+    *,
+    now: datetime | None = None,
+    ttl_seconds: int = LEASE_TTL_SECONDS,
+) -> None:
+    """Validate claim token + unexpired lease, then refresh the lease.
+
+    Convenience for mutative work tools (capture_url, read_capture, propose_claim).
+    """
+    validate_claim(
+        conn,
+        run_id,
+        claim_token,
+        now=now,
+        ttl_seconds=ttl_seconds,
+        refresh=True,
+        allow_suspended=False,
     )
 
 

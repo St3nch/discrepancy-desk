@@ -31,9 +31,11 @@ RUN_STATUSES: Final[frozenset[str]] = frozenset(
     }
 )
 
-# Statuses that mean an executor may still be working, or a run is claimable —
-# at most one of these per case (D12 serialisation).
-ACTIVE_CLAIM_STATUSES: Final[frozenset[str]] = frozenset({"approved", "claimed"})
+# Statuses that mean a case is still "in flight" for serialisation (D12):
+# claimable, under lease, or waiting on a human mid-flight. At most one per case.
+ACTIVE_CLAIM_STATUSES: Final[frozenset[str]] = frozenset(
+    {"approved", "claimed", "suspended"}
+)
 
 PLACEHOLDER_RUBRIC_VERSION: Final[str] = "0"
 PLACEHOLDER_RUBRIC_TEXT: Final[str] = (

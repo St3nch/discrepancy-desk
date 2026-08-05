@@ -9,7 +9,9 @@ from sqlalchemy import Engine
 
 from desk.db.session import connection_scope
 from desk.service import (
+    answer_suspended_run,
     approve_run,
+    cancel_run,
     create_case,
     create_run,
     get_case,
@@ -17,8 +19,13 @@ from desk.service import (
     list_runs,
 )
 from desk.service.models import (
+    AnswerSuspendedRunBody,
+    AnswerSuspendedRunInput,
+    AnswerSuspendedRunResult,
     ApproveRunInput,
     ApproveRunResult,
+    CancelRunInput,
+    CancelRunResult,
     CreateCaseInput,
     CreateCaseResult,
     CreateRunInput,
@@ -121,3 +128,33 @@ def api_list_runs(
 ) -> ListRunsResult:
     with connection_scope(engine) as conn:
         return list_runs(conn, ListRunsInput(case_id=case_id))
+
+
+@router.post(
+    "/runs/{run_id}/answer-suspension",
+    response_model=AnswerSuspendedRunResult,
+    name="answer_suspended_run",
+)
+def api_answer_suspended_run(
+    run_id: int,
+    body: AnswerSuspendedRunBody,
+    engine: EngineDep,
+) -> AnswerSuspendedRunResult:
+    """Human-only: answer a suspended run and return it to claimed."""
+    payload = AnswerSuspendedRunInput(run_id=run_id, answer=body.answer)
+    with connection_scope(engine) as conn:
+        return answer_suspended_run(conn, payload)
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    response_model=CancelRunResult,
+    name="cancel_run",
+)
+def api_cancel_run(
+    run_id: int,
+    engine: EngineDep,
+) -> CancelRunResult:
+    """Human-only: cancel a draft/approved/claimed/suspended run (F-26)."""
+    with connection_scope(engine) as conn:
+        return cancel_run(conn, CancelRunInput(run_id=run_id))

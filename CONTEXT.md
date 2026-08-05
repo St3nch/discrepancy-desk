@@ -133,6 +133,19 @@ The lifecycle state of a run. Full vocabulary (do not invent local subsets):
 the run reverts to `approved` (evaluated on claim/list/approve — no sweeper) and
 prior captures/claims remain attached. Ticket 03+ implement transitions
 incrementally; the full set stays in schema CHECK constraints.
+
+`suspended` is mid-flight suspend-and-ask (not an error path): the executor
+records a question, what it is uncertain between, and a default action; the
+operator answers; the run returns to `claimed` with the same claim_token and a
+fresh lease. While suspended there is no lease (waiting is not abandonment). A
+suspended run still serialises the case (counts as active alongside approved
+and claimed). Each suspension is a durable ordered instance (`run_suspensions`);
+the run holds only a projection of the latest for list rendering. Answering
+resolves *this instance*; amending a rubric resolves *the class* — the operator
+UI must distinguish those remedies. If a suspension (or any open run) must die
+without an answer, the human cancels it (`cancel_run`); there is no executor
+self-cancel. The executor learns answers and run state via `read_case_context`
+(claim_token proves authority, not knowledge of decisions).
 _Avoid_: state (alone), phase, stage (for run lifecycle)
 
 **Rubric**

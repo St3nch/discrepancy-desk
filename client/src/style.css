@@ -166,6 +166,81 @@ button.linkish:hover {
   color: #0d2d5c;
 }
 
+.status-suspended {
+  background: #f5d76e;
+  color: #5c3b00;
+}
+
+/* Suspended runs must be unmistakable — operator action required. */
+.run-suspended {
+  border: 2px solid #c9a227;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  background: #fffbeb;
+}
+
+.suspension-panel {
+  margin-top: 0.5rem;
+}
+
+.suspension-banner {
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #5c3b00;
+  background: #f5d76e;
+  padding: 0.35rem 0.5rem;
+  border-radius: 3px;
+  margin-bottom: 0.5rem;
+}
+
+.suspension-q {
+  margin: 0.35rem 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.suspension-answer {
+  margin-top: 0.5rem;
+}
+
+.instance-vs-class-notice {
+  margin: 0.6rem 0 0;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: #3d2a00;
+  background: #fff8e1;
+  border-left: 3px solid #c9a227;
+}
+
+.suspension-history {
+  margin-top: 0.5rem;
+}
+
+.suspension-history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0 0;
+}
+
+button.secondary {
+  background: #fff;
+  color: #333;
+  border: 1px solid #666;
+}
+
+button.secondary:hover {
+  background: #f0ece3;
+}
+
+.status-cancelled {
+  background: #e8d4d4;
+  color: #5c1010;
+}
+
 .claim-list {
   list-style: none;
   padding: 0;

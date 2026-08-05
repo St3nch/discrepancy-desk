@@ -10,7 +10,14 @@ from sqlalchemy import Engine
 from desk.config import get_settings
 from desk.db.session import connection_scope
 from desk.refusals import DeskRefusal
-from desk.service import capture_url, claim_next_run, propose_claim, read_capture
+from desk.service import (
+    capture_url,
+    claim_next_run,
+    propose_claim,
+    read_capture,
+    read_case_context,
+    suspend_run,
+)
 from desk.service.models import (
     CaptureUrlInput,
     ClaimNextRunInput,
@@ -18,6 +25,8 @@ from desk.service.models import (
     ProposeClaimInput,
     QuoteBindingInput,
     ReadCaptureInput,
+    ReadCaseContextInput,
+    SuspendRunInput,
 )
 from desk.transports.refusal_mcp import raise_tool_refusal
 from desk.transports.wiring import mcp_tool_names
@@ -43,6 +52,26 @@ def build_mcp_server(engine: Engine, *, vault: VaultStore | None = None) -> MCPS
         try:
             with connection_scope(engine) as conn:
                 result = claim_next_run(conn, ClaimNextRunInput())
+            return result.model_dump()
+        except DeskRefusal as refusal:
+            raise_tool_refusal(refusal)
+
+    @server.tool(
+        name="read_case_context",
+        description=(
+            "Read case material and the run held by this claim_token: status, "
+            "question, scope, rubric, capture budget/usage, claims made, and "
+            "all suspension instances with operator answers. Use after resume "
+            "or any refusal to learn current run state. Requires claim_token."
+        ),
+    )
+    def read_case_context_tool(case_id: int, claim_token: str) -> dict[str, Any]:
+        try:
+            with connection_scope(engine) as conn:
+                result = read_case_context(
+                    conn,
+                    ReadCaseContextInput(case_id=case_id, claim_token=claim_token),
+                )
             return result.model_dump()
         except DeskRefusal as refusal:
             raise_tool_refusal(refusal)
@@ -149,6 +178,38 @@ def build_mcp_server(engine: Engine, *, vault: VaultStore | None = None) -> MCPS
             )
             with connection_scope(engine) as conn:
                 result = propose_claim(conn, params)
+            return result.model_dump()
+        except DeskRefusal as refusal:
+            raise_tool_refusal(refusal)
+
+    @server.tool(
+        name="suspend_run",
+        description=(
+            "Suspend a claimed run to ask the human mid-flight. State the "
+            "question, what you are uncertain between, and what you would do "
+            "by default. Requires claim_token. Work tools refuse until the "
+            "operator answers and the run returns to claimed."
+        ),
+    )
+    def suspend_run_tool(
+        run_id: int,
+        claim_token: str,
+        question: str,
+        uncertainty: str,
+        default_action: str,
+    ) -> dict[str, Any]:
+        try:
+            with connection_scope(engine) as conn:
+                result = suspend_run(
+                    conn,
+                    SuspendRunInput(
+                        run_id=run_id,
+                        claim_token=claim_token,
+                        question=question,
+                        uncertainty=uncertainty,
+                        default_action=default_action,
+                    ),
+                )
             return result.model_dump()
         except DeskRefusal as refusal:
             raise_tool_refusal(refusal)

@@ -43,6 +43,27 @@ class GetCaseInput(_StrictModel):
 # --- Run (ticket 03) ---
 
 
+class SuspensionRecord(_StrictModel):
+    """One durable mid-flight suspend-and-ask instance (F-28)."""
+
+    suspension_id: int
+    run_id: int
+    ordinal: int
+    question: str
+    uncertainty: str
+    default_action: str
+    suspended_at: str
+    human_answer: str | None = None
+    answered_at: str | None = None
+
+
+# D9 / F-29: answering resolves this instance; rubric amendment resolves the class.
+INSTANCE_VS_CLASS_NOTICE: str = (
+    "This answer resolves this run instance only. If the same uncertainty "
+    "keeps recurring, amend the relevant rubric separately."
+)
+
+
 class RunRecord(_StrictModel):
     run_id: int
     case_id: int
@@ -56,6 +77,17 @@ class RunRecord(_StrictModel):
     created_at: str
     updated_at: str
     lease_expires_at: str | None = None
+    # Projection of the latest suspension (open or most recently written).
+    suspension_question: str | None = None
+    suspension_uncertainty: str | None = None
+    suspension_default_action: str | None = None
+    suspended_at: str | None = None
+    human_answer: str | None = None
+    answered_at: str | None = None
+    # Full ordered history of suspension instances (F-28).
+    suspensions: list[SuspensionRecord] = Field(default_factory=list)
+    # Set when status is suspended so the operator UI distinguishes remedies (F-29).
+    instance_vs_class_notice: str | None = None
 
 
 class CreateRunInput(_StrictModel):
@@ -115,6 +147,12 @@ class ClaimedRunPacket(_StrictModel):
     is_resume: bool = False
     lease_expires_at: str | None = None
     claim_token: str
+    # Projection + full history so a reclaimer sees every prior answer (F-28).
+    suspension_question: str | None = None
+    suspension_uncertainty: str | None = None
+    suspension_default_action: str | None = None
+    human_answer: str | None = None
+    suspensions: list[SuspensionRecord] = Field(default_factory=list)
 
 
 class ClaimNextRunResult(_StrictModel):
@@ -125,6 +163,50 @@ class ClaimNextRunResult(_StrictModel):
     """
 
     run: ClaimedRunPacket | None
+
+
+# --- Suspend / resume / cancel (ticket 07) ---
+
+
+class SuspendRunInput(_StrictModel):
+    """Executor mid-flight: ask the human; run becomes suspended."""
+
+    run_id: int
+    claim_token: str
+    question: str
+    uncertainty: str
+    default_action: str
+
+
+class SuspendRunResult(RunRecord):
+    pass
+
+
+class AnswerSuspendedRunInput(_StrictModel):
+    """Human-only: answer a suspended run and return it to claimed."""
+
+    run_id: int
+    answer: str
+
+
+class AnswerSuspendedRunBody(_StrictModel):
+    """HTTP path carries run_id; body is the answer only."""
+
+    answer: str
+
+
+class AnswerSuspendedRunResult(RunRecord):
+    pass
+
+
+class CancelRunInput(_StrictModel):
+    """Human-only: kill a run that is not yet complete (F-26)."""
+
+    run_id: int
+
+
+class CancelRunResult(RunRecord):
+    pass
 
 
 # --- Capture / Vault (ticket 04) ---
@@ -254,6 +336,49 @@ class GetCaseResult(_StrictModel):
     runs: list[RunRecord]
     captures: list[str]
     claims: list[ClaimRecord]
+    open_questions: list[str]
+    angles: list[str]
+    renditions: list[str]
+
+
+# --- Executor case context (ticket 07 / F-27) ---
+
+
+class ReadCaseContextInput(_StrictModel):
+    """Executor: read case material and the run held by this claim_token.
+
+    claim_token proves authority over the held run; it does not itself carry
+    decisions. Suspension answers and run state are returned here so the
+    executor is never blind after resume, refusal, or any mid-flight event.
+    """
+
+    case_id: int
+    claim_token: str
+
+
+class ExecutorHeldRun(_StrictModel):
+    """Executor-facing view of the run this claim_token currently holds."""
+
+    run_id: int
+    case_id: int
+    status: RunStatus
+    question: str
+    scope: str
+    rubric_version: str
+    rubric_text: str
+    capture_budget: int
+    captures_used: int
+    claims_made: int
+    lease_expires_at: str | None = None
+    suspensions: list[SuspensionRecord] = Field(default_factory=list)
+    current_suspension: SuspensionRecord | None = None
+
+
+class ReadCaseContextResult(_StrictModel):
+    case: CaseRecord
+    held_run: ExecutorHeldRun
+    claims: list[ClaimRecord]
+    captures: list[str]
     open_questions: list[str]
     angles: list[str]
     renditions: list[str]
