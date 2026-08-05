@@ -23,3 +23,32 @@ loud wherever they appear.
       marker.
 - [ ] The governed operation is tested at the agreed seam, with a rejection case for each of
       the five verification steps.
+
+---
+
+## Notes from ticket 04 (binding for this ticket)
+
+### Quotation surface (F-13) — do not re-derive
+
+ADR 9 says `quoted_text` must appear **byte-exact at the locator**. That means:
+
+- **Compare `quoted_text` to `elements.text`** for the resolved locator in the capture's
+  document_version (exact string equality on the stored element text).
+- **Do not** compare against a raw byte slice of the Vault object.
+
+Raw Vault bytes remain the archival / SHA-256 integrity anchor. The HTML parser *derives*
+element text (whitespace strip, buffer join, `convert_charrefs=True`). Executors quote from
+the locator map returned by `capture_url` / `read_capture`, which is that derived text. Step
+3 fails closed with `QUOTE_MISMATCH` when the strings differ; `LOCATOR_UNRESOLVED` when the
+locator is missing.
+
+Recorded in `codingstandards.md` as well.
+
+### Locator grammar (F-22 — implemented)
+
+| Form | Quotation surface |
+|---|---|
+| `e/{ordinal}` | Full `elements.text` |
+| `e/{ordinal}/r/{start}-{end}` | Character slice of that text (`end` exclusive) |
+
+`quoted_text` must equal that surface exactly.

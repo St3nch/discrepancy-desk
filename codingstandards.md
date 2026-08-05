@@ -28,12 +28,59 @@ either transport. The `code` must be specific enough that an executor can self-c
 `QUOTE_MISMATCH` and `LOCATOR_UNRESOLVED` and `BUDGET_EXHAUSTED` lead to different next
 actions by a model, so they must be different codes.
 
-**Database access.** SQLAlchemy Core, not the ORM. `STRICT` tables. `PRAGMA foreign_keys=ON`
-and WAL set per connection. A new connection path that does not set the pragma is a defect,
-not a style issue — SQLite defaults it off and foreign keys then silently do not enforce.
+**HTTP refusals are always 409.** Domain refusals render as HTTP 409 with the five-field
+body. The `code` carries the meaning; do not map different refusal codes to different HTTP
+statuses. A second, weaker signal invites callers to switch on the wrong one. Request-shape
+validation (Pydantic/FastAPI) stays 422 — that is not a `DeskRefusal`.
+
+**Database access.** SQLAlchemy Core, not the ORM. `STRICT` tables. `PRAGMA foreign_keys=ON`,
+WAL, and `busy_timeout` set per connection **and verified by reading them back** — setting
+without confirming is a fail-open one level up. A new connection path that does not set and
+verify the pragmas is a defect, not a style issue — SQLite defaults foreign_keys off and
+busy_timeout to 0 (fail immediately on contention). Exhausted busy_timeout surfaces as
+`DeskRefusal` with code `DATABASE_BUSY` (retryable), never as a raw driver error.
+
+**Empty result for expected absence; refusal for failure.** When an operation is
+legitimately idle or has nothing to return — e.g. `claim_next_run` with no approved run —
+return a successful empty payload (`run=None`, empty list), not a `DeskRefusal`. Refusals
+are for failures the caller should correct or stop on. Polling and run-close tools will hit
+the idle path constantly; treating it as an error forces every quiet poll through the
+self-correction path.
+
+**One brand per deployment (D17).** No `account_id` column, no account scoping in queries,
+and no account-aware projection. A second editorial brand is a separate process: separate
+database, separate Vault, separate config, same code. Do not reintroduce an in-instance
+account boundary — it must hold in every query forever, and its failure is silent.
+
+**Read refusals.** For `DeskRefusal` on read operations, `what_was_not_changed` states
+plainly that nothing was written (e.g. `"Nothing was written."`), not a garbled claim about
+what was or was not "read as missing."
+
+**One transaction per service call.** `connection_scope` is `engine.begin()`. Each governed
+service function runs in its own transaction. Composing two service calls is two
+transactions — not atomic across the pair. If a later operation needs multi-step atomicity,
+that is a new shape (one service function owning the whole unit of work), not nested
+`connection_scope` calls sharing a connection by accident.
 
 **Transport separation.** Human-only operations are wired to `/api` only and must never
 become reachable from `/mcp`. Adding one to the MCP surface should read as an obvious mistake.
+
+**Quotation surface is `elements.text`, not raw Vault bytes (F-13 / ADR 9 / F-22).**
+`propose_claim` verification that `quoted_text` appears "byte-exact at the locator" means
+exact equality against the resolved quotation surface — not a raw byte range of the
+immutable Vault object, and never a fuzzy/normalised match. Locators:
+
+- `e/{n}` → full `elements.text` for that ordinal
+- `e/{n}/r/{start}-{end}` → `elements.text[start:end]` (end exclusive)
+
+Raw bytes remain the archival record and integrity anchor (SHA-256). The parser derives
+element text; that derived text (or a slice of it) is the only surface verification checks.
+
+**Capture budget counts retained captures, not failed fetches (F-15).** A failed fetch
+(timeout, DNS, HTTP error, SSRF block) does not consume a run capture-budget slot. Budget
+bounds how many Vault captures a run may *keep*, not how many HTTP attempts it may make.
+Retrying a broken URL is wall-clock limited, not budget-limited — preferred so flaky sites
+do not burn the operator's declared capture allowance before any material is stored.
 
 ---
 

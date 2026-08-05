@@ -42,9 +42,27 @@ _Avoid_: hook, take, framing, pitch
 
 **Claim**
 A proposition recorded in the Record, bound to captured bytes by byte-exact
-quotation, carrying six independent evidence dimensions. Either `unconfirmed`
-(model-proposed) or confirmed (human-set).
+quotation (against `elements.text` at a locator), or a `desk_inference` citing
+other claims. Carries six independent evidence dimensions. Either `unconfirmed`
+(model-proposed) or confirmed (human-set). Unconfirmed must be visually loud
+everywhere it appears.
 _Avoid_: fact, assertion, finding, statement
+
+**Evidence dimensions (six, no score)**
+Independent classifications on a claim (VISION §11). Never compressed into one
+score. Proposed by the executor at `propose_claim`; authoritative values set only
+by the human at confirmation (ticket 11).
+
+| Dimension | Values |
+|---|---|
+| Source basis | `contemporaneous_record`, `contemporaneous_report`, `direct_participant_recollection`, `later_retrospective_claim`, `scholarly_interpretation`, `technical_inference`, `desk_inference`, `other` |
+| Corroboration | `unassessed`, `single_source`, `multi_source_dependent`, `independently_corroborated`, `contradicted` |
+| Certainty | `unassessed`, `established`, `probable`, `contested`, `speculative`, `unknown` |
+| Posture | `factual_assertion`, `interpretation`, `participant_account`, `allegation`, `disputed_assertion`, `research_lead`, `pattern_candidate` |
+| Required qualification | free text — exact language that must accompany any use; required non-empty when posture is `allegation` or `participant_account` |
+| Publication risk | `unknown`, `living_private`, `public_official_official_capacity`, `public_figure`, `deceased`, `institution`, `not_applicable` |
+
+_Avoid_: confidence (for certainty), score, rating, risk score
 
 **Source**
 An artifact and its intrinsic provenance, stored once and reusable across cases.
@@ -55,16 +73,27 @@ _Avoid_: reference, citation, link, document
 **Capture**
 The stored, hashed, byte-exact result of one read of external material, whether or
 not it ends up supporting a claim. Two reads of the same URL are two captures.
+Bound to the run (and case) that made it; counted against that run's capture budget
+at capture time.
 _Avoid_: fetch, scrape, download, snapshot
 
 **Cited / examined / unexamined**
-The three states of a capture. Cited — a claim binds to it. Examined — a run looked
-and found nothing worth claiming. Unexamined — nobody has looked.
+The three states of a capture. Cited — a claim binds to it (`propose_claim` sets
+this). Examined — a run looked and found nothing worth claiming (set at run close,
+ticket 08 — not yet written). Unexamined — nobody has looked.
 _Avoid_: promoted, relevant, used, processed
 
 **Locator**
-An address into a capture's parsed element structure. Must resolve, and the quoted
-text must match byte-exact at that position, for a claim to be accepted.
+An address into a capture's parsed element structure (`document_versions` →
+`elements` → `regions`). Must resolve, and the quoted text must match the
+quotation surface exactly (F-13: against derived `elements.text`, not raw Vault
+bytes). Forms:
+
+| Form | Surface |
+|---|---|
+| `e/{ordinal}` | Full element text |
+| `e/{ordinal}/r/{start}-{end}` | Character slice of element text (`start` inclusive, `end` exclusive) |
+
 _Avoid_: pointer, position, offset, anchor
 
 **Confirmed**
@@ -83,8 +112,28 @@ _Avoid_: approved, signed off, confirmed, ready
 **Run**
 One dispatched research job with an explicit question, a bounded scope, a rubric
 version, and a capture budget. Produces claims and new open questions, and records
-its lineage back to the question that prompted it.
+its lineage back to the question that prompted it. Claimed by an executor via
+pull (`claim_next_run`), never pushed to a named executor.
 _Avoid_: session, task, job, pass
+
+**Run status**
+The lifecycle state of a run. Full vocabulary (do not invent local subsets):
+
+| Status | Meaning |
+|---|---|
+| `draft` | Question written, not yet approved |
+| `approved` | Claimable |
+| `claimed` | An executor holds it and is working |
+| `suspended` | The executor asked a question; waiting on the human |
+| `complete` | Closed normally, findings recorded |
+| `abandoned` | Claimed but never closed; reclaimable (lease mechanics later) |
+| `cancelled` | The human killed it |
+
+`claimed` carries a lease refreshed by executor tool calls; if the lease expires,
+the run reverts to `approved` (evaluated on claim/list/approve — no sweeper) and
+prior captures/claims remain attached. Ticket 03+ implement transitions
+incrementally; the full set stays in schema CHECK constraints.
+_Avoid_: state (alone), phase, stage (for run lifecycle)
 
 **Rubric**
 A versioned set of standing questions attached to one operation — reading a source,

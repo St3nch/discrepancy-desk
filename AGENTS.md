@@ -82,8 +82,23 @@ before writing code; `/code-review`'s Standards axis reads it too.
 
 ## Commands
 
-To be written by ticket 01 from what it actually creates — typecheck, test, lint, run.
-`/implement` leans on this block, so an inaccurate one is worse than an absent one.
+Backend (from repo root; uses `uv`):
+
+- Install: `uv sync`
+- Lint: `uv run ruff check src tests`
+- Format check: `uv run ruff format --check src tests`
+- Typecheck: `uv run pyright src`
+- Test: `uv run pytest`
+- Migrate: `uv run alembic upgrade head`
+- Run API + MCP: `uv run uvicorn desk.app:app --host 127.0.0.1 --port 8000`
+  (auto-migrates SQLite at `data/desk.db` on startup; MCP at `/mcp`, API at `/api`)
+
+Client (from `client/`):
+
+- Install: `npm install`
+- Dev (proxies `/api` → `http://127.0.0.1:8000`): `npm run dev`
+- Typecheck: `npm run typecheck`
+- Build: `npm run build`
 
 ## Agent skills
 
