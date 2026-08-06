@@ -81,20 +81,24 @@ export function mount(root: HTMLElement): void {
     cases: CaseRecord[],
     onChange: () => void,
   ): HTMLElement {
-    const isIdentity = lead.material_status === "identity_only";
-    const row = el("li", {
-      className: isIdentity ? "lead-row lead-identity-only" : "lead-row lead-captured",
-    });
+    const material = lead.material_status;
+    let rowClass = "lead-row lead-captured";
+    let badgeClass = "lead-material-badge captured";
+    let materialLabel = `Captured · ${lead.capture_status ?? "unexamined"} · #${lead.capture_id ?? "—"}`;
+    if (material === "identity_only") {
+      rowClass = "lead-row lead-identity-only";
+      badgeClass = "lead-material-badge identity-only";
+      materialLabel = "IDENTITY ONLY — not captured (auth/paywall status)";
+    } else if (material === "unsupported_type") {
+      rowClass = "lead-row lead-unsupported-type";
+      badgeClass = "lead-material-badge unsupported-type";
+      materialLabel = "UNSUPPORTED TYPE — URL parked, not parsed (no Vault object)";
+    }
 
-    const materialLabel = isIdentity
-      ? "IDENTITY ONLY — not captured (auth/paywall)"
-      : `Captured · ${lead.capture_status ?? "unexamined"} · #${lead.capture_id ?? "—"}`;
-
+    const row = el("li", { className: rowClass });
     row.append(
       el("div", {
-        className: isIdentity
-          ? "lead-material-badge identity-only"
-          : "lead-material-badge captured",
+        className: badgeClass,
         text: materialLabel,
       }),
       el("p", {
@@ -259,7 +263,9 @@ export function mount(root: HTMLElement): void {
           const label =
             lead.material_status === "identity_only"
               ? `Lead #${lead.lead_id} identity-only (not captured).`
-              : `Lead #${lead.lead_id} captured (unexamined).`;
+              : lead.material_status === "unsupported_type"
+                ? `Lead #${lead.lead_id} unsupported type (URL parked, no capture).`
+                : `Lead #${lead.lead_id} captured (unexamined).`;
           await setStatus(label);
           await render();
         } catch (err) {

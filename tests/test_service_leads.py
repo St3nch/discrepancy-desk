@@ -217,6 +217,30 @@ def test_lead_holds_no_claims(engine: Engine, tmp_path: Path) -> None:
         assert exc_info.value.code == "CAPTURE_WRONG_CASE"
 
 
+def test_unsupported_type_parks_url_without_vault(engine: Engine, tmp_path: Path) -> None:
+    """Ticket 09a: fetched but unparseable → unsupported_type, capture_id NULL."""
+    vault = VaultStore(tmp_path / "vault")
+
+    def pdf_fetch(_url: str) -> tuple[bytes, str]:
+        return b"%PDF-1.4 not really a parseable document", "application/pdf"
+
+    with connection_scope(engine) as conn:
+        lead = add_lead(
+            conn,
+            AddLeadInput(url="https://example.com/episode.pdf", note="podcast notes pdf"),
+            vault=vault,
+            fetch=pdf_fetch,
+        )
+        assert lead.material_status == "unsupported_type"
+        assert lead.capture_id is None
+        assert lead.capture_status is None
+        assert lead.sha256 is None
+        assert lead.inbox_status == "open"
+        assert conn.execute(select(captures.c.id)).all() == []
+        # No content-addressed objects — retain never wrote (VaultStore mkdirs root).
+        assert list(vault.root.rglob("raw/**/*")) == [] if vault.root.exists() else True
+
+
 def test_identity_only_auth_walled(engine: Engine, tmp_path: Path) -> None:
     vault = VaultStore(tmp_path / "vault")
     with connection_scope(engine) as conn:

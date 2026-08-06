@@ -11,24 +11,28 @@ asymmetry runs against the inbox's stated purpose.
 
 **Blocked by:** 09 — Lead inbox
 
-**Status:** not started
+**Status:** complete
 
 **Origin:** F-35 (seam review), S-03/S-05 (spec review), ticket 09. Deliberately not folded
 into 09 after implementation and review. See D19 consequences.
 
-- [ ] A drop whose content type is unsupported records a lead with the URL, a distinct
+**CHECK decision:** `unsupported_type` **forbids** `capture_id` (must be NULL), same as
+`identity_only`. `captured` requires a non-null `capture_id`. Stated in migration 0012
+and `add_lead` docstring — not a reflex third arm of the old binary.
+
+- [x] A drop whose content type is unsupported records a lead with the URL, a distinct
       `material_status`, and `capture_id` NULL. No Vault object is written.
-- [ ] The new status is distinguishable in the browser client from both a real capture and
+- [x] The new status is distinguishable in the browser client from both a real capture and
       an identity-only lead — three visibly different states, not two.
-- [ ] `retain_capture_from_bytes` is unchanged. Unsupported types raise before any Vault or
+- [x] `retain_capture_from_bytes` is unchanged. Unsupported types raise before any Vault or
       Record write; parking is an `add_lead` catch plus a lead insert, exactly as
       identity-only already does.
-- [ ] The `leads` CHECK is rewritten deliberately rather than extended by reflex. It is
+- [x] The `leads` CHECK is rewritten deliberately rather than extended by reflex. It is
       currently binary (`captured` ↔ `capture_id` set, `identity_only` ↔ NULL). Decide and
       state whether the new status requires, forbids, or permits a `capture_id`.
-- [ ] The new value is added to `LEAD_MATERIAL_STATUSES` and picked up by
+- [x] The new value is added to `LEAD_MATERIAL_STATUSES` and picked up by
       `tests/test_check_enums.py` as a tuple, not a new test pattern.
-- [ ] SSRF and other hard fetch failures still refuse with no lead row. Parking applies only
+- [x] SSRF and other hard fetch failures still refuse with no lead row. Parking applies only
       to material that was fetched and could not be parsed.
 
 **Scope guard:** this ticket does **not** add an operator "not usable" mark, and does not

@@ -118,3 +118,18 @@ def test_api_identity_only_distinct(client: TestClient) -> None:
     body = created.json()
     assert body["material_status"] == "identity_only"
     assert body["capture_id"] is None
+
+
+def test_api_unsupported_type_parks_url(client: TestClient) -> None:
+    def pdf_fetch(_url: str) -> tuple[bytes, str]:
+        return b"%PDF-1.4 junk", "application/pdf"
+
+    with patch("desk.service.leads.default_fetch", side_effect=pdf_fetch):
+        created = client.post(
+            "/api/leads",
+            json={"url": "https://example.com/show.pdf", "note": "audio notes"},
+        )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert body["material_status"] == "unsupported_type"
+    assert body["capture_id"] is None

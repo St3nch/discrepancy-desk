@@ -82,9 +82,13 @@ CONFIRMATION_STATUSES: Final[frozenset[str]] = frozenset({"unconfirmed", "confir
 # explicit executor report at close_run (F-32), never inferred from uncited-ness.
 CAPTURE_STATUSES: Final[frozenset[str]] = frozenset({"unexamined", "examined", "cited"})
 
-# Lead material vs identity (ticket 09 / ADR 7). identity_only = auth/paywall;
-# no capture row masquerades as evidence.
-LEAD_MATERIAL_STATUSES: Final[frozenset[str]] = frozenset({"captured", "identity_only"})
+# Lead material admission (ticket 09 / 09a / ADR 7 / D19).
+# captured — Vault row exists (capture_id required).
+# identity_only — status-code wall 401/402/403; no bytes (capture_id NULL).
+# unsupported_type — fetched but unparseable; URL parked, no Vault (capture_id NULL).
+LEAD_MATERIAL_STATUSES: Final[frozenset[str]] = frozenset(
+    {"captured", "identity_only", "unsupported_type"}
+)
 
 # Lead inbox lifecycle. open until operator attaches, promotes, or disposes.
 LEAD_INBOX_STATUSES: Final[frozenset[str]] = frozenset({"open", "attached", "promoted", "disposed"})

@@ -198,13 +198,15 @@ triggered by HTTP response status alone (401/402/403); soft walls that return
 200 OK with login or subscription HTML are captured like any other material.
 There is no automatic wall detection, no content inspection that discards bytes
 on a heuristic, and no operator "not usable" mark (D19). An unsupported content
-type (PDF, audio) refuses on drop and writes no lead row at all — the URL is not
-preserved; that gap is open, not intended. A successful lead capture stays `unexamined` until a run
-on the attached case reports it in `examined_capture_ids` at close (or cites
-it). Operator may attach to an existing case, promote to a new case, dispose, or
-summarise (skippable). `add_lead` is on both transports (D18); MCP requires a
-live claim (lease) but does not charge capture_budget; attach/promote/dispose/
-summarise are API-only.
+type after a successful fetch (PDF, audio, etc.) records `unsupported_type` —
+URL parked, `capture_id` NULL, no Vault object (ticket 09a); same insert pattern
+as `identity_only`, not a change to the retain path. SSRF and hard fetch
+failures still refuse with no lead. A successful lead capture stays `unexamined`
+until a run on the attached case reports it in `examined_capture_ids` at close
+(or cites it). Operator may attach to an existing case, promote to a new case,
+dispose, or summarise (skippable). `add_lead` is on both transports (D18); MCP
+requires a live claim (lease) but does not charge capture_budget;
+attach/promote/dispose/summarise are API-only.
 _Avoid_: bookmark, saved link, tip, idea
 
 **Coverage**

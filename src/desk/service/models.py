@@ -531,11 +531,11 @@ class LeadRecord(_StrictModel):
     url: str
     note: str
     summary: str | None = None
-    # captured | identity_only — identity_only means auth/paywall, not SSRF.
+    # captured | identity_only | unsupported_type — see LEAD_MATERIAL_STATUSES / D19.
     material_status: str
     capture_id: int | None = None
     # Capture examination status when material_status is captured (always unexamined
-    # on drop; no run to mark examined).
+    # on drop; no run to mark examined). Null when capture_id is null.
     capture_status: str | None = None
     # open | attached | promoted | disposed
     inbox_status: str

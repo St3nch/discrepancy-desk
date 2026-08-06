@@ -62,6 +62,7 @@ def _projection_markdown(elems: list[LocatorElement]) -> str:
 
 
 _AUTH_WALLED_CODE = "CAPTURE_AUTH_WALLED"
+_UNSUPPORTED_TYPE_CODE = "CAPTURE_UNSUPPORTED_TYPE"
 
 
 def _utc_now() -> str:
@@ -230,22 +231,19 @@ def add_lead(
 ) -> AddLeadResult:
     """Drop a URL into the inbox and capture immediately (always).
 
-    Auth-walled (401/402/403) → identity-only lead, no capture bytes stored.
-    SSRF and other fetch failures refuse — no lead row is written.
+    Auth-walled (401/402/403) → identity_only lead, no capture bytes stored.
+    Unsupported content type after a successful fetch → unsupported_type lead,
+    URL parked, no Vault object (ticket 09a). retain_capture_from_bytes is
+    unchanged; parking is a catch on CAPTURE_UNSUPPORTED_TYPE plus a lead
+    insert — the same pattern as identity_only.
 
-    identity_only is triggered by HTTP response status alone (401/402/403).
-    Soft walls that return 200 OK with a login or subscription HTML page are
-    captured as ordinary material — no content inspection decides "is this a
-    wall." Automatic wall detection does not exist; discarding bytes on a
-    heuristic guess would lose material the inbox exists to preserve.
+    material_status / capture_id (deliberate CHECK, not a binary extension):
+    - captured → capture_id NOT NULL (bytes retained)
+    - identity_only | unsupported_type → capture_id NULL (URL only)
+    Both non-capture statuses forbid a capture_id so neither can masquerade
+    as evidence. Soft 200 OK walls remain ordinary captured material (D19).
 
-    Unsupported content types (PDF, audio, etc.): assert_content_type_supported
-    runs inside retain_capture_from_bytes, outside the fetch try/except below.
-    Dropping an unsupported URL therefore refuses with no lead row written —
-    the URL is lost. Login walls (identity_only) preserve the URL; unsupported
-    media do not. That asymmetry is a product gap pending decision — not an
-    intentional design. Do not "fix" by auto-parking unsupported types until
-    that decision is recorded.
+    SSRF and other hard fetch failures still refuse with no lead row.
 
     Executor (MCP) path: run_id + claim_token required; lease validated via
     validate_and_refresh_claim. Lead drops do **not** consume capture_budget —
@@ -306,18 +304,27 @@ def add_lead(
         ) from None
 
     if material_status == "captured":
-        # Unsupported types refuse here with no lead row (see docstring gap note).
-        retained = retain_capture_from_bytes(
-            conn,
-            vault=vault,
-            url=url,
-            raw=raw,
-            content_type=content_type,
-            run_id=None,
-            case_id=None,
-            locator_map_cap=locator_map_cap,
-        )
-        capture_id = retained.capture_id
+        try:
+            retained = retain_capture_from_bytes(
+                conn,
+                vault=vault,
+                url=url,
+                raw=raw,
+                content_type=content_type,
+                run_id=None,
+                case_id=None,
+                locator_map_cap=locator_map_cap,
+            )
+        except DeskRefusal as refusal:
+            if refusal.code == _UNSUPPORTED_TYPE_CODE:
+                # Fetched, unparseable — park URL only; no Vault write occurred
+                # (assert_content_type_supported raises before store).
+                material_status = "unsupported_type"
+                capture_id = None
+            else:
+                raise
+        else:
+            capture_id = retained.capture_id
 
     result = conn.execute(
         insert(leads).values(
