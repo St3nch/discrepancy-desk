@@ -33,7 +33,9 @@ _Avoid_: tweet, segment, part
 
 **Angle**
 The developed answer to "what makes this story worth reading," living inside a case
-and linking to claims. Produces renditions; has no lifecycle of its own.
+and linking to claims. Status is `active`, `chosen`, or `dismissed`. Dismissed
+angles keep their reasoned dismissal forever (never deleted or overwritten).
+Produces renditions; has no separate lifecycle object beyond those statuses.
 _Avoid_: hook, take, framing, pitch
 
 ---
@@ -101,8 +103,19 @@ bytes). Forms:
 _Avoid_: pointer, position, offset, anchor
 
 **Confirmed**
-State of a claim whose evidence dimensions have been set by the human. Prerequisite
-for use in any rendition.
+State of a claim whose evidence dimensions have been set by the human. Confirmation
+attaches at the moment of use — when the claim is linked into Angle Room work
+(angle, public question, or quotation shelf) — not at storage (ADR 2).
+`confirmed_at` on the claim is the time of the **last** confirming act; it is not
+a first-confirmation timestamp. `claim_confirmations` is the append-only correction
+log (prior values vs confirmed values, actor, timestamp — VISION §18). Same
+projection-versus-history pattern as suspensions and open questions. Re-confirmation
+is allowed so correction-rate is measurable across decisions; re-confirming a cited
+claim to non-publishable risk is refused while a confirmed inference still cites it
+(D21). Crossing the inference / non-inference source_basis boundary at confirmation
+is refused — support structure is fixed at proposal. Prerequisite for use in any
+rendition; the rendition-eligible set is angle-scoped confirmed claims linked through
+`angle_claims` (D2), not case-wide.
 _Avoid_: verified, approved, accepted, cleared
 
 **Cleared**
@@ -228,14 +241,17 @@ _Avoid_: progress, completeness, status, stage label (as an executor-declared fi
 **Coverage stages (six, fixed order for display only)**
 `official_foundation`, `public_question`, `deep_context`, `story_intelligence`,
 `editorial_development`, `composition`. Display order is not a pipeline.
-Measurable via runs today: foundation and deep context. The other four are
-`unmeasurable` until their tables exist.
+Measurable: `official_foundation` and `deep_context` via runs; `public_question`
+and `editorial_development` via Angle Room objects with claim links (ticket 11).
+Still unmeasurable (no first-class object — explicit, not neglect):
+`story_intelligence`, `composition` (renditions ticket 12).
 _Avoid_: phase, pipeline step, level
 
 **Public question**
 A first-class Angle Room object recording what people are actually asking about a
 topic, what version of the belief circulates, and where it came from. An
-observation about the discourse, not a claim about the world.
+observation about the discourse, not a claim about the world — but every Angle
+Room item must link to at least one claim (VISION §7); links use confirmation-at-use.
 _Avoid_: the theory, popular belief, the narrative
 
 ---
@@ -273,5 +289,10 @@ _Avoid_: database, DB, store, index
 **Angle Room**
 Where a story's editorial value is worked — central discrepancy, public question,
 human conflict, quotation shelf, missing records, narrative turns, competing angle
-candidates. Answers "what makes this worth reading?"
+candidates. Answers "what makes this worth reading?" Every write path requires
+`official_foundation` complete (D20). Every item links to ≥1 claim (VISION §7);
+empty angles are drafts, and choosing one requires linked confirmed claims. The
+quotation shelf holds operator-selected bindings with speaker and attribution
+frame — not an automatic dump of every quote on linked claims. Region locators
+are preserved when supplied (`e/{n}/r/{start}-{end}`).
 _Avoid_: editorial, drafting, workspace

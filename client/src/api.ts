@@ -90,6 +90,70 @@ export type ClaimRecord = {
   }>;
   cited_claim_ids: number[];
   created_at: string;
+  /** Set when human confirms dimensions at angle link (ADR 2). */
+  confirmed_at?: string | null;
+};
+
+export type AngleClaimLink = {
+  claim_id: number;
+  ordinal: number;
+  linked_at: string;
+};
+
+export type AngleRecord = {
+  angle_id: number;
+  case_id: number;
+  title: string;
+  summary: string;
+  status: string;
+  dismissal_reason?: string | null;
+  dismissed_at?: string | null;
+  claim_ids: number[];
+  links: AngleClaimLink[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type PublicQuestionClaimLink = {
+  claim_id: number;
+  ordinal: number;
+  linked_at: string;
+};
+
+export type PublicQuestionRecord = {
+  public_question_id: number;
+  case_id: number;
+  question_text: string;
+  circulating_version: string;
+  where_asked: string;
+  origin: string;
+  claim_ids: number[];
+  links: PublicQuestionClaimLink[];
+  created_at: string;
+};
+
+export type QuotationShelfItem = {
+  shelf_entry_id: number;
+  case_id: number;
+  claim_id: number;
+  capture_id: number;
+  locator: string;
+  quoted_text: string;
+  speaker: string;
+  attribution_frame: string;
+  actor: string;
+  added_at: string;
+  confirmation_status: string;
+};
+
+/** Authoritative dimensions when confirming an unconfirmed claim at link. */
+export type LinkClaimDimensions = {
+  source_basis: string;
+  corroboration: string;
+  certainty: string;
+  posture: string;
+  publication_risk: string;
+  qualification?: string;
 };
 
 export type OpenQuestionRecord = {
@@ -155,7 +219,9 @@ export type GetCaseResult = {
   claims: ClaimRecord[];
   open_questions: OpenQuestionRecord[];
   coverage: CaseCoverageGauge;
-  angles: string[];
+  angles: AngleRecord[];
+  public_questions: PublicQuestionRecord[];
+  quotation_shelf: QuotationShelfItem[];
   renditions: string[];
 };
 
@@ -377,4 +443,127 @@ export async function summariseLead(
     body: JSON.stringify({ summary }),
   });
   return parseJson<LeadRecord>(response);
+}
+
+// --- Angle Room (ticket 11) — human-only ---
+
+export async function createAngle(
+  caseId: number,
+  title: string,
+  summary: string = "",
+  claimIds: number[] = [],
+  dimensionsByClaimId: Record<number, LinkClaimDimensions> = {},
+): Promise<AngleRecord> {
+  const response = await fetch("/api/angles", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      case_id: caseId,
+      title,
+      summary,
+      claim_ids: claimIds,
+      dimensions_by_claim_id: dimensionsByClaimId,
+    }),
+  });
+  return parseJson<AngleRecord>(response);
+}
+
+export async function linkClaimToAngle(
+  angleId: number,
+  claimId: number,
+  dimensions?: LinkClaimDimensions | null,
+): Promise<AngleRecord> {
+  const response = await fetch(`/api/angles/${angleId}/claims`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      claim_id: claimId,
+      dimensions: dimensions ?? null,
+    }),
+  });
+  return parseJson<AngleRecord>(response);
+}
+
+export async function dismissAngle(
+  angleId: number,
+  reason: string,
+): Promise<AngleRecord> {
+  const response = await fetch(`/api/angles/${angleId}/dismiss`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
+  return parseJson<AngleRecord>(response);
+}
+
+export async function chooseAngle(angleId: number): Promise<AngleRecord> {
+  const response = await fetch(`/api/angles/${angleId}/choose`, {
+    method: "POST",
+  });
+  return parseJson<AngleRecord>(response);
+}
+
+export async function createPublicQuestion(
+  caseId: number,
+  fields: {
+    question_text: string;
+    circulating_version: string;
+    where_asked: string;
+    origin: string;
+  },
+  claimIds: number[] = [],
+  dimensionsByClaimId: Record<number, LinkClaimDimensions> = {},
+): Promise<PublicQuestionRecord> {
+  const response = await fetch("/api/public-questions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      case_id: caseId,
+      ...fields,
+      claim_ids: claimIds,
+      dimensions_by_claim_id: dimensionsByClaimId,
+    }),
+  });
+  return parseJson<PublicQuestionRecord>(response);
+}
+
+export async function linkClaimToPublicQuestion(
+  publicQuestionId: number,
+  claimId: number,
+  dimensions?: LinkClaimDimensions | null,
+): Promise<PublicQuestionRecord> {
+  const response = await fetch(
+    `/api/public-questions/${publicQuestionId}/claims`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        claim_id: claimId,
+        dimensions: dimensions ?? null,
+      }),
+    },
+  );
+  return parseJson<PublicQuestionRecord>(response);
+}
+
+export async function addQuotationToShelf(body: {
+  case_id: number;
+  claim_id: number;
+  capture_id: number;
+  locator: string;
+  quoted_text: string;
+  speaker: string;
+  attribution_frame: string;
+  dimensions?: LinkClaimDimensions | null;
+}): Promise<QuotationShelfItem> {
+  const response = await fetch("/api/quotation-shelf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...body,
+      dimensions: body.dimensions ?? null,
+      actor: "operator",
+    }),
+  });
+  return parseJson<QuotationShelfItem>(response);
 }

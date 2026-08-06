@@ -14,6 +14,7 @@ from sqlalchemy import Engine, text
 
 from desk.service.coverage import COVERAGE_STAGE_IDS
 from desk.service.evidence import (
+    ANGLE_STATUSES,
     CAPTURE_STATUSES,
     CERTAINTY,
     CONFIRMATION_STATUSES,
@@ -43,6 +44,7 @@ _ENUM_COLUMNS: list[tuple[str, str, frozenset[str]]] = [
     ("leads", "material_status", LEAD_MATERIAL_STATUSES),
     ("leads", "inbox_status", LEAD_INBOX_STATUSES),
     ("coverage_attestations", "stage", COVERAGE_STAGE_IDS),
+    ("angles", "status", ANGLE_STATUSES),
 ]
 
 

@@ -11,22 +11,33 @@ Readings (D20):
 
 | Reading | Meaning |
 |---|---|
-| unworked | No completed run targets this dimension (producing claims) |
-| worked | ≥1 completed run targets it and produced claims |
+| unworked | No measuring object activity yet |
+| worked | Measuring objects present; not (yet) attested complete |
 | complete | Operator attestation stands (not stale) |
 | unmeasurable | No first-class measuring object exists yet for this stage |
 
-Measurable today via run.coverage_dimension: official_foundation, deep_context.
-Unmeasurable until their tables exist: public_question, story_intelligence,
-editorial_development, composition (D20 / F-32 honesty — absence of a table is
-not "nobody worked this").
+Measurable (D20 + ticket 11 objects):
+
+| Stage | Measuring objects |
+|---|---|
+| official_foundation | completed runs with coverage_dimension + claims |
+| deep_context | completed runs with coverage_dimension + claims |
+| public_question | public_questions with ≥1 claim link |
+| editorial_development | angles with ≥1 claim link |
+
+Still unmeasurable (no first-class object — explicit decision, not neglect):
+
+| Stage | Why |
+|---|---|
+| story_intelligence | no table / object yet |
+| composition | renditions arrive ticket 12 |
 
 complete is human attestation only. An attestation is stale when any unexamined
 capture is on the case (including lead material attached after the fact) — the
 reading returns to worked with the reason stated.
 
-Official-foundation gate: assert_official_foundation_complete. Sole intended
-call site is ticket 11. Tested at the service seam (F-03).
+Official-foundation gate: assert_official_foundation_complete. Call sites are
+ticket 11 Angle Room write paths.
 """
 
 from __future__ import annotations
@@ -35,7 +46,17 @@ from datetime import UTC, datetime
 
 from sqlalchemy import Connection, func, insert, select
 
-from desk.db.schema import captures, cases, claims, coverage_attestations, runs
+from desk.db.schema import (
+    angle_claims,
+    angles,
+    captures,
+    cases,
+    claims,
+    coverage_attestations,
+    public_question_claims,
+    public_questions,
+    runs,
+)
 from desk.refusals import DeskRefusal
 from desk.service.examination import mark_reported_examined
 from desk.service.models import (
@@ -65,6 +86,26 @@ COVERAGE_READINGS: frozenset[str] = frozenset({"unworked", "worked", "complete",
 
 # Stages measured by completed runs with that coverage_dimension (D20).
 _RUN_MEASURABLE_STAGES: frozenset[str] = frozenset({"official_foundation", "deep_context"})
+
+# Stages measured by Angle Room first-class objects (ticket 11 / D20).
+_OBJECT_MEASURABLE_STAGES: frozenset[str] = frozenset({"public_question", "editorial_development"})
+
+# Explicit unmeasurable — no measuring object yet (ticket 12 for composition).
+_UNMEASURABLE_STAGES: frozenset[str] = frozenset({"story_intelligence", "composition"})
+
+_MEASURABLE_STAGES: frozenset[str] = _RUN_MEASURABLE_STAGES | _OBJECT_MEASURABLE_STAGES
+
+_UNMEASURABLE_REASONS: dict[str, str] = {
+    "story_intelligence": (
+        "No first-class measuring object for story intelligence yet "
+        "(entities/conflicts/timeline tables not built). Absence is not "
+        "'unworked' — nothing could record the work (D20)."
+    ),
+    "composition": (
+        "No first-class measuring object for composition yet (renditions "
+        "arrive ticket 12). Absence is not 'unworked' (D20)."
+    ),
+}
 
 _GAUGE_BANNER = (
     "Derived readiness reading from operator-scoped runs and activity beneath "
@@ -152,6 +193,66 @@ def _dimension_activity(
     return len(run_ids), claim_count
 
 
+def _public_question_activity(conn: Connection, case_id: int) -> tuple[int, int]:
+    """Return (public_question_count, questions_with_≥1_claim_link)."""
+    pq_n = int(
+        conn.execute(
+            select(func.count())
+            .select_from(public_questions)
+            .where(public_questions.c.case_id == case_id)
+        ).scalar_one()
+    )
+    with_links = int(
+        conn.execute(
+            select(func.count(func.distinct(public_question_claims.c.public_question_id)))
+            .select_from(
+                public_question_claims.join(
+                    public_questions,
+                    public_question_claims.c.public_question_id == public_questions.c.id,
+                )
+            )
+            .where(public_questions.c.case_id == case_id)
+        ).scalar_one()
+    )
+    return pq_n, with_links
+
+
+def _editorial_activity(conn: Connection, case_id: int) -> tuple[int, int]:
+    """Return (angle_count, angles_with_≥1_claim_link)."""
+    angle_n = int(
+        conn.execute(
+            select(func.count()).select_from(angles).where(angles.c.case_id == case_id)
+        ).scalar_one()
+    )
+    with_links = int(
+        conn.execute(
+            select(func.count(func.distinct(angle_claims.c.angle_id)))
+            .select_from(angle_claims.join(angles, angle_claims.c.angle_id == angles.c.id))
+            .where(angles.c.case_id == case_id)
+        ).scalar_one()
+    )
+    return angle_n, with_links
+
+
+def _object_stage_worked(conn: Connection, case_id: int, stage: str) -> tuple[bool, list[str]]:
+    """Whether an object-backed stage has enough activity to count as worked."""
+    if stage == "public_question":
+        pq_n, with_links = _public_question_activity(conn, case_id)
+        signals = [
+            f"{pq_n} public question(s) on the case",
+            f"{with_links} with ≥1 claim link",
+        ]
+        return with_links >= 1, signals
+    if stage == "editorial_development":
+        angle_n, with_links = _editorial_activity(conn, case_id)
+        signals = [
+            f"{angle_n} angle(s) on the case",
+            f"{with_links} with ≥1 claim link",
+        ]
+        return with_links >= 1, signals
+    raise RuntimeError(f"not an object-backed stage: {stage!r}")
+
+
 def _latest_attestation(
     conn: Connection,
     case_id: int,
@@ -173,31 +274,18 @@ def _latest_attestation(
     return str(row.actor), str(row.attested_at)
 
 
-def _derive_run_measurable_stage(
-    conn: Connection,
+def _apply_attestation_and_staleness(
     *,
-    case_id: int,
     stage: str,
     label: str,
     unexamined: int,
-    examined: int,
-    cited: int,
-    capture_total: int,
+    signals: list[str],
+    is_worked: bool,
+    attestation: tuple[str, str] | None,
 ) -> StageCoverageReading:
-    completed_runs, claim_count = _dimension_activity(conn, case_id, stage)
-    signals = [
-        f"{completed_runs} completed run(s) targeting {stage}",
-        f"{claim_count} claim(s) from those runs",
-        f"case corpus: {capture_total} capture(s) "
-        f"({cited} cited, {examined} examined, {unexamined} unexamined)",
-    ]
-    attestation = _latest_attestation(conn, case_id, stage)
-
-    # complete only if attested and no unexamined captures on the case.
-    # Unexamined material (including lead attaches) makes any attestation stale.
-    if attestation is not None and unexamined == 0:
+    if attestation is not None and unexamined == 0 and is_worked:
         actor, attested_at = attestation
-        signals.append(f"attested by {actor} at {attested_at}")
+        signals = [*signals, f"attested by {actor} at {attested_at}"]
         return _reading(
             stage=stage,
             label=label,
@@ -208,13 +296,15 @@ def _derive_run_measurable_stage(
 
     if attestation is not None and unexamined > 0:
         actor, attested_at = attestation
-        signals.append(
-            f"attestation by {actor} at {attested_at} is stale: "
-            f"{unexamined} unexamined capture(s) on the case"
-        )
-        # Fall through to worked or unworked with the stale reason in signals.
+        signals = [
+            *signals,
+            (
+                f"attestation by {actor} at {attested_at} is stale: "
+                f"{unexamined} unexamined capture(s) on the case"
+            ),
+        ]
 
-    if completed_runs >= 1 and claim_count >= 1:
+    if is_worked:
         return _reading(
             stage=stage,
             label=label,
@@ -233,6 +323,62 @@ def _derive_run_measurable_stage(
         reading="unworked",
         signals=signals,
         note=None,
+    )
+
+
+def _derive_run_measurable_stage(
+    conn: Connection,
+    *,
+    case_id: int,
+    stage: str,
+    label: str,
+    unexamined: int,
+    examined: int,
+    cited: int,
+    capture_total: int,
+) -> StageCoverageReading:
+    completed_runs, claim_count = _dimension_activity(conn, case_id, stage)
+    signals = [
+        f"{completed_runs} completed run(s) targeting {stage}",
+        f"{claim_count} claim(s) from those runs",
+        f"case corpus: {capture_total} capture(s) "
+        f"({cited} cited, {examined} examined, {unexamined} unexamined)",
+    ]
+    is_worked = completed_runs >= 1 and claim_count >= 1
+    return _apply_attestation_and_staleness(
+        stage=stage,
+        label=label,
+        unexamined=unexamined,
+        signals=signals,
+        is_worked=is_worked,
+        attestation=_latest_attestation(conn, case_id, stage),
+    )
+
+
+def _derive_object_measurable_stage(
+    conn: Connection,
+    *,
+    case_id: int,
+    stage: str,
+    label: str,
+    unexamined: int,
+    examined: int,
+    cited: int,
+    capture_total: int,
+) -> StageCoverageReading:
+    is_worked, signals = _object_stage_worked(conn, case_id, stage)
+    signals = [
+        *signals,
+        f"case corpus: {capture_total} capture(s) "
+        f"({cited} cited, {examined} examined, {unexamined} unexamined)",
+    ]
+    return _apply_attestation_and_staleness(
+        stage=stage,
+        label=label,
+        unexamined=unexamined,
+        signals=signals,
+        is_worked=is_worked,
+        attestation=_latest_attestation(conn, case_id, stage),
     )
 
 
@@ -265,17 +411,30 @@ def derive_case_coverage(conn: Connection, case_id: int) -> CaseCoverageGauge:
                     capture_total=capture_total,
                 )
             )
+        elif stage_id in _OBJECT_MEASURABLE_STAGES:
+            stages.append(
+                _derive_object_measurable_stage(
+                    conn,
+                    case_id=case_id,
+                    stage=stage_id,
+                    label=label,
+                    unexamined=unexamined,
+                    examined=examined,
+                    cited=cited,
+                    capture_total=capture_total,
+                )
+            )
         else:
+            # Explicit unmeasurable set — not "forgot to wire ticket 11 objects".
+            assert stage_id in _UNMEASURABLE_STAGES, (
+                f"stage {stage_id!r} is neither measurable nor in the explicit "
+                "unmeasurable set — update coverage stage classification"
+            )
             stages.append(
                 _unmeasurable_stage(
                     stage_id,
                     label,
-                    reason=(
-                        "No first-class measuring object exists for this stage yet "
-                        "(public questions / Angle Room / angles / renditions arrive "
-                        "in later tickets). Absence of that table is not 'unworked' — "
-                        "nothing could record the work (D20)."
-                    ),
+                    reason=_UNMEASURABLE_REASONS[stage_id],
                 )
             )
 
@@ -317,15 +476,16 @@ def attest_coverage(
     any later unexamined capture is material that arrived after attestation.
     """
     stage = _validate_stage(params.stage)
-    if stage not in _RUN_MEASURABLE_STAGES:
+    if stage not in _MEASURABLE_STAGES:
         raise DeskRefusal(
             code="COVERAGE_STAGE_UNMEASURABLE",
             what_happened=(f"Stage {stage!r} has no measuring object yet and cannot be attested."),
             what_was_preserved="Existing attestations are unchanged.",
             what_was_not_changed="No attestation was written.",
             what_you_can_do=(
-                "Attest only official_foundation or deep_context until later tickets "
-                "introduce measuring objects for other stages."
+                "Attest only measurable stages: official_foundation, deep_context, "
+                "public_question, editorial_development. story_intelligence and "
+                "composition remain unmeasurable until their objects exist."
             ),
         )
 
@@ -334,29 +494,48 @@ def attest_coverage(
         raise DeskRefusal(
             code="CASE_NOT_FOUND",
             what_happened=f"No case exists with id {params.case_id}.",
-            what_was_preserved="Existing cases are unchanged.",
+            what_was_preserved="Existing attestations are unchanged.",
             what_was_not_changed="No attestation was written.",
             what_you_can_do="Attest coverage on an existing case_id.",
         )
 
     actor = (params.actor or "").strip() or "operator"
+
     # Require worked activity before attestation — judgement about evidence.
-    completed_runs, claim_count = _dimension_activity(conn, params.case_id, stage)
-    if completed_runs < 1 or claim_count < 1:
-        raise DeskRefusal(
-            code="COVERAGE_NOT_WORKED",
-            what_happened=(
-                f"Stage {stage!r} is not yet worked: need a completed run targeting "
-                f"it that produced claims "
-                f"(have {completed_runs} run(s), {claim_count} claim(s))."
-            ),
-            what_was_preserved="Existing attestations are unchanged.",
-            what_was_not_changed="No attestation was written.",
-            what_you_can_do=(
-                "Dispatch and complete a run with this coverage dimension that "
-                "proposes claims, then attest."
-            ),
-        )
+    if stage in _RUN_MEASURABLE_STAGES:
+        completed_runs, claim_count = _dimension_activity(conn, params.case_id, stage)
+        if completed_runs < 1 or claim_count < 1:
+            raise DeskRefusal(
+                code="COVERAGE_NOT_WORKED",
+                what_happened=(
+                    f"Stage {stage!r} is not yet worked: need a completed run targeting "
+                    f"it that produced claims "
+                    f"(have {completed_runs} run(s), {claim_count} claim(s))."
+                ),
+                what_was_preserved="Existing attestations are unchanged.",
+                what_was_not_changed="No attestation was written.",
+                what_you_can_do=(
+                    "Dispatch and complete a run with this coverage dimension that "
+                    "proposes claims, then attest."
+                ),
+            )
+    else:
+        is_worked, signals = _object_stage_worked(conn, params.case_id, stage)
+        if not is_worked:
+            raise DeskRefusal(
+                code="COVERAGE_NOT_WORKED",
+                what_happened=(
+                    f"Stage {stage!r} is not yet worked: "
+                    f"{'; '.join(signals)}. "
+                    "Object-backed stages require at least one Angle Room object "
+                    "with a claim link (VISION §7)."
+                ),
+                what_was_preserved="Existing attestations are unchanged.",
+                what_was_not_changed="No attestation was written.",
+                what_you_can_do=(
+                    "Create the measuring object and link at least one claim, then attest."
+                ),
+            )
 
     # Operator may report examined captures (incl. abandoned-run leftovers) first.
     marked = mark_reported_examined(
@@ -418,10 +597,8 @@ def assert_official_foundation_complete(
     Absolute gate: no angle work before the official spine is complete
     (VISION / ADR 3 / D20). Evaluated against the derived-plus-attested gauge.
 
-    **Call site:** ticket 11 angle operations must call this before creating an
-    angle or confirming claims into one. Ticket 10 has no angle surface — this
-    function is the seam contract those operations will use. Tested here so the
-    refusal is proven real (F-03).
+    **Call site:** ticket 11 Angle Room write paths call this before creating
+    an angle, confirming claims into one, or other gated Angle Room writes.
     """
     gauge = get_case_coverage(conn, GetCaseCoverageInput(case_id=params.case_id))
     if not gauge.official_foundation_complete:

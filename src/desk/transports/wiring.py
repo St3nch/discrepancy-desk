@@ -22,6 +22,15 @@ API_ONLY: frozenset[str] = frozenset(
         "promote_lead",
         "dispose_lead",
         "summarise_lead",
+        # Angle Room (ticket 11) — human-only
+        "create_angle",
+        "link_claim_to_angle",
+        "dismiss_angle",
+        "choose_angle",
+        "create_public_question",
+        "link_claim_to_public_question",
+        "add_quotation_to_shelf",
+        "list_rendition_eligible_claims",
     }
 )
 

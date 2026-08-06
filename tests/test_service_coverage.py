@@ -139,13 +139,12 @@ def test_empty_case_and_unmeasurable_stages(engine: Engine) -> None:
         assert next(s for s in gauge.stages if s.stage == "official_foundation").reading == (
             "unworked"
         )
-        for stage_id in (
-            "public_question",
-            "story_intelligence",
-            "editorial_development",
-            "composition",
-        ):
-            assert next(s for s in gauge.stages if s.stage == stage_id).reading == ("unmeasurable")
+        # Ticket 11 objects make these measurable (empty → unworked, not unmeasurable).
+        for stage_id in ("public_question", "editorial_development", "deep_context"):
+            assert next(s for s in gauge.stages if s.stage == stage_id).reading == "unworked"
+        # Explicit unmeasurable: no first-class object yet (D20 decision, not neglect).
+        for stage_id in ("story_intelligence", "composition"):
+            assert next(s for s in gauge.stages if s.stage == stage_id).reading == "unmeasurable"
         with pytest.raises(DeskRefusal) as exc:
             assert_official_foundation_complete(
                 conn, AssertOfficialFoundationInput(case_id=case.case_id)

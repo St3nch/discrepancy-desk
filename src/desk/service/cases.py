@@ -8,6 +8,11 @@ from sqlalchemy import Connection, insert, select
 
 from desk.db.schema import cases
 from desk.refusals import DeskRefusal
+from desk.service.angles import (
+    list_angles_for_case,
+    list_public_questions_for_case,
+    quotation_shelf_for_case,
+)
 from desk.service.captures import list_capture_summaries_for_case
 from desk.service.claims import list_claims_for_case
 from desk.service.close import list_open_questions_for_case
@@ -109,6 +114,8 @@ def get_case(conn: Connection, params: GetCaseInput) -> GetCaseResult:
         claims=list_claims_for_case(conn, params.case_id),
         open_questions=list_open_questions_for_case(conn, params.case_id),
         coverage=derive_case_coverage(conn, params.case_id),
-        angles=[],
+        angles=list_angles_for_case(conn, params.case_id),
+        public_questions=list_public_questions_for_case(conn, params.case_id),
+        quotation_shelf=quotation_shelf_for_case(conn, params.case_id),
         renditions=[],
     )

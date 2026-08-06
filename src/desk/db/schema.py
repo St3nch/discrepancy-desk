@@ -141,7 +141,7 @@ regions = Table(
     Column("end_offset", Integer, nullable=False),
 )
 
-# Claims enter unconfirmed (ADR 2). Confirmation is ticket 11.
+# Claims enter unconfirmed (ADR 2). Confirmation attaches at angle link (ticket 11).
 claims = Table(
     "claims",
     metadata,
@@ -158,6 +158,92 @@ claims = Table(
     Column("publication_risk", Text, nullable=False),
     Column("rubric_version", Text, nullable=False),
     Column("created_at", Text, nullable=False),
+    Column("confirmed_at", Text, nullable=True),
+)
+
+# Durable confirmation history (VISION §18 / F-28). claims columns = projection.
+claim_confirmations = Table(
+    "claim_confirmations",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("claim_id", Integer, ForeignKey("claims.id"), nullable=False),
+    Column("proposed_source_basis", Text, nullable=False),
+    Column("proposed_corroboration", Text, nullable=False),
+    Column("proposed_certainty", Text, nullable=False),
+    Column("proposed_posture", Text, nullable=False),
+    Column("proposed_qualification", Text, nullable=False),
+    Column("proposed_publication_risk", Text, nullable=False),
+    Column("confirmed_source_basis", Text, nullable=False),
+    Column("confirmed_corroboration", Text, nullable=False),
+    Column("confirmed_certainty", Text, nullable=False),
+    Column("confirmed_posture", Text, nullable=False),
+    Column("confirmed_qualification", Text, nullable=False),
+    Column("confirmed_publication_risk", Text, nullable=False),
+    Column("actor", Text, nullable=False),
+    Column("confirmed_at", Text, nullable=False),
+)
+
+# Angle Room (ticket 11). Angles link claims; dismissals are durable.
+angles = Table(
+    "angles",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("case_id", Integer, ForeignKey("cases.id"), nullable=False),
+    Column("title", Text, nullable=False),
+    Column("summary", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("dismissal_reason", Text, nullable=True),
+    Column("dismissed_at", Text, nullable=True),
+    Column("created_at", Text, nullable=False),
+    Column("updated_at", Text, nullable=False),
+)
+
+angle_claims = Table(
+    "angle_claims",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("angle_id", Integer, ForeignKey("angles.id"), nullable=False),
+    Column("claim_id", Integer, ForeignKey("claims.id"), nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("linked_at", Text, nullable=False),
+)
+
+public_questions = Table(
+    "public_questions",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("case_id", Integer, ForeignKey("cases.id"), nullable=False),
+    Column("question_text", Text, nullable=False),
+    Column("circulating_version", Text, nullable=False),
+    Column("where_asked", Text, nullable=False),
+    Column("origin", Text, nullable=False),
+    Column("created_at", Text, nullable=False),
+)
+
+public_question_claims = Table(
+    "public_question_claims",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("public_question_id", Integer, ForeignKey("public_questions.id"), nullable=False),
+    Column("claim_id", Integer, ForeignKey("claims.id"), nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("linked_at", Text, nullable=False),
+)
+
+# Operator-selected quotations (VISION Angle Room — not an auto-dump of bindings).
+quotation_shelf_entries = Table(
+    "quotation_shelf_entries",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("case_id", Integer, ForeignKey("cases.id"), nullable=False),
+    Column("claim_id", Integer, ForeignKey("claims.id"), nullable=False),
+    Column("capture_id", Integer, ForeignKey("captures.id"), nullable=False),
+    Column("locator", Text, nullable=False),
+    Column("quoted_text", Text, nullable=False),
+    Column("speaker", Text, nullable=False),
+    Column("attribution_frame", Text, nullable=False),
+    Column("actor", Text, nullable=False),
+    Column("added_at", Text, nullable=False),
 )
 
 claim_quote_bindings = Table(

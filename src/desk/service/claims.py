@@ -1,9 +1,12 @@
 """propose_claim — five-step fail-closed verification (ADR 9).
 
-Note (F-24, ticket 11): inference claims do not yet inherit or constrain
-publication_risk from cited claims. An inference over a living_private claim can
-currently carry not_applicable. Angle Room inheritance must close that before
-confirmation/use.
+D21 / F-24: if any cited claim is unknown or living_private, the inference must
+also be (categorical non-publishable set — no severity ladder). Early refusal at
+proposal; binding check is at confirmation against authoritative values.
+
+Soft reclassification among publishable publication-risk categories (e.g.
+deceased → institution) is permitted deliberately (D21) — that is operator
+judgement, not a hole. Do not reintroduce a severity ladder to "fix" it.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from desk.db.schema import (
     runs,
 )
 from desk.refusals import DeskRefusal
+from desk.service.confirmation import assert_inference_publication_risk_allowed
 from desk.service.evidence import (
     CERTAINTY,
     CORROBORATION,
@@ -315,9 +319,12 @@ def propose_claim(conn: Connection, params: ProposeClaimInput) -> ProposeClaimRe
                 what_was_not_changed="The Record is unchanged.",
                 what_you_can_do="Omit capture/locator/quote; use cited_claim_ids only.",
             )
+        cited_risks: list[str] = []
         for cid in cited:
             crow = conn.execute(
-                select(claims.c.id, claims.c.case_id).where(claims.c.id == cid)
+                select(claims.c.id, claims.c.case_id, claims.c.publication_risk).where(
+                    claims.c.id == cid
+                )
             ).one_or_none()
             if crow is None:
                 raise DeskRefusal(
@@ -338,6 +345,12 @@ def propose_claim(conn: Connection, params: ProposeClaimInput) -> ProposeClaimRe
                     what_was_not_changed="The Record is unchanged.",
                     what_you_can_do="Cite claims from this case only.",
                 )
+            cited_risks.append(str(crow.publication_risk))
+        # D21 early refusal against proposed values; binding check is at confirmation.
+        assert_inference_publication_risk_allowed(
+            inference_risk=dims.publication_risk,
+            cited_risks=cited_risks,
+        )
     else:
         if not bindings:
             raise DeskRefusal(
@@ -447,6 +460,7 @@ def propose_claim(conn: Connection, params: ProposeClaimInput) -> ProposeClaimRe
         quote_bindings=quote_records,
         cited_claim_ids=cited,
         created_at=now,
+        confirmed_at=None,
         source_run_question=source_run_question,
     )
 
@@ -468,6 +482,7 @@ def list_claims_for_case(conn: Connection, case_id: int) -> list[ClaimRecord]:
             claims.c.publication_risk,
             claims.c.rubric_version,
             claims.c.created_at,
+            claims.c.confirmed_at,
             runs.c.question.label("source_run_question"),
         )
         .select_from(claims.join(runs, claims.c.run_id == runs.c.id))
@@ -492,6 +507,7 @@ def list_claims_for_case(conn: Connection, case_id: int) -> list[ClaimRecord]:
             .where(claim_inference_citations.c.claim_id == claim_id)
             .order_by(claim_inference_citations.c.ordinal.asc())
         ).all()
+        confirmed_at = row.confirmed_at
         out.append(
             ClaimRecord(
                 claim_id=claim_id,
@@ -518,6 +534,7 @@ def list_claims_for_case(conn: Connection, case_id: int) -> list[ClaimRecord]:
                 ],
                 cited_claim_ids=[int(i.cited_claim_id) for i in irows],
                 created_at=str(row.created_at),
+                confirmed_at=None if confirmed_at is None else str(confirmed_at),
             )
         )
     return out
@@ -540,6 +557,7 @@ def list_claims_for_run(conn: Connection, run_id: int) -> list[ClaimRecord]:
             claims.c.publication_risk,
             claims.c.rubric_version,
             claims.c.created_at,
+            claims.c.confirmed_at,
             runs.c.question.label("source_run_question"),
         )
         .select_from(claims.join(runs, claims.c.run_id == runs.c.id))
@@ -564,6 +582,7 @@ def list_claims_for_run(conn: Connection, run_id: int) -> list[ClaimRecord]:
             .where(claim_inference_citations.c.claim_id == claim_id)
             .order_by(claim_inference_citations.c.ordinal.asc())
         ).all()
+        confirmed_at = row.confirmed_at
         out.append(
             ClaimRecord(
                 claim_id=claim_id,
@@ -590,6 +609,7 @@ def list_claims_for_run(conn: Connection, run_id: int) -> list[ClaimRecord]:
                 ],
                 cited_claim_ids=[int(i.cited_claim_id) for i in irows],
                 created_at=str(row.created_at),
+                confirmed_at=None if confirmed_at is None else str(confirmed_at),
             )
         )
     return out

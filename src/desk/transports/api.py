@@ -10,20 +10,28 @@ from sqlalchemy import Engine
 from desk.db.session import connection_scope
 from desk.service import (
     add_lead,
+    add_quotation_to_shelf,
     answer_suspended_run,
     approve_run,
     attach_lead,
     attest_coverage,
     cancel_run,
+    choose_angle,
+    create_angle,
     create_case,
     create_operator_open_question,
+    create_public_question,
     create_run,
     decide_open_question,
+    dismiss_angle,
     dispose_lead,
     get_case,
     get_run_close,
+    link_claim_to_angle,
+    link_claim_to_public_question,
     list_cases,
     list_leads,
+    list_rendition_eligible_claims,
     list_runs,
     promote_lead,
     summarise_lead,
@@ -31,6 +39,8 @@ from desk.service import (
 from desk.service.models import (
     AddLeadInput,
     AddLeadResult,
+    AddQuotationShelfInput,
+    AddQuotationShelfResult,
     AnswerSuspendedRunBody,
     AnswerSuspendedRunInput,
     AnswerSuspendedRunResult,
@@ -44,22 +54,37 @@ from desk.service.models import (
     AttestCoverageResult,
     CancelRunInput,
     CancelRunResult,
+    ChooseAngleInput,
+    ChooseAngleResult,
+    CreateAngleInput,
+    CreateAngleResult,
     CreateCaseInput,
     CreateCaseResult,
     CreateOperatorOpenQuestionBody,
     CreateOperatorOpenQuestionInput,
     CreateOperatorOpenQuestionResult,
+    CreatePublicQuestionInput,
+    CreatePublicQuestionResult,
     CreateRunInput,
     CreateRunResult,
     DecideOpenQuestionBody,
     DecideOpenQuestionInput,
     DecideOpenQuestionResult,
+    DismissAngleBody,
+    DismissAngleInput,
+    DismissAngleResult,
     DisposeLeadInput,
     DisposeLeadResult,
     GetCaseInput,
     GetCaseResult,
     GetRunCloseInput,
     GetRunCloseResult,
+    LinkClaimToAngleBody,
+    LinkClaimToAngleInput,
+    LinkClaimToAngleResult,
+    LinkClaimToPublicQuestionBody,
+    LinkClaimToPublicQuestionInput,
+    LinkClaimToPublicQuestionResult,
     ListCasesInput,
     ListCasesResult,
     ListLeadsInput,
@@ -69,6 +94,8 @@ from desk.service.models import (
     PromoteLeadBody,
     PromoteLeadInput,
     PromoteLeadResult,
+    RenditionEligibleClaimsInput,
+    RenditionEligibleClaimsResult,
     SummariseLeadBody,
     SummariseLeadInput,
     SummariseLeadResult,
@@ -374,3 +401,123 @@ def api_summarise_lead(
     payload = SummariseLeadInput(lead_id=lead_id, summary=body.summary)
     with connection_scope(engine) as conn:
         return summarise_lead(conn, payload)
+
+
+# --- Angle Room (ticket 11) — human-only ---
+
+
+@router.post(
+    "/angles",
+    response_model=CreateAngleResult,
+    name="create_angle",
+)
+def api_create_angle(
+    body: CreateAngleInput,
+    engine: EngineDep,
+) -> CreateAngleResult:
+    with connection_scope(engine) as conn:
+        return create_angle(conn, body)
+
+
+@router.post(
+    "/angles/{angle_id}/claims",
+    response_model=LinkClaimToAngleResult,
+    name="link_claim_to_angle",
+)
+def api_link_claim_to_angle(
+    angle_id: int,
+    body: LinkClaimToAngleBody,
+    engine: EngineDep,
+) -> LinkClaimToAngleResult:
+    payload = LinkClaimToAngleInput(
+        angle_id=angle_id,
+        claim_id=body.claim_id,
+        dimensions=body.dimensions,
+    )
+    with connection_scope(engine) as conn:
+        return link_claim_to_angle(conn, payload)
+
+
+@router.post(
+    "/angles/{angle_id}/dismiss",
+    response_model=DismissAngleResult,
+    name="dismiss_angle",
+)
+def api_dismiss_angle(
+    angle_id: int,
+    body: DismissAngleBody,
+    engine: EngineDep,
+) -> DismissAngleResult:
+    with connection_scope(engine) as conn:
+        return dismiss_angle(conn, DismissAngleInput(angle_id=angle_id, reason=body.reason))
+
+
+@router.post(
+    "/angles/{angle_id}/choose",
+    response_model=ChooseAngleResult,
+    name="choose_angle",
+)
+def api_choose_angle(
+    angle_id: int,
+    engine: EngineDep,
+) -> ChooseAngleResult:
+    with connection_scope(engine) as conn:
+        return choose_angle(conn, ChooseAngleInput(angle_id=angle_id))
+
+
+@router.post(
+    "/public-questions",
+    response_model=CreatePublicQuestionResult,
+    name="create_public_question",
+)
+def api_create_public_question(
+    body: CreatePublicQuestionInput,
+    engine: EngineDep,
+) -> CreatePublicQuestionResult:
+    with connection_scope(engine) as conn:
+        return create_public_question(conn, body)
+
+
+@router.post(
+    "/public-questions/{public_question_id}/claims",
+    response_model=LinkClaimToPublicQuestionResult,
+    name="link_claim_to_public_question",
+)
+def api_link_claim_to_public_question(
+    public_question_id: int,
+    body: LinkClaimToPublicQuestionBody,
+    engine: EngineDep,
+) -> LinkClaimToPublicQuestionResult:
+    payload = LinkClaimToPublicQuestionInput(
+        public_question_id=public_question_id,
+        claim_id=body.claim_id,
+        dimensions=body.dimensions,
+    )
+    with connection_scope(engine) as conn:
+        return link_claim_to_public_question(conn, payload)
+
+
+@router.post(
+    "/quotation-shelf",
+    response_model=AddQuotationShelfResult,
+    name="add_quotation_to_shelf",
+)
+def api_add_quotation_to_shelf(
+    body: AddQuotationShelfInput,
+    engine: EngineDep,
+) -> AddQuotationShelfResult:
+    with connection_scope(engine) as conn:
+        return add_quotation_to_shelf(conn, body)
+
+
+@router.get(
+    "/angles/{angle_id}/rendition-eligible-claims",
+    response_model=RenditionEligibleClaimsResult,
+    name="list_rendition_eligible_claims",
+)
+def api_list_rendition_eligible_claims(
+    angle_id: int,
+    engine: EngineDep,
+) -> RenditionEligibleClaimsResult:
+    with connection_scope(engine) as conn:
+        return list_rendition_eligible_claims(conn, RenditionEligibleClaimsInput(angle_id=angle_id))

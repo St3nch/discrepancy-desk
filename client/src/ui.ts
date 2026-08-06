@@ -1,28 +1,83 @@
 import {
   addLead,
+  addQuotationToShelf,
   answerSuspendedRun,
   approveRun,
   attachLead,
   attestCoverage,
   cancelRun,
+  chooseAngle,
+  createAngle,
   createCase,
   createOperatorOpenQuestion,
+  createPublicQuestion,
   createRun,
   decideOpenQuestion,
+  dismissAngle,
   disposeLead,
   getCase,
   getRunClose,
+  linkClaimToAngle,
+  linkClaimToPublicQuestion,
   listCases,
   listLeads,
   promoteLead,
   summariseLead,
+  type AngleRecord,
   type CaseRecord,
+  type ClaimRecord,
   type GetCaseResult,
   type GetRunCloseResult,
   type LeadRecord,
+  type LinkClaimDimensions,
   type OpenQuestionRecord,
+  type PublicQuestionRecord,
   type RunRecord,
 } from "./api.ts";
+
+const SOURCE_BASIS = [
+  "contemporaneous_record",
+  "contemporaneous_report",
+  "direct_participant_recollection",
+  "later_retrospective_claim",
+  "scholarly_interpretation",
+  "technical_inference",
+  "desk_inference",
+  "other",
+] as const;
+const CORROBORATION = [
+  "unassessed",
+  "single_source",
+  "multi_source_dependent",
+  "independently_corroborated",
+  "contradicted",
+] as const;
+const CERTAINTY = [
+  "unassessed",
+  "established",
+  "probable",
+  "contested",
+  "speculative",
+  "unknown",
+] as const;
+const POSTURE = [
+  "factual_assertion",
+  "interpretation",
+  "participant_account",
+  "allegation",
+  "disputed_assertion",
+  "research_lead",
+  "pattern_candidate",
+] as const;
+const PUBLICATION_RISK = [
+  "unknown",
+  "living_private",
+  "public_official_official_capacity",
+  "public_figure",
+  "deceased",
+  "institution",
+  "not_applicable",
+] as const;
 
 /** D9 / F-29 — must appear on every suspended run panel. */
 export const INSTANCE_VS_CLASS_NOTICE =
@@ -33,6 +88,39 @@ const DISPOSITIONS = [
   "unresolved-awaiting-external-development",
   "unresolved-likely-permanent",
 ] as const;
+
+function selectOptions(
+  values: readonly string[],
+  selected?: string,
+): HTMLSelectElement {
+  const sel = document.createElement("select");
+  for (const v of values) {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    if (selected !== undefined && v === selected) opt.selected = true;
+    sel.append(opt);
+  }
+  return sel;
+}
+
+function readDimensionsFrom(
+  sourceBasis: HTMLSelectElement,
+  corroboration: HTMLSelectElement,
+  certainty: HTMLSelectElement,
+  posture: HTMLSelectElement,
+  publicationRisk: HTMLSelectElement,
+  qualification: HTMLInputElement | HTMLTextAreaElement,
+): LinkClaimDimensions {
+  return {
+    source_basis: sourceBasis.value,
+    corroboration: corroboration.value,
+    certainty: certainty.value,
+    posture: posture.value,
+    publication_risk: publicationRisk.value,
+    qualification: qualification.value,
+  };
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -915,48 +1003,42 @@ export function mount(root: HTMLElement): void {
     }
 
     const attestRow = el("div", { className: "attest-actions" });
-    if (ofStage?.reading === "worked" || deepStage?.reading === "worked") {
+    const pqStage = cov.stages.find((s) => s.stage === "public_question");
+    const edStage = cov.stages.find((s) => s.stage === "editorial_development");
+    const attestableWorked = [
+      ofStage,
+      deepStage,
+      pqStage,
+      edStage,
+    ].filter((s) => s?.reading === "worked");
+    if (attestableWorked.length > 0) {
       attestRow.append(examineList);
     }
-    if (ofStage?.reading === "worked") {
+    const attestButtons: Array<{ stage: string; label: string }> = [
+      { stage: "official_foundation", label: "Attest official foundation complete" },
+      { stage: "deep_context", label: "Attest deep context complete" },
+      { stage: "public_question", label: "Attest public question complete" },
+      {
+        stage: "editorial_development",
+        label: "Attest editorial development complete",
+      },
+    ];
+    for (const { stage, label } of attestButtons) {
+      const stageReading = cov.stages.find((s) => s.stage === stage);
+      if (stageReading?.reading !== "worked") continue;
       const btn = el("button", {
         type: "button",
-        text: "Attest official foundation complete",
+        className: stage === "official_foundation" ? "" : "secondary",
+        text: label,
       });
       btn.addEventListener("click", () => {
         void (async () => {
           try {
-            const r = await attestCoverage(caseId, "official_foundation", {
+            const r = await attestCoverage(caseId, stage, {
               examinedCaptureIds: selectedExaminedIds(),
             });
             await setStatus(
-              `Attested official foundation → ${r.reading}` +
-                (r.captures_marked_examined
-                  ? ` (marked ${r.captures_marked_examined} examined).`
-                  : "."),
-            );
-            await render();
-          } catch (err) {
-            await setStatus(err instanceof Error ? err.message : String(err), true);
-          }
-        })();
-      });
-      attestRow.append(el("div", { className: "row" }, [btn]));
-    }
-    if (deepStage?.reading === "worked") {
-      const btn = el("button", {
-        type: "button",
-        className: "secondary",
-        text: "Attest deep context complete",
-      });
-      btn.addEventListener("click", () => {
-        void (async () => {
-          try {
-            const r = await attestCoverage(caseId, "deep_context", {
-              examinedCaptureIds: selectedExaminedIds(),
-            });
-            await setStatus(
-              `Attested deep context → ${r.reading}` +
+              `Attested ${stage} → ${r.reading}` +
                 (r.captures_marked_examined
                   ? ` (marked ${r.captures_marked_examined} examined).`
                   : "."),
@@ -1097,44 +1179,19 @@ export function mount(root: HTMLElement): void {
         el("h2", { text: "Claims" }),
         el("p", {
           className: "subtitle",
-          text: "Model-proposed claims stay unconfirmed until angle work (ticket 11). Unconfirmed is always loud. Do not confirm at run close.",
+          text: "Model-proposed claims stay unconfirmed until linked into an angle. Linking is confirmation at use (ADR 2). Unconfirmed is always loud.",
         }),
         detail.claims.length === 0
           ? el("p", { className: "empty", text: "No claims yet." })
           : el(
               "ul",
               { className: "claim-list" },
-              detail.claims.map((cl) => {
-                const isUnconfirmed = cl.confirmation_status === "unconfirmed";
-                return el(
-                  "li",
-                  {
-                    className: isUnconfirmed
-                      ? "claim-card claim-unconfirmed"
-                      : "claim-card",
-                  },
-                  [
-                    el("div", { className: "claim-banner" }, [
-                      el("span", {
-                        className: "claim-status-badge",
-                        text: isUnconfirmed
-                          ? "⚠ UNCONFIRMED — model-proposed, not human-reviewed"
-                          : cl.confirmation_status.toUpperCase(),
-                      }),
-                    ]),
-                    el("p", {
-                      className: "claim-proposition",
-                      text: `#${cl.claim_id}: ${cl.proposition}`,
-                    }),
-                    el("p", {
-                      className: "meta",
-                      text: `run #${cl.run_id} · from “${cl.source_run_question}” · ${cl.posture} · ${cl.source_basis} · ${cl.certainty}`,
-                    }),
-                  ],
-                );
-              }),
+              detail.claims.map((cl) => claimCard(cl)),
             ),
       ]),
+      buildAngleRoomPanel(caseId, detail, () => {
+        void render();
+      }),
       el("section", { className: "panel" }, [
         el("h2", { text: "Captures on this case" }),
         detail.captures.length === 0
@@ -1152,10 +1209,572 @@ export function mount(root: HTMLElement): void {
       el("section", { className: "panel" }, [
         el("h2", { text: "Also on this case" }),
         el("ul", { className: "empty-slots" }, [
-          el("li", { text: `Angles: ${detail.angles.length}` }),
           el("li", { text: `Renditions: ${detail.renditions.length}` }),
         ]),
       ]),
+    );
+  }
+
+  function claimCard(cl: ClaimRecord): HTMLElement {
+    const isUnconfirmed = cl.confirmation_status === "unconfirmed";
+    const confirmMeta =
+      cl.confirmed_at != null && cl.confirmed_at !== ""
+        ? ` · confirmed ${cl.confirmed_at}`
+        : "";
+    return el(
+      "li",
+      {
+        className: isUnconfirmed ? "claim-card claim-unconfirmed" : "claim-card",
+      },
+      [
+        el("div", { className: "claim-banner" }, [
+          el("span", {
+            className: "claim-status-badge",
+            text: isUnconfirmed
+              ? "⚠ UNCONFIRMED — model-proposed, not human-reviewed"
+              : "CONFIRMED",
+          }),
+        ]),
+        el("p", {
+          className: "claim-proposition",
+          text: `#${cl.claim_id}: ${cl.proposition}`,
+        }),
+        el("p", {
+          className: "meta",
+          text: `run #${cl.run_id} · from “${cl.source_run_question}” · ${cl.posture} · ${cl.source_basis} · ${cl.certainty} · ${cl.publication_risk}${confirmMeta}`,
+        }),
+      ],
+    );
+  }
+
+  function buildAngleRoomPanel(
+    caseId: number,
+    detail: GetCaseResult,
+    refresh: () => void,
+  ): HTMLElement {
+    const foundationOk = detail.coverage.official_foundation_complete;
+    const gateNote = foundationOk
+      ? "Official foundation complete — Angle Room is open."
+      : "Official foundation incomplete — every angle/confirmation path will refuse until it reads complete.";
+
+    // --- Create angle ---
+    const angleTitle = el("input", {
+      type: "text",
+      placeholder: "Angle title",
+      "aria-label": "Angle title",
+    }) as HTMLInputElement;
+    const angleSummary = el("textarea", {
+      placeholder: "Summary (optional)",
+      "aria-label": "Angle summary",
+      rows: "2",
+    }) as HTMLTextAreaElement;
+    const createAngleBtn = el("button", {
+      type: "button",
+      text: "Create angle",
+    });
+    createAngleBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          const a = await createAngle(
+            caseId,
+            angleTitle.value,
+            angleSummary.value,
+          );
+          await setStatus(`Created angle #${a.angle_id} (${a.status}).`);
+          refresh();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    // --- Public question ---
+    const pqText = el("input", {
+      type: "text",
+      placeholder: "What are people asking?",
+      "aria-label": "Public question text",
+    }) as HTMLInputElement;
+    const pqVersion = el("input", {
+      type: "text",
+      placeholder: "Circulating version",
+      "aria-label": "Circulating version",
+    }) as HTMLInputElement;
+    const pqWhere = el("input", {
+      type: "text",
+      placeholder: "Where asked",
+      "aria-label": "Where asked",
+    }) as HTMLInputElement;
+    const pqOrigin = el("input", {
+      type: "text",
+      placeholder: "Origin",
+      "aria-label": "Origin",
+    }) as HTMLInputElement;
+    const pqBtn = el("button", {
+      type: "button",
+      text: "Record public question",
+    });
+    pqBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          const pq = await createPublicQuestion(caseId, {
+            question_text: pqText.value,
+            circulating_version: pqVersion.value,
+            where_asked: pqWhere.value,
+            origin: pqOrigin.value,
+          });
+          await setStatus(`Recorded public question #${pq.public_question_id}.`);
+          refresh();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    const angleList =
+      detail.angles.length === 0
+        ? el("p", { className: "empty", text: "No angles yet." })
+        : el(
+            "ul",
+            { className: "angle-list" },
+            detail.angles.map((ang) =>
+              angleCard(ang, detail.claims, foundationOk, refresh),
+            ),
+          );
+
+    const pqList =
+      detail.public_questions.length === 0
+        ? el("p", {
+            className: "empty",
+            text: "No public questions recorded.",
+          })
+        : el(
+            "ul",
+            { className: "angle-list" },
+            detail.public_questions.map((q) =>
+              publicQuestionCard(q, detail.claims, foundationOk, refresh),
+            ),
+          );
+
+    const shelfList =
+      detail.quotation_shelf.length === 0
+        ? el("p", {
+            className: "empty",
+            text: "Shelf is empty. Select a quote binding with speaker and attribution.",
+          })
+        : el(
+            "ul",
+            { className: "quotation-shelf" },
+            detail.quotation_shelf.map((item) =>
+              el("li", {
+                className: "quotation-item",
+                text: `${item.speaker} (${item.attribution_frame}): “${item.quoted_text}” · claim #${item.claim_id} · ${item.locator}`,
+              }),
+            ),
+          );
+
+    // Add-to-shelf form: pick a claim binding + speaker + frame
+    const shelfClaimSelect = document.createElement("select");
+    shelfClaimSelect.setAttribute("aria-label", "Claim for quotation shelf");
+    const claimsWithQuotes = detail.claims.filter(
+      (c) => c.quote_bindings.length > 0,
+    );
+    if (claimsWithQuotes.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No claims with quote bindings";
+      shelfClaimSelect.append(opt);
+      shelfClaimSelect.disabled = true;
+    } else {
+      for (const c of claimsWithQuotes) {
+        for (const qb of c.quote_bindings) {
+          const opt = document.createElement("option");
+          opt.value = `${c.claim_id}|${qb.capture_id}|${qb.locator}|${qb.quoted_text}`;
+          opt.textContent = `#${c.claim_id} ${qb.locator}: ${qb.quoted_text.slice(0, 50)}`;
+          shelfClaimSelect.append(opt);
+        }
+      }
+    }
+    const shelfSpeaker = el("input", {
+      type: "text",
+      placeholder: "Speaker",
+      "aria-label": "Speaker",
+    }) as HTMLInputElement;
+    const shelfFrame = el("input", {
+      type: "text",
+      placeholder: "Attribution frame",
+      "aria-label": "Attribution frame",
+    }) as HTMLInputElement;
+    const shelfSb = selectOptions(SOURCE_BASIS, "contemporaneous_report");
+    const shelfCor = selectOptions(CORROBORATION, "single_source");
+    const shelfCert = selectOptions(CERTAINTY, "probable");
+    const shelfPos = selectOptions(POSTURE, "factual_assertion");
+    const shelfPr = selectOptions(PUBLICATION_RISK, "not_applicable");
+    const shelfQual = el("input", {
+      type: "text",
+      placeholder: "Qualification if needed",
+      "aria-label": "Qualification for shelf confirm",
+    }) as HTMLInputElement;
+    const shelfBtn = el("button", {
+      type: "button",
+      text: "Add to quotation shelf",
+    });
+    shelfBtn.disabled = shelfClaimSelect.disabled || !foundationOk;
+    shelfBtn.addEventListener("click", () => {
+      void (async () => {
+        const raw = shelfClaimSelect.value;
+        if (!raw) return;
+        const [claimIdS, capIdS, locator, ...textParts] = raw.split("|");
+        const quoted_text = textParts.join("|");
+        const claimId = Number(claimIdS);
+        const capture_id = Number(capIdS);
+        const cl = detail.claims.find((c) => c.claim_id === claimId);
+        try {
+          const dims =
+            cl?.confirmation_status === "confirmed"
+              ? null
+              : readDimensionsFrom(
+                  shelfSb,
+                  shelfCor,
+                  shelfCert,
+                  shelfPos,
+                  shelfPr,
+                  shelfQual,
+                );
+          const item = await addQuotationToShelf({
+            case_id: caseId,
+            claim_id: claimId,
+            capture_id,
+            locator,
+            quoted_text,
+            speaker: shelfSpeaker.value,
+            attribution_frame: shelfFrame.value,
+            dimensions: dims,
+          });
+          await setStatus(
+            `Added shelf entry #${item.shelf_entry_id}: ${item.speaker}.`,
+          );
+          refresh();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    return el("section", { className: "panel panel-angle-room" }, [
+      el("h2", { text: "Angle Room" }),
+      el("p", { className: "subtitle", text: gateNote }),
+      el("h3", { text: "Angles" }),
+      angleList,
+      el("div", { className: "angle-create" }, [
+        el("h3", { text: "Create angle" }),
+        el("label", {}, ["Title ", angleTitle]),
+        el("label", {}, ["Summary ", angleSummary]),
+        el("div", { className: "row" }, [createAngleBtn]),
+      ]),
+      el("h3", { text: "Public questions" }),
+      el("p", {
+        className: "subtitle",
+        text: "Discourse observations — not claims. Must link ≥1 claim to count as worked coverage (VISION §7).",
+      }),
+      pqList,
+      el("div", { className: "public-question-create" }, [
+        el("label", {}, ["Question ", pqText]),
+        el("label", {}, ["Circulating version ", pqVersion]),
+        el("label", {}, ["Where asked ", pqWhere]),
+        el("label", {}, ["Origin ", pqOrigin]),
+        el("div", { className: "row" }, [pqBtn]),
+      ]),
+      el("h3", { text: "Quotation shelf" }),
+      el("p", {
+        className: "subtitle",
+        text: "Operator selects the strongest quotations — not an automatic dump of every binding.",
+      }),
+      shelfList,
+      el("div", { className: "shelf-add" }, [
+        el("label", {}, ["Binding ", shelfClaimSelect]),
+        el("label", {}, ["Speaker ", shelfSpeaker]),
+        el("label", {}, ["Attribution frame ", shelfFrame]),
+        el("div", { className: "dimension-grid" }, [
+          el("label", {}, ["Source basis ", shelfSb]),
+          el("label", {}, ["Corroboration ", shelfCor]),
+          el("label", {}, ["Certainty ", shelfCert]),
+          el("label", {}, ["Posture ", shelfPos]),
+          el("label", {}, ["Publication risk ", shelfPr]),
+          el("label", {}, ["Qualification ", shelfQual]),
+        ]),
+        el("div", { className: "row" }, [shelfBtn]),
+      ]),
+    ]);
+  }
+
+  function publicQuestionCard(
+    q: PublicQuestionRecord,
+    claims: ClaimRecord[],
+    foundationOk: boolean,
+    refresh: () => void,
+  ): HTMLElement {
+    const claimSelect = document.createElement("select");
+    claimSelect.setAttribute(
+      "aria-label",
+      `Claim to link to public question ${q.public_question_id}`,
+    );
+    const unlinked = claims.filter((c) => !q.claim_ids.includes(c.claim_id));
+    if (unlinked.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No unlinked claims";
+      claimSelect.append(opt);
+      claimSelect.disabled = true;
+    } else {
+      for (const c of unlinked) {
+        const opt = document.createElement("option");
+        opt.value = String(c.claim_id);
+        opt.textContent = `#${c.claim_id} ${c.confirmation_status}: ${c.proposition.slice(0, 50)}`;
+        claimSelect.append(opt);
+      }
+    }
+    const sb = selectOptions(SOURCE_BASIS, "contemporaneous_report");
+    const cor = selectOptions(CORROBORATION, "single_source");
+    const cert = selectOptions(CERTAINTY, "probable");
+    const pos = selectOptions(POSTURE, "factual_assertion");
+    const pr = selectOptions(PUBLICATION_RISK, "not_applicable");
+    const qual = el("input", {
+      type: "text",
+      placeholder: "Qualification if needed",
+      "aria-label": "Qualification",
+    }) as HTMLInputElement;
+    const prefill = () => {
+      const id = Number(claimSelect.value);
+      const cl = claims.find((c) => c.claim_id === id);
+      if (!cl) return;
+      sb.value = cl.source_basis;
+      cor.value = cl.corroboration;
+      cert.value = cl.certainty;
+      pos.value = cl.posture;
+      pr.value = cl.publication_risk;
+      qual.value = cl.qualification;
+    };
+    claimSelect.addEventListener("change", prefill);
+    if (!claimSelect.disabled) prefill();
+
+    const linkBtn = el("button", {
+      type: "button",
+      text: "Link claim (confirm)",
+    });
+    linkBtn.disabled = claimSelect.disabled || !foundationOk;
+    linkBtn.addEventListener("click", () => {
+      void (async () => {
+        const claimId = Number(claimSelect.value);
+        if (!Number.isFinite(claimId) || claimId <= 0) return;
+        const cl = claims.find((c) => c.claim_id === claimId);
+        try {
+          const dims =
+            cl?.confirmation_status === "confirmed"
+              ? null
+              : readDimensionsFrom(sb, cor, cert, pos, pr, qual);
+          await linkClaimToPublicQuestion(q.public_question_id, claimId, dims);
+          await setStatus(
+            `Linked claim #${claimId} to public question #${q.public_question_id}.`,
+          );
+          refresh();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    return el("li", { className: "angle-card" }, [
+      el("strong", {
+        text: `#${q.public_question_id}: ${q.question_text}`,
+      }),
+      el("p", {
+        className: "meta",
+        text: `version “${q.circulating_version}” · ${q.where_asked} · from ${q.origin} · claims: [${q.claim_ids.join(", ")}]`,
+      }),
+      el("div", { className: "angle-actions" }, [
+        el("label", {}, ["Claim ", claimSelect]),
+        el("div", { className: "dimension-grid" }, [
+          el("label", {}, ["Source basis ", sb]),
+          el("label", {}, ["Corroboration ", cor]),
+          el("label", {}, ["Certainty ", cert]),
+          el("label", {}, ["Posture ", pos]),
+          el("label", {}, ["Publication risk ", pr]),
+          el("label", {}, ["Qualification ", qual]),
+        ]),
+        el("div", { className: "row" }, [linkBtn]),
+      ]),
+    ]);
+  }
+
+  function angleCard(
+    ang: AngleRecord,
+    claims: ClaimRecord[],
+    foundationOk: boolean,
+    refresh: () => void,
+  ): HTMLElement {
+    const statusChip = el("span", {
+      className: `status-chip angle-status-${ang.status}`,
+      text: ang.status,
+    });
+    const body: (Node | string)[] = [
+      el("div", { className: "angle-header" }, [
+        el("strong", { text: `#${ang.angle_id}: ${ang.title}` }),
+        statusChip,
+      ]),
+      el("p", {
+        className: "meta",
+        text:
+          ang.summary.trim() === ""
+            ? `claims: [${ang.claim_ids.join(", ")}]`
+            : `${ang.summary} · claims: [${ang.claim_ids.join(", ")}]`,
+      }),
+    ];
+
+    if (ang.status === "dismissed") {
+      body.push(
+        el("p", {
+          className: "dismissal-reason",
+          text: `Dismissed${ang.dismissed_at ? ` ${ang.dismissed_at}` : ""}: ${ang.dismissal_reason ?? ""}`,
+        }),
+      );
+      return el("li", { className: "angle-card angle-dismissed" }, body);
+    }
+
+    // Link claim + confirm dimensions
+    const claimSelect = document.createElement("select");
+    claimSelect.setAttribute("aria-label", `Claim to link to angle ${ang.angle_id}`);
+    const unlinked = claims.filter((c) => !ang.claim_ids.includes(c.claim_id));
+    if (unlinked.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No unlinked claims";
+      claimSelect.append(opt);
+      claimSelect.disabled = true;
+    } else {
+      for (const c of unlinked) {
+        const opt = document.createElement("option");
+        opt.value = String(c.claim_id);
+        opt.textContent = `#${c.claim_id} ${c.confirmation_status}: ${c.proposition.slice(0, 60)}`;
+        claimSelect.append(opt);
+      }
+    }
+
+    const sb = selectOptions(SOURCE_BASIS, "contemporaneous_report");
+    const cor = selectOptions(CORROBORATION, "single_source");
+    const cert = selectOptions(CERTAINTY, "probable");
+    const pos = selectOptions(POSTURE, "factual_assertion");
+    const pr = selectOptions(PUBLICATION_RISK, "not_applicable");
+    const qual = el("input", {
+      type: "text",
+      placeholder: "Qualification (if required by posture)",
+      "aria-label": "Qualification",
+    }) as HTMLInputElement;
+
+    // Prefill from selected claim when selection changes
+    const prefillFromClaim = () => {
+      const id = Number(claimSelect.value);
+      const cl = claims.find((c) => c.claim_id === id);
+      if (!cl) return;
+      sb.value = cl.source_basis;
+      cor.value = cl.corroboration;
+      cert.value = cl.certainty;
+      pos.value = cl.posture;
+      pr.value = cl.publication_risk;
+      qual.value = cl.qualification;
+    };
+    claimSelect.addEventListener("change", prefillFromClaim);
+    if (!claimSelect.disabled) prefillFromClaim();
+
+    const linkBtn = el("button", {
+      type: "button",
+      text: "Link claim (confirm dimensions)",
+    });
+    linkBtn.disabled = claimSelect.disabled || !foundationOk;
+    linkBtn.addEventListener("click", () => {
+      void (async () => {
+        const claimId = Number(claimSelect.value);
+        if (!Number.isFinite(claimId) || claimId <= 0) return;
+        const cl = claims.find((c) => c.claim_id === claimId);
+        try {
+          const dims =
+            cl?.confirmation_status === "confirmed"
+              ? null
+              : readDimensionsFrom(sb, cor, cert, pos, pr, qual);
+          const updated = await linkClaimToAngle(ang.angle_id, claimId, dims);
+          await setStatus(
+            `Linked claim #${claimId} to angle #${updated.angle_id}` +
+              (cl?.confirmation_status === "unconfirmed"
+                ? " (claim confirmed)."
+                : "."),
+          );
+          refresh();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    const chooseBtn = el("button", { type: "button", text: "Choose this angle" });
+    chooseBtn.disabled = !foundationOk || ang.status === "chosen";
+    chooseBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          const r = await chooseAngle(ang.angle_id);
+          await setStatus(`Chose angle #${r.angle_id}.`);
+          refresh();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    const dismissReason = el("input", {
+      type: "text",
+      placeholder: "Dismissal reason (required)",
+      "aria-label": "Dismissal reason",
+    }) as HTMLInputElement;
+    const dismissBtn = el("button", {
+      type: "button",
+      text: "Dismiss angle",
+    });
+    dismissBtn.disabled = !foundationOk;
+    dismissBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          const r = await dismissAngle(ang.angle_id, dismissReason.value);
+          await setStatus(
+            `Dismissed angle #${r.angle_id}: ${r.dismissal_reason ?? ""}`,
+          );
+          refresh();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    body.push(
+      el("div", { className: "angle-actions" }, [
+        el("label", {}, ["Claim ", claimSelect]),
+        el("div", { className: "dimension-grid" }, [
+          el("label", {}, ["Source basis ", sb]),
+          el("label", {}, ["Corroboration ", cor]),
+          el("label", {}, ["Certainty ", cert]),
+          el("label", {}, ["Posture ", pos]),
+          el("label", {}, ["Publication risk ", pr]),
+          el("label", {}, ["Qualification ", qual]),
+        ]),
+        el("div", { className: "row" }, [linkBtn, chooseBtn]),
+        el("div", { className: "row" }, [dismissReason, dismissBtn]),
+      ]),
+    );
+
+    return el(
+      "li",
+      {
+        className:
+          ang.status === "chosen" ? "angle-card angle-chosen" : "angle-card",
+      },
+      body,
     );
   }
 

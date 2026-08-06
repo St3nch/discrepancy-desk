@@ -65,6 +65,12 @@ PUBLICATION_RISK: Final[frozenset[str]] = frozenset(
     }
 )
 
+# D21 / VISION §13: non-publishable states. Categorical — not a severity ladder.
+# If any cited claim is in this set, the inference must also be.
+NON_PUBLISHABLE_PUBLICATION_RISKS: Final[frozenset[str]] = frozenset({"unknown", "living_private"})
+
+ANGLE_STATUSES: Final[frozenset[str]] = frozenset({"active", "chosen", "dismissed"})
+
 # Postures that require non-empty qualification (ADR 9 step 5).
 QUALIFICATION_REQUIRED_POSTURES: Final[frozenset[str]] = frozenset(
     {

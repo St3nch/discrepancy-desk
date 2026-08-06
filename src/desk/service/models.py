@@ -356,6 +356,8 @@ class ClaimRecord(_StrictModel):
     quote_bindings: list[QuoteBindingRecord]
     cited_claim_ids: list[int]
     created_at: str
+    # Set when human confirms dimensions at angle link (ADR 2 / ticket 11).
+    confirmed_at: str | None = None
 
 
 class ProposeClaimResult(ClaimRecord):
@@ -603,6 +605,185 @@ class CaseCaptureSummary(_StrictModel):
     status: str
 
 
+# --- Angle Room (ticket 11 / ADR 2) ---
+
+
+class AngleClaimLink(_StrictModel):
+    claim_id: int
+    ordinal: int
+    linked_at: str
+
+
+class AngleRecord(_StrictModel):
+    angle_id: int
+    case_id: int
+    title: str
+    summary: str
+    status: str
+    dismissal_reason: str | None = None
+    dismissed_at: str | None = None
+    claim_ids: list[int] = Field(default_factory=list)
+    links: list[AngleClaimLink] = Field(default_factory=list)
+    created_at: str
+    updated_at: str
+
+
+class LinkClaimDimensions(_StrictModel):
+    """Authoritative dimensions when confirming an unconfirmed claim at link time."""
+
+    source_basis: str
+    corroboration: str
+    certainty: str
+    posture: str
+    publication_risk: str
+    qualification: str = ""
+
+
+class CreateAngleInput(_StrictModel):
+    case_id: int
+    title: str
+    summary: str = ""
+    # Optional initial claims; unconfirmed ones require dimensions_by_claim_id.
+    claim_ids: list[int] = Field(default_factory=list)
+    dimensions_by_claim_id: dict[int, LinkClaimDimensions] = Field(default_factory=dict)
+
+
+class CreateAngleResult(AngleRecord):
+    pass
+
+
+class LinkClaimToAngleInput(_StrictModel):
+    angle_id: int
+    claim_id: int
+    # Required when claim is unconfirmed — becomes the authoritative dimensions.
+    dimensions: LinkClaimDimensions | None = None
+
+
+class LinkClaimToAngleBody(_StrictModel):
+    """HTTP path carries angle_id; body is claim + optional confirmation dimensions."""
+
+    claim_id: int
+    dimensions: LinkClaimDimensions | None = None
+
+
+class LinkClaimToAngleResult(AngleRecord):
+    pass
+
+
+class DismissAngleInput(_StrictModel):
+    angle_id: int
+    reason: str
+
+
+class DismissAngleBody(_StrictModel):
+    reason: str
+
+
+class DismissAngleResult(AngleRecord):
+    pass
+
+
+class ChooseAngleInput(_StrictModel):
+    angle_id: int
+
+
+class ChooseAngleResult(AngleRecord):
+    pass
+
+
+class PublicQuestionClaimLink(_StrictModel):
+    claim_id: int
+    ordinal: int
+    linked_at: str
+
+
+class PublicQuestionRecord(_StrictModel):
+    public_question_id: int
+    case_id: int
+    question_text: str
+    circulating_version: str
+    where_asked: str
+    origin: str
+    claim_ids: list[int] = Field(default_factory=list)
+    links: list[PublicQuestionClaimLink] = Field(default_factory=list)
+    created_at: str
+
+
+class CreatePublicQuestionInput(_StrictModel):
+    case_id: int
+    question_text: str
+    circulating_version: str
+    where_asked: str
+    origin: str
+    # Optional initial claims; unconfirmed ones require dimensions_by_claim_id.
+    claim_ids: list[int] = Field(default_factory=list)
+    dimensions_by_claim_id: dict[int, LinkClaimDimensions] = Field(default_factory=dict)
+
+
+class CreatePublicQuestionResult(PublicQuestionRecord):
+    pass
+
+
+class LinkClaimToPublicQuestionInput(_StrictModel):
+    public_question_id: int
+    claim_id: int
+    dimensions: LinkClaimDimensions | None = None
+
+
+class LinkClaimToPublicQuestionBody(_StrictModel):
+    claim_id: int
+    dimensions: LinkClaimDimensions | None = None
+
+
+class LinkClaimToPublicQuestionResult(PublicQuestionRecord):
+    pass
+
+
+class QuotationShelfItem(_StrictModel):
+    """Operator-selected shelf entry — speaker + attribution frame required."""
+
+    shelf_entry_id: int
+    case_id: int
+    claim_id: int
+    capture_id: int
+    locator: str
+    quoted_text: str
+    speaker: str
+    attribution_frame: str
+    actor: str
+    added_at: str
+    confirmation_status: str
+
+
+class AddQuotationShelfInput(_StrictModel):
+    case_id: int
+    claim_id: int
+    capture_id: int
+    locator: str
+    quoted_text: str
+    speaker: str
+    attribution_frame: str
+    # Required when claim is unconfirmed.
+    dimensions: LinkClaimDimensions | None = None
+    actor: str = "operator"
+
+
+class AddQuotationShelfResult(QuotationShelfItem):
+    pass
+
+
+class RenditionEligibleClaimsInput(_StrictModel):
+    """D2 / VISION §14: pool is one angle's linked confirmed claims, not case-wide."""
+
+    angle_id: int
+
+
+class RenditionEligibleClaimsResult(_StrictModel):
+    angle_id: int
+    case_id: int
+    claims: list[ClaimRecord]
+
+
 class GetCaseResult(_StrictModel):
     """Case detail projection — incomplete by design; grows ticket by ticket."""
 
@@ -612,7 +793,9 @@ class GetCaseResult(_StrictModel):
     claims: list[ClaimRecord]
     open_questions: list[OpenQuestionRecord]
     coverage: CaseCoverageGauge
-    angles: list[str]
+    angles: list[AngleRecord]
+    public_questions: list[PublicQuestionRecord]
+    quotation_shelf: list[QuotationShelfItem]
     renditions: list[str]
 
 

@@ -33,6 +33,8 @@ def test_create_list_get_round_trip(engine: Engine) -> None:
         assert detail.coverage.official_foundation_complete is False
         assert len(detail.coverage.stages) == 6
         assert detail.angles == []
+        assert detail.public_questions == []
+        assert detail.quotation_shelf == []
         assert detail.renditions == []
 
 

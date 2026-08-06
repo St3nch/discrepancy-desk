@@ -527,6 +527,88 @@ select {
   margin-top: 0.2rem;
 }
 
+/* Angle Room (ticket 11) */
+.panel-angle-room h3 {
+  margin-top: 1.25rem;
+  margin-bottom: 0.35rem;
+  font-size: 1rem;
+}
+
+.angle-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.angle-card {
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  background: var(--panel-bg, #1a1a1a);
+}
+
+.angle-card.angle-chosen {
+  border-color: #3a7;
+}
+
+.angle-card.angle-dismissed {
+  opacity: 0.85;
+  border-style: dashed;
+}
+
+.angle-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.angle-status-active {
+  background: #345;
+}
+.angle-status-chosen {
+  background: #274;
+}
+.angle-status-dismissed {
+  background: #543;
+}
+
+.dismissal-reason {
+  font-style: italic;
+  margin: 0.35rem 0 0;
+}
+
+.dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.35rem 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.angle-actions,
+.angle-create,
+.public-question-create {
+  margin-top: 0.5rem;
+}
+
+.quotation-shelf {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.quotation-item {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  margin: 0.35rem 0;
+  padding: 0.35rem 0.5rem;
+  border-left: 3px solid #678;
+  background: rgba(100, 120, 140, 0.12);
+}
+
 .attest-actions {
   margin-top: 0.5rem;
   padding-top: 0.5rem;
