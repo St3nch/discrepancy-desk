@@ -196,8 +196,10 @@ recorded as `identity_only` — explicitly not captured; that product state is
 distinct from an SSRF refusal (fail-closed, no lead written). `identity_only` is
 triggered by HTTP response status alone (401/402/403); soft walls that return
 200 OK with login or subscription HTML are captured like any other material.
-There is no automatic wall detection and no content inspection that discards
-bytes on a heuristic. A successful lead capture stays `unexamined` until a run
+There is no automatic wall detection, no content inspection that discards bytes
+on a heuristic, and no operator "not usable" mark (D19). An unsupported content
+type (PDF, audio) refuses on drop and writes no lead row at all — the URL is not
+preserved; that gap is open, not intended. A successful lead capture stays `unexamined` until a run
 on the attached case reports it in `examined_capture_ids` at close (or cites
 it). Operator may attach to an existing case, promote to a new case, dispose, or
 summarise (skippable). `add_lead` is on both transports (D18); MCP requires a

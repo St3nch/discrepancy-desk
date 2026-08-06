@@ -21,6 +21,7 @@ Product doctrine lives in a separate repository at `../discrepancy-desk-docs/`:
 | `decisions/run-registry-and-tool-surface.md` | D12–D15, run states, the eight tool calls |
 | `decisions/stack.md` | D16–D17 — Python, SQLite, FastAPI, TypeScript client; one brand per deployment |
 | `decisions/lead-inbox-transport.md` | D18 — why `add_lead` is on both transports |
+| `decisions/lead-material-admission.md` | D19 — what `identity_only` covers; why no wall detector |
 | `reference/repository-inventory.md` | Prior research worth consulting before re-deriving an answer |
 
 The ADRs in `docs/adr/` are the binding form of the decisions that matter most.
