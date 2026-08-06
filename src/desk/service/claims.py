@@ -216,16 +216,23 @@ def _verify_quote_binding(
             what_was_not_changed="The Record is unchanged.",
             what_you_can_do="Call capture_url first, then propose_claim with that capture_id.",
         )
-    if int(cap.case_id) != case_id:
+    # Lead captures have case_id null until attach; refuse citing them until then.
+    if cap.case_id is None or int(cap.case_id) != case_id:
+        owned = (
+            "no case (unattached lead material)" if cap.case_id is None else str(int(cap.case_id))
+        )
         raise DeskRefusal(
             code="CAPTURE_WRONG_CASE",
             what_happened=(
-                f"Capture {binding.capture_id} belongs to case {int(cap.case_id)}, "
+                f"Capture {binding.capture_id} belongs to case {owned}, "
                 f"not the run's case {case_id}."
             ),
             what_was_preserved="No claim was written.",
             what_was_not_changed="The Record is unchanged.",
-            what_you_can_do="Cite a capture that belongs to this run's case.",
+            what_you_can_do=(
+                "Cite a capture that belongs to this run's case. "
+                "Unattached lead material must be attached by the operator first."
+            ),
         )
 
     surface = _resolve_quotation_surface(conn, binding.capture_id, binding.locator)

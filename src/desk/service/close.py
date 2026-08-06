@@ -61,9 +61,7 @@ def _row_to_open_question(row: object) -> OpenQuestionRecord:
             str(row.settled_scope) if getattr(row, "settled_scope", None) is not None else None
         ),
         created_at=str(row.created_at),  # type: ignore[attr-defined]
-        decided_at=(
-            str(row.decided_at) if getattr(row, "decided_at", None) is not None else None
-        ),
+        decided_at=(str(row.decided_at) if getattr(row, "decided_at", None) is not None else None),
     )
 
 
@@ -139,13 +137,15 @@ def list_captures_for_run(conn: Connection, run_id: int) -> list[CaptureCloseRec
 def _mark_reported_examined(
     conn: Connection,
     run_id: int,
+    case_id: int,
     capture_ids: list[int],
 ) -> int:
     """Mark only executor-reported uncited captures as examined (F-32).
 
-    Each id must belong to this run and be unexamined. Cited stays cited —
-    reporting a cited capture is a refusal. Omitted uncited captures stay
-    unexamined: nobody confirmed looking.
+    Ownership matches propose_claim's axis (null-safe): the capture belongs to
+    this run, *or* belongs to this run's case (attached lead material). Cited
+    stays cited — reporting a cited capture is a refusal. Omitted uncited
+    captures stay unexamined: nobody confirmed looking.
     """
     # Preserve order; ignore accidental duplicates in the list.
     seen: set[int] = set()
@@ -160,9 +160,12 @@ def _mark_reported_examined(
     marked = 0
     for cid in ordered:
         row = conn.execute(
-            select(captures.c.id, captures.c.run_id, captures.c.status).where(
-                captures.c.id == cid
-            )
+            select(
+                captures.c.id,
+                captures.c.run_id,
+                captures.c.case_id,
+                captures.c.status,
+            ).where(captures.c.id == cid)
         ).one_or_none()
         if row is None:
             raise DeskRefusal(
@@ -172,15 +175,24 @@ def _mark_reported_examined(
                 what_was_not_changed="Nothing was written.",
                 what_you_can_do="Pass capture ids from this run's capture_url results.",
             )
-        if int(row.run_id) != run_id:
+        # run_id may be NULL (attached lead capture); case_id may be NULL (unattached).
+        owned_by_run = row.run_id is not None and int(row.run_id) == run_id
+        owned_by_case = row.case_id is not None and int(row.case_id) == case_id
+        if not owned_by_run and not owned_by_case:
+            run_label = "none" if row.run_id is None else str(int(row.run_id))
+            case_label = "none" if row.case_id is None else str(int(row.case_id))
             raise DeskRefusal(
                 code="CAPTURE_WRONG_RUN",
                 what_happened=(
-                    f"Capture {cid} belongs to run {int(row.run_id)}, not run {run_id}."
+                    f"Capture {cid} is not owned by run {run_id} or case {case_id} "
+                    f"(capture run_id={run_label}, case_id={case_label})."
                 ),
                 what_was_preserved="The run was not closed; no capture statuses changed.",
                 what_was_not_changed="Nothing was written.",
-                what_you_can_do="Report only captures made under this claim.",
+                what_you_can_do=(
+                    "Report only captures from this run, or lead material attached "
+                    "to this run's case."
+                ),
             )
         status = str(row.status)
         if status == "cited":
@@ -209,10 +221,10 @@ def _mark_reported_examined(
                 what_was_not_changed="Nothing was written.",
                 what_you_can_do="Report only unexamined, uncited captures.",
             )
+        # Do not filter UPDATE on run_id — attached lead captures have run_id NULL.
         result = conn.execute(
             update(captures)
             .where(captures.c.id == cid)
-            .where(captures.c.run_id == run_id)
             .where(captures.c.status == "unexamined")
             .values(status="examined")
         )
@@ -315,9 +327,7 @@ def close_run(conn: Connection, params: CloseRunInput) -> CloseRunResult:
         if pk is None or pk[0] is None:
             raise RuntimeError("insert into open_questions did not return a primary key")
         oq_id = int(pk[0])
-        row = conn.execute(
-            select(*_OQ_COLUMNS).where(open_questions.c.id == oq_id)
-        ).one()
+        row = conn.execute(select(*_OQ_COLUMNS).where(open_questions.c.id == oq_id)).one()
         agenda.append(_row_to_open_question(row))
 
     low_conf: list[str] = []
@@ -341,7 +351,10 @@ def close_run(conn: Connection, params: CloseRunInput) -> CloseRunResult:
         low_conf.append(statement)
 
     examined = _mark_reported_examined(
-        conn, params.run_id, list(params.examined_capture_ids)
+        conn,
+        params.run_id,
+        case_id,
+        list(params.examined_capture_ids),
     )
 
     presented = params.claim_token.strip()
@@ -415,8 +428,7 @@ def decide_open_question(
         raise DeskRefusal(
             code="OPEN_QUESTION_ALREADY_DECIDED",
             what_happened=(
-                f"Open question {params.open_question_id} is already "
-                f"{row.agenda_decision!r}."
+                f"Open question {params.open_question_id} is already {row.agenda_decision!r}."
             ),
             what_was_preserved="The prior decision stands.",
             what_was_not_changed="Nothing was written.",
@@ -517,9 +529,7 @@ def decide_open_question(
     updated = conn.execute(
         select(*_OQ_COLUMNS).where(open_questions.c.id == params.open_question_id)
     ).one()
-    return DecideOpenQuestionResult.model_validate(
-        _row_to_open_question(updated).model_dump()
-    )
+    return DecideOpenQuestionResult.model_validate(_row_to_open_question(updated).model_dump())
 
 
 def get_run_close(conn: Connection, params: GetRunCloseInput) -> GetRunCloseResult:
@@ -663,6 +673,4 @@ def create_operator_open_question(
         raise RuntimeError("insert into open_questions did not return a primary key")
     oq_id = int(pk[0])
     row = conn.execute(select(*_OQ_COLUMNS).where(open_questions.c.id == oq_id)).one()
-    return CreateOperatorOpenQuestionResult.model_validate(
-        _row_to_open_question(row).model_dump()
-    )
+    return CreateOperatorOpenQuestionResult.model_validate(_row_to_open_question(row).model_dump())

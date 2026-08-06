@@ -80,6 +80,14 @@ CONFIRMATION_STATUSES: Final[frozenset[str]] = frozenset({"unconfirmed", "confir
 
 # Capture examination states (ADR 1 / ticket 04–08). Examined is set only by
 # explicit executor report at close_run (F-32), never inferred from uncited-ness.
-CAPTURE_STATUSES: Final[frozenset[str]] = frozenset(
-    {"unexamined", "examined", "cited"}
-)
+CAPTURE_STATUSES: Final[frozenset[str]] = frozenset({"unexamined", "examined", "cited"})
+
+# Lead material vs identity (ticket 09 / ADR 7). identity_only = auth/paywall;
+# no capture row masquerades as evidence.
+LEAD_MATERIAL_STATUSES: Final[frozenset[str]] = frozenset({"captured", "identity_only"})
+
+# Lead inbox lifecycle. open until operator attaches, promotes, or disposes.
+LEAD_INBOX_STATUSES: Final[frozenset[str]] = frozenset({"open", "attached", "promoted", "disposed"})
+
+# list_leads filter only — not a stored inbox_status value.
+LIST_LEADS_ALL: Final[str] = "all"

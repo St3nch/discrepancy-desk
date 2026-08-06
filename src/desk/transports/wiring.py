@@ -15,10 +15,23 @@ API_ONLY: frozenset[str] = frozenset(
         "get_run_close",
         "decide_open_question",
         "create_operator_open_question",
+        # Lead inbox after drop — editorial judgements (D18).
+        "list_leads",
+        "attach_lead",
+        "promote_lead",
+        "dispose_lead",
+        "summarise_lead",
     }
 )
 
-MCP_AND_API: frozenset[str] = frozenset()
+# D18: first and only deliberate dual-surface entry. Dropping a URL commits
+# nothing (material only, no case, no claims). Do not cite this as precedent
+# for a second MCP_AND_API operation without the same scrutiny.
+MCP_AND_API: frozenset[str] = frozenset(
+    {
+        "add_lead",
+    }
+)
 
 MCP_ONLY: frozenset[str] = frozenset(
     {

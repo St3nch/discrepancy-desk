@@ -342,9 +342,7 @@ OPEN_QUESTION_DISPOSITIONS: frozenset[str] = frozenset(
     }
 )
 
-AGENDA_DECISIONS: frozenset[str] = frozenset(
-    {"pending", "approved", "rejected", "replaced"}
-)
+AGENDA_DECISIONS: frozenset[str] = frozenset({"pending", "approved", "rejected", "replaced"})
 
 
 class ProposedOpenQuestionInput(_StrictModel):
@@ -521,3 +519,127 @@ class ReadCaseContextResult(_StrictModel):
     open_questions: list[OpenQuestionRecord]
     angles: list[str]
     renditions: list[str]
+
+
+# --- Lead inbox (ticket 09 / ADR 7 / D18) ---
+
+
+class LeadRecord(_StrictModel):
+    """A URL dropped into the inbox — material only, never claims."""
+
+    lead_id: int
+    url: str
+    note: str
+    summary: str | None = None
+    # captured | identity_only — identity_only means auth/paywall, not SSRF.
+    material_status: str
+    capture_id: int | None = None
+    # Capture examination status when material_status is captured (always unexamined
+    # on drop; no run to mark examined).
+    capture_status: str | None = None
+    # open | attached | promoted | disposed
+    inbox_status: str
+    case_id: int | None = None
+    created_at: str
+    updated_at: str
+    # Present when material was retained (not identity-only).
+    sha256: str | None = None
+    content_type: str | None = None
+    byte_size: int | None = None
+    element_count: int | None = None
+    # Non-authoritative browse view; never for quotation.
+    projection_markdown: str | None = None
+    projection_is_authoritative: bool = False
+
+
+class AddLeadInput(_StrictModel):
+    """Drop a URL into the lead inbox. Capture is always attempted (ADR 7).
+
+    Executor (MCP) path: pass run_id + claim_token (lease validated, no budget).
+    Operator (API) path: omit both — no run in play.
+    """
+
+    url: str
+    note: str = ""
+    # Required together on the MCP tool surface; omitted on API.
+    run_id: int | None = None
+    claim_token: str | None = None
+
+
+class AddLeadResult(LeadRecord):
+    pass
+
+
+class ListLeadsInput(_StrictModel):
+    """List leads. Default: open inbox only. Pass inbox_status to filter."""
+
+    inbox_status: str | None = None
+
+
+class ListLeadsResult(_StrictModel):
+    leads: list[LeadRecord]
+
+
+class AttachLeadInput(_StrictModel):
+    """Human-only: attach an open lead to an existing case."""
+
+    lead_id: int
+    case_id: int
+
+
+class AttachLeadBody(_StrictModel):
+    """HTTP path carries lead_id; body is case_id only."""
+
+    case_id: int
+
+
+class AttachLeadResult(LeadRecord):
+    pass
+
+
+class PromoteLeadInput(_StrictModel):
+    """Human-only: create a new case from an open lead and attach the lead to it."""
+
+    lead_id: int
+    title: str
+
+
+class PromoteLeadBody(_StrictModel):
+    """HTTP path carries lead_id; body is title only."""
+
+    title: str
+
+
+class PromoteLeadResult(LeadRecord):
+    pass
+
+
+class DisposeLeadInput(_StrictModel):
+    """Human-only: dispose an open lead (not worth pursuing)."""
+
+    lead_id: int
+
+
+class DisposeLeadResult(LeadRecord):
+    pass
+
+
+class SummariseLeadInput(_StrictModel):
+    """Human-only: optional summary for browsability. Skippable — never required.
+
+    ``summary`` is description, not claim extraction (ADR 7). Model generation
+    may fill this later; today the operator (or a future generator) supplies text.
+    """
+
+    lead_id: int
+    summary: str
+
+
+class SummariseLeadBody(_StrictModel):
+    """HTTP path carries lead_id; body is the summary text."""
+
+    summary: str
+
+
+class SummariseLeadResult(LeadRecord):
+    pass

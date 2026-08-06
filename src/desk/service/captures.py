@@ -8,12 +8,17 @@ Wall-clock and rate limits bound retry loops; budget bounds Vault retention.
 Regions (F-22): each element gets a full-span region row (0..len(text)). Locators
 may address a sub-range as e/{ordinal}/r/{start}-{end}; propose_claim resolves
 that slice of elements.text for quote verification.
+
+Lead captures (ticket 09): same retain path as run captures — store, hash, parse,
+elements. Ownership columns (run_id, case_id) may be null until a lead is attached.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from hmac import compare_digest
 
 from sqlalchemy import Connection, func, insert, select
 
@@ -69,91 +74,49 @@ def _projection_markdown(elems: list[LocatorElement]) -> str:
     return "\n".join(lines)
 
 
-def capture_url(
+@dataclass(frozen=True)
+class RetainedCapture:
+    """Result of the shared store+parse path used by run and lead capture."""
+
+    capture_id: int
+    url: str
+    sha256: str
+    content_type: str
+    byte_size: int
+    status: str
+    element_count: int
+    elements_returned: int
+    truncated: bool
+    elements: list[LocatorElement]
+    projection_markdown: str
+
+
+def retain_capture_from_bytes(
     conn: Connection,
-    params: CaptureUrlInput,
     *,
     vault: VaultStore,
-    fetch: FetchFn = default_fetch,
+    url: str,
+    raw: bytes,
+    content_type: str,
+    run_id: int | None,
+    case_id: int | None,
     locator_map_cap: int = DEFAULT_LOCATOR_MAP_CAP,
-) -> CaptureUrlResult:
-    """Fetch URL through the backend, store immutable bytes, parse locator map.
+) -> RetainedCapture:
+    """Store raw bytes, hash, parse into elements — one path for runs and leads.
 
-    Counts against the run capture budget before the fetch is retained. Only a
-    claimed run may capture (executor work path).
+    F-14: refuse unparseable types before Vault/Record write so claims cannot
+    bind to replacement-character garbage. Choice: do *not* retain the bytes
+    when parse is refused. Budget (run path) is not consumed when this raises.
     """
-    url = _validate_url(params.url)
-
-    # Shared validate-and-refresh: claimed + unexpired lease + claim_token (F-25).
-    validate_and_refresh_claim(conn, params.run_id, params.claim_token)
-
-    run_row = conn.execute(
-        select(
-            runs.c.id,
-            runs.c.case_id,
-            runs.c.status,
-            runs.c.capture_budget,
-        ).where(runs.c.id == params.run_id)
-    ).one_or_none()
-    if run_row is None:
-        raise DeskRefusal(
-            code="RUN_NOT_FOUND",
-            what_happened=f"No run exists with id {params.run_id}.",
-            what_was_preserved="Existing captures are unchanged.",
-            what_was_not_changed="No capture was written.",
-            what_you_can_do="Claim a run via claim_next_run, then capture against that run_id.",
-        )
-
-    used = int(
-        conn.execute(
-            select(func.count()).select_from(captures).where(captures.c.run_id == params.run_id)
-        ).scalar_one()
-    )
-    budget = int(run_row.capture_budget)
-    if used >= budget:
-        raise DeskRefusal(
-            code="BUDGET_EXHAUSTED",
-            what_happened=(
-                f"Run {params.run_id} has used {used} of {budget} capture budget slots."
-            ),
-            what_was_preserved="Existing captures are unchanged; no fetch was stored.",
-            what_was_not_changed="No new capture was written; budget remains exhausted.",
-            what_you_can_do=(
-                "Close this run or ask the operator for a new run with a higher capture_budget."
-            ),
-        )
-
-    try:
-        raw, content_type = fetch(url)
-    except DeskRefusal:
-        # SSRF / HTTP / size refusals from safe_http_get must keep their codes
-        # (CAPTURE_URL_BLOCKED, CAPTURE_HTTP_ERROR, CAPTURE_TOO_LARGE, …).
-        # Failed fetches do not consume capture_budget (F-15).
-        raise
-    except Exception as exc:  # noqa: BLE001 — unexpected transport failures only
-        raise DeskRefusal(
-            code="CAPTURE_FETCH_FAILED",
-            what_happened=f"Failed to fetch {url!r}: {type(exc).__name__}.",
-            what_was_preserved="Existing captures and the run budget are unchanged.",
-            what_was_not_changed="No capture was written.",
-            what_you_can_do="Check the URL is reachable and retry capture_url.",
-        ) from None
-
-    # F-14: refuse unparseable types before Vault/Record write so ticket 05 cannot
-    # bind claims to replacement-character garbage. Choice: do *not* retain the
-    # bytes as a capture when parse is refused — without a quotation surface the
-    # capture cannot participate in capture-then-cite; a future PDF/parser ticket
-    # will store + parse properly. Budget is not consumed (no retained capture).
     media_type = assert_content_type_supported(content_type, raw)
 
     digest = VaultStore.sha256_hex(raw)
     relpath = vault.write_raw(sha256=digest, data=raw)
     now = _utc_now()
-    case_id = int(run_row.case_id)
 
     cap_result = conn.execute(
         insert(captures).values(
-            run_id=params.run_id,
+            run_id=run_id,
             case_id=case_id,
             url=url,
             sha256=digest,
@@ -198,7 +161,7 @@ def capture_url(
         if el_pk is None or el_pk[0] is None:
             raise RuntimeError("insert into elements did not return a primary key")
         element_id = int(el_pk[0])
-        # Full-span region placeholder — not addressable until locator grammar grows (F-16).
+        # Full-span region placeholder — region locators address slices (F-22).
         conn.execute(
             insert(regions).values(
                 element_id=element_id,
@@ -219,10 +182,8 @@ def capture_url(
     truncated = len(locator_elements) > locator_map_cap
     projection = _projection_markdown(capped)
 
-    return CaptureUrlResult(
+    return RetainedCapture(
         capture_id=capture_id,
-        run_id=params.run_id,
-        case_id=case_id,
         url=url,
         sha256=digest,
         content_type=media_type,
@@ -233,6 +194,106 @@ def capture_url(
         truncated=truncated,
         elements=capped,
         projection_markdown=projection,
+    )
+
+
+def capture_url(
+    conn: Connection,
+    params: CaptureUrlInput,
+    *,
+    vault: VaultStore,
+    fetch: FetchFn | None = None,
+    locator_map_cap: int = DEFAULT_LOCATOR_MAP_CAP,
+) -> CaptureUrlResult:
+    """Fetch URL through the backend, store immutable bytes, parse locator map.
+
+    Counts against the run capture budget before the fetch is retained. Only a
+    claimed run may capture (executor work path).
+    """
+    do_fetch = fetch if fetch is not None else default_fetch
+    url = _validate_url(params.url)
+
+    # Shared validate-and-refresh: claimed + unexpired lease + claim_token (F-25).
+    validate_and_refresh_claim(conn, params.run_id, params.claim_token)
+
+    run_row = conn.execute(
+        select(
+            runs.c.id,
+            runs.c.case_id,
+            runs.c.status,
+            runs.c.capture_budget,
+        ).where(runs.c.id == params.run_id)
+    ).one_or_none()
+    if run_row is None:
+        raise DeskRefusal(
+            code="RUN_NOT_FOUND",
+            what_happened=f"No run exists with id {params.run_id}.",
+            what_was_preserved="Existing captures are unchanged.",
+            what_was_not_changed="No capture was written.",
+            what_you_can_do="Claim a run via claim_next_run, then capture against that run_id.",
+        )
+
+    used = int(
+        conn.execute(
+            select(func.count()).select_from(captures).where(captures.c.run_id == params.run_id)
+        ).scalar_one()
+    )
+    budget = int(run_row.capture_budget)
+    if used >= budget:
+        raise DeskRefusal(
+            code="BUDGET_EXHAUSTED",
+            what_happened=(
+                f"Run {params.run_id} has used {used} of {budget} capture budget slots."
+            ),
+            what_was_preserved="Existing captures are unchanged; no fetch was stored.",
+            what_was_not_changed="No new capture was written; budget remains exhausted.",
+            what_you_can_do=(
+                "Close this run or ask the operator for a new run with a higher capture_budget."
+            ),
+        )
+
+    try:
+        raw, content_type = do_fetch(url)
+    except DeskRefusal:
+        # SSRF / HTTP / size / auth-wall refusals from safe_http_get keep their codes
+        # (CAPTURE_URL_BLOCKED, CAPTURE_HTTP_ERROR, CAPTURE_AUTH_WALLED, …).
+        # Failed fetches do not consume capture_budget (F-15).
+        raise
+    except Exception as exc:  # noqa: BLE001 — unexpected transport failures only
+        raise DeskRefusal(
+            code="CAPTURE_FETCH_FAILED",
+            what_happened=f"Failed to fetch {url!r}: {type(exc).__name__}.",
+            what_was_preserved="Existing captures and the run budget are unchanged.",
+            what_was_not_changed="No capture was written.",
+            what_you_can_do="Check the URL is reachable and retry capture_url.",
+        ) from None
+
+    case_id = int(run_row.case_id)
+    retained = retain_capture_from_bytes(
+        conn,
+        vault=vault,
+        url=url,
+        raw=raw,
+        content_type=content_type,
+        run_id=params.run_id,
+        case_id=case_id,
+        locator_map_cap=locator_map_cap,
+    )
+
+    return CaptureUrlResult(
+        capture_id=retained.capture_id,
+        run_id=params.run_id,
+        case_id=case_id,
+        url=retained.url,
+        sha256=retained.sha256,
+        content_type=retained.content_type,
+        byte_size=retained.byte_size,
+        status=retained.status,
+        element_count=retained.element_count,
+        elements_returned=retained.elements_returned,
+        truncated=retained.truncated,
+        elements=retained.elements,
+        projection_markdown=retained.projection_markdown,
         projection_is_authoritative=False,
     )
 
@@ -241,9 +302,16 @@ def read_capture(
     conn: Connection,
     params: ReadCaptureInput,
 ) -> ReadCaptureResult:
-    """Read further elements from an already-made capture (beyond capture_url cap)."""
+    """Read further elements from an already-made capture (beyond capture_url cap).
+
+    Run-owned captures: claim_token must hold that run.
+    Case-attached lead captures (run_id null, case_id set): claim_token must hold
+    a claimed run on that case. Unattached lead captures are operator-only (API).
+    """
     cap = conn.execute(
-        select(captures.c.id, captures.c.run_id).where(captures.c.id == params.capture_id)
+        select(captures.c.id, captures.c.run_id, captures.c.case_id).where(
+            captures.c.id == params.capture_id
+        )
     ).one_or_none()
     if cap is None:
         raise DeskRefusal(
@@ -253,7 +321,53 @@ def read_capture(
             what_was_not_changed="Nothing was written.",
             what_you_can_do="Call capture_url first, then read_capture with that capture_id.",
         )
-    validate_and_refresh_claim(conn, int(cap.run_id), params.claim_token)
+
+    if cap.run_id is not None:
+        validate_and_refresh_claim(conn, int(cap.run_id), params.claim_token)
+    elif cap.case_id is not None:
+        # Lead material attached to a case: claim_token must hold a claimed run
+        # on that case (same token authority pattern as read_case_context).
+        presented = (params.claim_token or "").strip()
+        candidates = conn.execute(
+            select(runs.c.id, runs.c.claim_token)
+            .where(runs.c.case_id == int(cap.case_id))
+            .where(runs.c.status == "claimed")
+            .where(runs.c.claim_token.is_not(None))
+        ).all()
+        held_run_id: int | None = None
+        for row in candidates:
+            stored = row.claim_token
+            if stored is not None and compare_digest(presented, str(stored)):
+                held_run_id = int(row.id)
+                break
+        if held_run_id is None:
+            raise DeskRefusal(
+                code="RUN_CLAIM_STALE",
+                what_happened=(
+                    "claim_token does not hold a claimed run on the case that owns "
+                    f"capture {params.capture_id}."
+                ),
+                what_was_preserved="Existing captures are unchanged.",
+                what_was_not_changed="Nothing was written.",
+                what_you_can_do=(
+                    "Present the claim_token for a claimed run on this capture's case."
+                ),
+            )
+        validate_and_refresh_claim(conn, held_run_id, presented)
+    else:
+        raise DeskRefusal(
+            code="CAPTURE_NOT_ON_CASE",
+            what_happened=(
+                f"Capture {params.capture_id} is unattached lead material and cannot "
+                "be read through the executor tool surface."
+            ),
+            what_was_preserved="Existing captures are unchanged.",
+            what_was_not_changed="Nothing was written.",
+            what_you_can_do=(
+                "The operator must attach the lead to a case before an executor "
+                "can read this capture."
+            ),
+        )
 
     dv = conn.execute(
         select(document_versions.c.id)

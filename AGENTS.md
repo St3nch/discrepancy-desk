@@ -19,7 +19,8 @@ Product doctrine lives in a separate repository at `../discrepancy-desk-docs/`:
 | `VISION.md` | What the Desk is and how it works. Self-contained; read it whole |
 | `decisions/architecture-decisions.md` | D1–D11 with rejected alternatives |
 | `decisions/run-registry-and-tool-surface.md` | D12–D15, run states, the eight tool calls |
-| `decisions/stack.md` | D16 — Python, SQLite, FastAPI, TypeScript client, and what is reversible |
+| `decisions/stack.md` | D16–D17 — Python, SQLite, FastAPI, TypeScript client; one brand per deployment |
+| `decisions/lead-inbox-transport.md` | D18 — why `add_lead` is on both transports |
 | `reference/repository-inventory.md` | Prior research worth consulting before re-deriving an answer |
 
 The ADRs in `docs/adr/` are the binding form of the decisions that matter most.

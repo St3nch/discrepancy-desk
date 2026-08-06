@@ -11,6 +11,7 @@ from desk.config import get_settings
 from desk.db.session import connection_scope
 from desk.refusals import DeskRefusal
 from desk.service import (
+    add_lead,
     capture_url,
     claim_next_run,
     close_run,
@@ -20,6 +21,7 @@ from desk.service import (
     suspend_run,
 )
 from desk.service.models import (
+    AddLeadInput,
     CaptureUrlInput,
     ClaimNextRunInput,
     CloseRunInput,
@@ -253,6 +255,40 @@ def build_mcp_server(engine: Engine, *, vault: VaultStore | None = None) -> MCPS
                         low_confidence_areas=list(low_confidence_areas or []),
                         examined_capture_ids=list(examined_capture_ids or []),
                     ),
+                )
+            return result.model_dump()
+        except DeskRefusal as refusal:
+            raise_tool_refusal(refusal)
+
+    @server.tool(
+        name="add_lead",
+        description=(
+            "Park a URL in the lead inbox, unattached to any case. Captures "
+            "immediately via the same Vault path as capture_url. Use for material "
+            "outside this run's question — do not capture against the wrong run. "
+            "Requires claim_token from claim_next_run (lease refreshed); does not "
+            "consume the run capture_budget. Auth-walled URLs become identity-only "
+            "leads (not captured). Holds material only; never creates claims."
+        ),
+    )
+    def add_lead_tool(
+        run_id: int,
+        url: str,
+        claim_token: str,
+        note: str = "",
+    ) -> dict[str, Any]:
+        try:
+            with connection_scope(engine) as conn:
+                result = add_lead(
+                    conn,
+                    AddLeadInput(
+                        url=url,
+                        note=note,
+                        run_id=run_id,
+                        claim_token=claim_token,
+                    ),
+                    vault=vault_store,
+                    locator_map_cap=locator_cap,
                 )
             return result.model_dump()
         except DeskRefusal as refusal:

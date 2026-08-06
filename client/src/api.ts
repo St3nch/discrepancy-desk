@@ -239,3 +239,86 @@ export async function createOperatorOpenQuestion(
   });
   return parseJson<OpenQuestionRecord>(response);
 }
+
+// --- Lead inbox (ticket 09) ---
+
+export type LeadRecord = {
+  lead_id: number;
+  url: string;
+  note: string;
+  summary?: string | null;
+  material_status: string;
+  capture_id?: number | null;
+  capture_status?: string | null;
+  inbox_status: string;
+  case_id?: number | null;
+  created_at: string;
+  updated_at: string;
+  sha256?: string | null;
+  content_type?: string | null;
+  byte_size?: number | null;
+  element_count?: number | null;
+  projection_markdown?: string | null;
+  projection_is_authoritative?: boolean;
+};
+
+export async function addLead(url: string, note: string = ""): Promise<LeadRecord> {
+  const response = await fetch("/api/leads", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, note }),
+  });
+  return parseJson<LeadRecord>(response);
+}
+
+export async function listLeads(
+  inboxStatus?: string,
+): Promise<{ leads: LeadRecord[] }> {
+  const q =
+    inboxStatus === undefined || inboxStatus === ""
+      ? ""
+      : `?inbox_status=${encodeURIComponent(inboxStatus)}`;
+  const response = await fetch(`/api/leads${q}`);
+  return parseJson<{ leads: LeadRecord[] }>(response);
+}
+
+export async function attachLead(
+  leadId: number,
+  caseId: number,
+): Promise<LeadRecord> {
+  const response = await fetch(`/api/leads/${leadId}/attach`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ case_id: caseId }),
+  });
+  return parseJson<LeadRecord>(response);
+}
+
+export async function promoteLead(
+  leadId: number,
+  title: string,
+): Promise<LeadRecord> {
+  const response = await fetch(`/api/leads/${leadId}/promote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  return parseJson<LeadRecord>(response);
+}
+
+export async function disposeLead(leadId: number): Promise<LeadRecord> {
+  const response = await fetch(`/api/leads/${leadId}/dispose`, { method: "POST" });
+  return parseJson<LeadRecord>(response);
+}
+
+export async function summariseLead(
+  leadId: number,
+  summary: string,
+): Promise<LeadRecord> {
+  const response = await fetch(`/api/leads/${leadId}/summarise`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ summary }),
+  });
+  return parseJson<LeadRecord>(response);
+}

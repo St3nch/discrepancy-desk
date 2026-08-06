@@ -73,8 +73,10 @@ _Avoid_: reference, citation, link, document
 **Capture**
 The stored, hashed, byte-exact result of one read of external material, whether or
 not it ends up supporting a claim. Two reads of the same URL are two captures.
-Bound to the run (and case) that made it; counted against that run's capture budget
-at capture time.
+Owned by a run (counted against that run's capture budget) or by a lead (no run,
+no budget). `run_id` and `case_id` are null for an unattached lead capture; attach
+or promote sets `case_id`. Lead drops and run captures use the same Vault path —
+same store, hash, parse, and element structure.
 _Avoid_: fetch, scrape, download, snapshot
 
 **Cited / examined / unexamined**
@@ -187,8 +189,20 @@ captures stay `unexamined`.
 _Avoid_: run summary, debrief (alone)
 
 **Lead**
-A URL dropped into the inbox unattached to any case, captured on drop, holding
-material and an optional summary but never claims.
+A URL dropped into the inbox unattached to any case. Capture is always attempted
+on drop (same Vault path as a run capture). Holds material and an optional
+operator-authored summary but never claims. Auth-walled or paywalled URLs are
+recorded as `identity_only` — explicitly not captured; that product state is
+distinct from an SSRF refusal (fail-closed, no lead written). `identity_only` is
+triggered by HTTP response status alone (401/402/403); soft walls that return
+200 OK with login or subscription HTML are captured like any other material.
+There is no automatic wall detection and no content inspection that discards
+bytes on a heuristic. A successful lead capture stays `unexamined` until a run
+on the attached case reports it in `examined_capture_ids` at close (or cites
+it). Operator may attach to an existing case, promote to a new case, dispose, or
+summarise (skippable). `add_lead` is on both transports (D18); MCP requires a
+live claim (lease) but does not charge capture_budget; attach/promote/dispose/
+summarise are API-only.
 _Avoid_: bookmark, saved link, tip, idea
 
 **Coverage**

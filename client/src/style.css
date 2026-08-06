@@ -382,3 +382,65 @@ select {
   margin: 0.35rem 0;
   font-size: 1.05rem;
 }
+
+/* Lead inbox — identity-only must not look like captured evidence. */
+.panel-leads {
+  border: 2px solid #5c3b00;
+}
+
+.lead-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
+}
+
+.lead-row {
+  border: 1px solid #d8d2c4;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  background: #faf8f4;
+}
+
+.lead-captured {
+  border-left: 4px solid #1a4a0a;
+}
+
+.lead-identity-only {
+  border: 2px dashed #8b1a1a;
+  background: #fdf2f2;
+  border-left: 4px solid #8b1a1a;
+}
+
+.lead-material-badge {
+  display: inline-block;
+  font-weight: 800;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 3px;
+  margin-bottom: 0.4rem;
+}
+
+.lead-material-badge.captured {
+  background: #d4e8c8;
+  color: #1a4a0a;
+}
+
+.lead-material-badge.identity-only {
+  background: #e8d4d4;
+  color: #5c1010;
+}
+
+.lead-url {
+  margin: 0.25rem 0;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.lead-actions {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #ccc;
+}

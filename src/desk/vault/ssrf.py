@@ -239,13 +239,29 @@ def safe_http_get(
                 current = assert_url_safe_to_fetch(next_url, resolve=resolve)
                 continue
 
+            status = response.status_code
+            # Auth/paywall is a product state for leads (identity-only); still a
+            # refusal on the run capture path. Distinct from generic HTTP errors
+            # so add_lead can park the URL without storing a login wall as evidence.
+            if status in {401, 402, 403}:
+                raise _refusal(
+                    "CAPTURE_AUTH_WALLED",
+                    (
+                        f"HTTP {status} fetching {current!r}: the resource requires "
+                        "authentication or payment and was not captured."
+                    ),
+                    do=(
+                        "Use a publicly reachable URL, or drop the URL as a lead "
+                        "(identity-only) from the operator inbox."
+                    ),
+                )
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
-                status = exc.response.status_code
+                err_status = exc.response.status_code
                 raise _refusal(
                     "CAPTURE_HTTP_ERROR",
-                    f"HTTP {status} fetching {current!r}.",
+                    f"HTTP {err_status} fetching {current!r}.",
                     do="Use a URL that returns a successful response.",
                 ) from None
 

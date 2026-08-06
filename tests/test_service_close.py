@@ -11,7 +11,9 @@ from desk.db.schema import captures
 from desk.db.session import connection_scope
 from desk.refusals import DeskRefusal
 from desk.service import (
+    add_lead,
     approve_run,
+    attach_lead,
     capture_url,
     claim_next_run,
     close_run,
@@ -23,7 +25,9 @@ from desk.service import (
     propose_claim,
 )
 from desk.service.models import (
+    AddLeadInput,
     ApproveRunInput,
+    AttachLeadInput,
     CaptureUrlInput,
     ClaimNextRunInput,
     CloseRunInput,
@@ -96,9 +100,7 @@ def test_close_run_agenda_and_complete(engine: Engine) -> None:
         assert result.run.lease_expires_at is None
         assert len(result.agenda) == 2
         assert result.agenda[0].agenda_decision == "pending"
-        assert result.agenda[0].source_run_question == (
-            "What did the official report establish?"
-        )
+        assert result.agenda[0].source_run_question == ("What did the official report establish?")
         assert result.agenda[0].introduced_by_run_id == run_id
         assert result.low_confidence_areas == [
             "Certainty on annex authorship felt underserved by the rubric.",
@@ -254,6 +256,46 @@ def test_examined_only_when_explicitly_reported(engine: Engine, tmp_path: Path) 
         assert statuses[cap_a.capture_id] == "cited"
         assert statuses[cap_b.capture_id] == "examined"
         assert statuses[cap_c.capture_id] == "unexamined"
+
+
+def test_close_run_examines_attached_lead_capture(engine: Engine, tmp_path: Path) -> None:
+    """Attached lead captures (run_id NULL) are reportable examined (review #1)."""
+    case_id, run_id, token = _claimed(engine)
+    vault = VaultStore(tmp_path / "vault")
+    html = b"<html><body><p>Lead material looked at, nothing claimed.</p></body></html>"
+
+    def fetch(_url: str) -> tuple[bytes, str]:
+        return html, "text/html"
+
+    with connection_scope(engine) as conn:
+        lead = add_lead(
+            conn,
+            AddLeadInput(url="https://example.com/attached-lead", note=""),
+            vault=vault,
+            fetch=fetch,
+        )
+        assert lead.capture_id is not None
+        attach_lead(
+            conn,
+            AttachLeadInput(lead_id=lead.lead_id, case_id=case_id),
+        )
+        closed = close_run(
+            conn,
+            CloseRunInput(
+                run_id=run_id,
+                claim_token=token,
+                examined_capture_ids=[lead.capture_id],
+            ),
+        )
+        assert closed.captures_marked_examined == 1
+        status = conn.execute(
+            select(captures.c.status).where(captures.c.id == lead.capture_id)
+        ).scalar_one()
+        assert str(status) == "examined"
+        run_id_col = conn.execute(
+            select(captures.c.run_id).where(captures.c.id == lead.capture_id)
+        ).scalar_one()
+        assert run_id_col is None  # still lead-owned on the run column
 
 
 def test_examined_refuses_cited_capture(engine: Engine, tmp_path: Path) -> None:

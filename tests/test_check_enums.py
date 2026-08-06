@@ -17,6 +17,8 @@ from desk.service.evidence import (
     CERTAINTY,
     CONFIRMATION_STATUSES,
     CORROBORATION,
+    LEAD_INBOX_STATUSES,
+    LEAD_MATERIAL_STATUSES,
     POSTURE,
     PUBLICATION_RISK,
     SOURCE_BASIS,
@@ -36,6 +38,8 @@ _ENUM_COLUMNS: list[tuple[str, str, frozenset[str]]] = [
     ("claims", "publication_risk", PUBLICATION_RISK),
     ("open_questions", "agenda_decision", AGENDA_DECISIONS),
     ("open_questions", "disposition", OPEN_QUESTION_DISPOSITIONS),
+    ("leads", "material_status", LEAD_MATERIAL_STATUSES),
+    ("leads", "inbox_status", LEAD_INBOX_STATUSES),
 ]
 
 
@@ -64,9 +68,7 @@ def test_check_enum_matches_python(
 ) -> None:
     with engine.connect() as conn:
         sql = conn.execute(
-            text(
-                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = :name"
-            ),
+            text("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = :name"),
             {"name": table},
         ).scalar_one()
     assert sql is not None, f"table {table!r} missing from sqlite_master"

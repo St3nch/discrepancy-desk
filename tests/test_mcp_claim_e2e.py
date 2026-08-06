@@ -76,6 +76,8 @@ async def test_mcp_lists_only_claim_next_run(mcp_server_url: str) -> None:
         # Human dispatch must never appear on the tool surface.
         for name in ("create_run", "approve_run", "create_case"):
             assert name not in names
+        # D18: add_lead is MCP_AND_API (not API_ONLY). All other API-only ops stay off MCP.
+        assert "add_lead" in names
         assert names.isdisjoint(API_ONLY)
 
 

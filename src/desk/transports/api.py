@@ -4,29 +4,40 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import Engine
 
 from desk.db.session import connection_scope
 from desk.service import (
+    add_lead,
     answer_suspended_run,
     approve_run,
+    attach_lead,
     cancel_run,
     create_case,
     create_operator_open_question,
     create_run,
     decide_open_question,
+    dispose_lead,
     get_case,
     get_run_close,
     list_cases,
+    list_leads,
     list_runs,
+    promote_lead,
+    summarise_lead,
 )
 from desk.service.models import (
+    AddLeadInput,
+    AddLeadResult,
     AnswerSuspendedRunBody,
     AnswerSuspendedRunInput,
     AnswerSuspendedRunResult,
     ApproveRunInput,
     ApproveRunResult,
+    AttachLeadBody,
+    AttachLeadInput,
+    AttachLeadResult,
     CancelRunInput,
     CancelRunResult,
     CreateCaseInput,
@@ -39,14 +50,24 @@ from desk.service.models import (
     DecideOpenQuestionBody,
     DecideOpenQuestionInput,
     DecideOpenQuestionResult,
+    DisposeLeadInput,
+    DisposeLeadResult,
     GetCaseInput,
     GetCaseResult,
     GetRunCloseInput,
     GetRunCloseResult,
     ListCasesInput,
     ListCasesResult,
+    ListLeadsInput,
+    ListLeadsResult,
     ListRunsInput,
     ListRunsResult,
+    PromoteLeadBody,
+    PromoteLeadInput,
+    PromoteLeadResult,
+    SummariseLeadBody,
+    SummariseLeadInput,
+    SummariseLeadResult,
 )
 
 router = APIRouter()
@@ -226,3 +247,104 @@ def api_create_operator_open_question(
     )
     with connection_scope(engine) as conn:
         return create_operator_open_question(conn, payload)
+
+
+# --- Lead inbox (ticket 09 / D18) — add_lead is MCP_AND_API; rest API-only ---
+
+
+@router.post(
+    "/leads",
+    response_model=AddLeadResult,
+    name="add_lead",
+)
+def api_add_lead(
+    body: AddLeadInput,
+    engine: EngineDep,
+    request: Request,
+) -> AddLeadResult:
+    """Drop a URL into the lead inbox; capture immediately (always)."""
+    vault = request.app.state.vault
+    settings = request.app.state.settings
+    with connection_scope(engine) as conn:
+        return add_lead(
+            conn,
+            body,
+            vault=vault,
+            locator_map_cap=settings.locator_map_element_cap,
+        )
+
+
+@router.get(
+    "/leads",
+    response_model=ListLeadsResult,
+    name="list_leads",
+)
+def api_list_leads(
+    engine: EngineDep,
+    inbox_status: str | None = None,
+) -> ListLeadsResult:
+    """List leads. Default: open inbox. Pass inbox_status=all for every status."""
+    with connection_scope(engine) as conn:
+        return list_leads(conn, ListLeadsInput(inbox_status=inbox_status))
+
+
+@router.post(
+    "/leads/{lead_id}/attach",
+    response_model=AttachLeadResult,
+    name="attach_lead",
+)
+def api_attach_lead(
+    lead_id: int,
+    body: AttachLeadBody,
+    engine: EngineDep,
+) -> AttachLeadResult:
+    """Human-only: attach an open lead to an existing case."""
+    payload = AttachLeadInput(lead_id=lead_id, case_id=body.case_id)
+    with connection_scope(engine) as conn:
+        return attach_lead(conn, payload)
+
+
+@router.post(
+    "/leads/{lead_id}/promote",
+    response_model=PromoteLeadResult,
+    name="promote_lead",
+)
+def api_promote_lead(
+    lead_id: int,
+    body: PromoteLeadBody,
+    engine: EngineDep,
+) -> PromoteLeadResult:
+    """Human-only: create a case from an open lead and attach it."""
+    payload = PromoteLeadInput(lead_id=lead_id, title=body.title)
+    with connection_scope(engine) as conn:
+        return promote_lead(conn, payload)
+
+
+@router.post(
+    "/leads/{lead_id}/dispose",
+    response_model=DisposeLeadResult,
+    name="dispose_lead",
+)
+def api_dispose_lead(
+    lead_id: int,
+    engine: EngineDep,
+) -> DisposeLeadResult:
+    """Human-only: dispose an open lead."""
+    with connection_scope(engine) as conn:
+        return dispose_lead(conn, DisposeLeadInput(lead_id=lead_id))
+
+
+@router.post(
+    "/leads/{lead_id}/summarise",
+    response_model=SummariseLeadResult,
+    name="summarise_lead",
+)
+def api_summarise_lead(
+    lead_id: int,
+    body: SummariseLeadBody,
+    engine: EngineDep,
+) -> SummariseLeadResult:
+    """Human-only: optional summary (skippable; never blocks drop)."""
+    payload = SummariseLeadInput(lead_id=lead_id, summary=body.summary)
+    with connection_scope(engine) as conn:
+        return summarise_lead(conn, payload)

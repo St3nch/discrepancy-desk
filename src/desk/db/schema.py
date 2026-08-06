@@ -60,12 +60,13 @@ run_suspensions = Table(
 )
 
 # Vault capture envelope (ADR 1). Raw bytes live on the governed filesystem.
+# run_id / case_id nullable: lead captures have neither until attached (ticket 09).
 captures = Table(
     "captures",
     metadata,
     Column("id", Integer, primary_key=True, nullable=False),
-    Column("run_id", Integer, ForeignKey("runs.id"), nullable=False),
-    Column("case_id", Integer, ForeignKey("cases.id"), nullable=False),
+    Column("run_id", Integer, ForeignKey("runs.id"), nullable=True),
+    Column("case_id", Integer, ForeignKey("cases.id"), nullable=True),
     Column("url", Text, nullable=False),
     Column("sha256", Text, nullable=False),
     Column("content_type", Text, nullable=False),
@@ -73,6 +74,23 @@ captures = Table(
     Column("vault_relpath", Text, nullable=False),
     Column("status", Text, nullable=False),
     Column("created_at", Text, nullable=False),
+)
+
+# Lead inbox (ADR 7 / D18). Holds material, never claims. Unattached to any case
+# until the operator attaches or promotes. Capture is always attempted on drop.
+leads = Table(
+    "leads",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("url", Text, nullable=False),
+    Column("note", Text, nullable=False),
+    Column("summary", Text, nullable=True),
+    Column("material_status", Text, nullable=False),
+    Column("capture_id", Integer, ForeignKey("captures.id"), nullable=True),
+    Column("inbox_status", Text, nullable=False),
+    Column("case_id", Integer, ForeignKey("cases.id"), nullable=True),
+    Column("created_at", Text, nullable=False),
+    Column("updated_at", Text, nullable=False),
 )
 
 document_versions = Table(

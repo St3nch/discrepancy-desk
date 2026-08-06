@@ -10,6 +10,14 @@ from desk.service.close import (
     decide_open_question,
     get_run_close,
 )
+from desk.service.leads import (
+    add_lead,
+    attach_lead,
+    dispose_lead,
+    list_leads,
+    promote_lead,
+    summarise_lead,
+)
 from desk.service.runs import (
     answer_suspended_run,
     approve_run,
@@ -21,8 +29,10 @@ from desk.service.runs import (
 )
 
 __all__ = [
+    "add_lead",
     "answer_suspended_run",
     "approve_run",
+    "attach_lead",
     "cancel_run",
     "capture_url",
     "claim_next_run",
@@ -31,12 +41,16 @@ __all__ = [
     "create_operator_open_question",
     "create_run",
     "decide_open_question",
+    "dispose_lead",
     "get_case",
     "get_run_close",
     "list_cases",
+    "list_leads",
     "list_runs",
+    "promote_lead",
     "propose_claim",
     "read_capture",
     "read_case_context",
+    "summarise_lead",
     "suspend_run",
 ]

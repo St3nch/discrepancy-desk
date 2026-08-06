@@ -1,17 +1,24 @@
 import {
+  addLead,
   answerSuspendedRun,
   approveRun,
+  attachLead,
   cancelRun,
   createCase,
   createOperatorOpenQuestion,
   createRun,
   decideOpenQuestion,
+  disposeLead,
   getCase,
   getRunClose,
   listCases,
+  listLeads,
+  promoteLead,
+  summariseLead,
   type CaseRecord,
   type GetCaseResult,
   type GetRunCloseResult,
+  type LeadRecord,
   type OpenQuestionRecord,
   type RunRecord,
 } from "./api.ts";
@@ -69,6 +76,148 @@ export function mount(root: HTMLElement): void {
     }
   }
 
+  function renderLeadRow(
+    lead: LeadRecord,
+    cases: CaseRecord[],
+    onChange: () => void,
+  ): HTMLElement {
+    const isIdentity = lead.material_status === "identity_only";
+    const row = el("li", {
+      className: isIdentity ? "lead-row lead-identity-only" : "lead-row lead-captured",
+    });
+
+    const materialLabel = isIdentity
+      ? "IDENTITY ONLY — not captured (auth/paywall)"
+      : `Captured · ${lead.capture_status ?? "unexamined"} · #${lead.capture_id ?? "—"}`;
+
+    row.append(
+      el("div", {
+        className: isIdentity
+          ? "lead-material-badge identity-only"
+          : "lead-material-badge captured",
+        text: materialLabel,
+      }),
+      el("p", {
+        className: "lead-url",
+        text: lead.url,
+      }),
+    );
+    if (lead.note) {
+      row.append(el("p", { className: "meta", text: `Note: ${lead.note}` }));
+    }
+    if (lead.summary) {
+      row.append(el("p", { className: "meta", text: `Summary: ${lead.summary}` }));
+    } else {
+      row.append(
+        el("p", {
+          className: "meta",
+          text: "Summary: (none — optional, skippable)",
+        }),
+      );
+    }
+
+    const summaryInput = el("input", {
+      type: "text",
+      "aria-label": `Summary for lead ${lead.lead_id}`,
+      placeholder: "Optional summary (description, not claims)",
+    }) as HTMLInputElement;
+    const summaryBtn = el("button", {
+      type: "button",
+      className: "secondary",
+      text: "Save summary",
+    });
+    summaryBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          await summariseLead(lead.lead_id, summaryInput.value);
+          await setStatus(`Saved summary for lead #${lead.lead_id}.`);
+          onChange();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    const caseSelect = el("select", {
+      "aria-label": `Attach lead ${lead.lead_id} to case`,
+    }) as HTMLSelectElement;
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = cases.length === 0 ? "No cases yet" : "Choose case…";
+    caseSelect.append(placeholder);
+    for (const c of cases) {
+      const opt = document.createElement("option");
+      opt.value = String(c.case_id);
+      opt.textContent = `#${c.case_id} ${c.title}`;
+      caseSelect.append(opt);
+    }
+    const attachBtn = el("button", { type: "button", text: "Attach to case" });
+    attachBtn.addEventListener("click", () => {
+      void (async () => {
+        if (!caseSelect.value) {
+          await setStatus("Choose a case to attach to.", true);
+          return;
+        }
+        try {
+          await attachLead(lead.lead_id, Number(caseSelect.value));
+          await setStatus(`Attached lead #${lead.lead_id} to case #${caseSelect.value}.`);
+          onChange();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    const promoteTitle = el("input", {
+      type: "text",
+      "aria-label": `Promote lead ${lead.lead_id} case title`,
+      placeholder: "New case title",
+    }) as HTMLInputElement;
+    const promoteBtn = el("button", { type: "button", text: "Promote to new case" });
+    promoteBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          const result = await promoteLead(lead.lead_id, promoteTitle.value);
+          await setStatus(
+            `Promoted lead #${lead.lead_id} → case #${result.case_id}.`,
+          );
+          onChange();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    const disposeBtn = el("button", {
+      type: "button",
+      className: "secondary",
+      text: "Dispose",
+    });
+    disposeBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          await disposeLead(lead.lead_id);
+          await setStatus(`Disposed lead #${lead.lead_id}.`);
+          onChange();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
+    row.append(
+      el("div", { className: "lead-actions" }, [
+        el("label", {}, ["Summary ", summaryInput]),
+        el("div", { className: "row" }, [summaryBtn]),
+        el("label", {}, ["Attach ", caseSelect]),
+        el("div", { className: "row" }, [attachBtn]),
+        el("label", {}, ["Promote ", promoteTitle]),
+        el("div", { className: "row" }, [promoteBtn, disposeBtn]),
+      ]),
+    );
+    return row;
+  }
+
   async function renderList(): Promise<void> {
     const titleInput = el("input", {
       type: "text",
@@ -90,16 +239,44 @@ export function mount(root: HTMLElement): void {
       })();
     });
 
+    const leadUrlInput = el("input", {
+      type: "url",
+      "aria-label": "Lead URL",
+      placeholder: "https://… (captured on drop)",
+    }) as HTMLInputElement;
+    const leadNoteInput = el("input", {
+      type: "text",
+      "aria-label": "Lead note",
+      placeholder: "Optional note (not a claim)",
+    }) as HTMLInputElement;
+    const dropLeadBtn = el("button", { type: "button", text: "Drop lead" });
+    dropLeadBtn.addEventListener("click", () => {
+      void (async () => {
+        try {
+          const lead = await addLead(leadUrlInput.value, leadNoteInput.value);
+          leadUrlInput.value = "";
+          leadNoteInput.value = "";
+          const label =
+            lead.material_status === "identity_only"
+              ? `Lead #${lead.lead_id} identity-only (not captured).`
+              : `Lead #${lead.lead_id} captured (unexamined).`;
+          await setStatus(label);
+          await render();
+        } catch (err) {
+          await setStatus(err instanceof Error ? err.message : String(err), true);
+        }
+      })();
+    });
+
     const listEl = el("ul", { className: "case-list" });
+    const leadList = el("ul", { className: "lead-list" });
     let cases: CaseRecord[] = [];
+    let leads: LeadRecord[] = [];
     try {
-      const result = await listCases();
-      cases = result.cases;
-      await setStatus(
-        cases.length === 0
-          ? "No cases yet. Create one to begin."
-          : `${cases.length} case(s).`,
-      );
+      const [caseResult, leadResult] = await Promise.all([listCases(), listLeads()]);
+      cases = caseResult.cases;
+      leads = leadResult.leads;
+      await setStatus(`${cases.length} case(s) · ${leads.length} open lead(s).`);
     } catch (err) {
       await setStatus(err instanceof Error ? err.message : String(err), true);
     }
@@ -129,7 +306,35 @@ export function mount(root: HTMLElement): void {
       }
     }
 
+    if (leads.length === 0) {
+      leadList.append(
+        el("li", {
+          className: "empty",
+          text: "Inbox empty. Drop a URL — capture runs immediately.",
+        }),
+      );
+    } else {
+      for (const lead of leads) {
+        leadList.append(
+          renderLeadRow(lead, cases, () => {
+            void render();
+          }),
+        );
+      }
+    }
+
     main.append(
+      el("section", { className: "panel panel-leads" }, [
+        el("h2", { text: "Lead inbox" }),
+        el("p", {
+          className: "subtitle",
+          text: "Unattached material. Captured on drop (always). No claims until a case and run work it. Auth-walled URLs are identity-only.",
+        }),
+        el("label", {}, ["URL ", leadUrlInput]),
+        el("label", {}, ["Note ", leadNoteInput]),
+        el("div", { className: "row" }, [dropLeadBtn]),
+        leadList,
+      ]),
       el("section", { className: "panel" }, [
         el("h2", { text: "Create case" }),
         el("label", {}, ["Title ", titleInput]),
@@ -779,7 +984,7 @@ export function mount(root: HTMLElement): void {
       el("h1", { text: "Discrepancy Desk" }),
       el("p", {
         className: "subtitle",
-        text: "Cases and research runs. Dispatch is human-only; executors claim via MCP.",
+        text: "Lead inbox, cases, and research runs. Dispatch is human-only; executors claim via MCP.",
       }),
     ]),
     status,
