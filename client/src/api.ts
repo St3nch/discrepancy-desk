@@ -54,6 +54,7 @@ export type RunRecord = {
   rubric_text: string;
   capture_budget?: number;
   captures_used?: number;
+  coverage_dimension?: string | null;
   created_at: string;
   updated_at: string;
   lease_expires_at?: string | null;
@@ -126,12 +127,34 @@ export type GetRunCloseResult = {
   captures: CaptureCloseRecord[];
 };
 
+export type StageCoverageReading = {
+  stage: string;
+  label: string;
+  reading: string;
+  signals: string[];
+  note?: string | null;
+};
+
+export type CaseCoverageGauge = {
+  case_id: number;
+  banner: string;
+  stages: StageCoverageReading[];
+  official_foundation_complete: boolean;
+};
+
+export type CaseCaptureSummary = {
+  capture_id: number;
+  url: string;
+  status: string;
+};
+
 export type GetCaseResult = {
   case: CaseRecord;
   runs: RunRecord[];
-  captures: string[];
+  captures: CaseCaptureSummary[];
   claims: ClaimRecord[];
   open_questions: OpenQuestionRecord[];
+  coverage: CaseCoverageGauge;
   angles: string[];
   renditions: string[];
 };
@@ -161,13 +184,46 @@ export async function createRun(
   caseId: number,
   question: string,
   scope: string,
+  coverageDimension: string,
 ): Promise<RunRecord> {
   const response = await fetch("/api/runs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ case_id: caseId, question, scope }),
+    body: JSON.stringify({
+      case_id: caseId,
+      question,
+      scope,
+      coverage_dimension: coverageDimension,
+    }),
   });
   return parseJson<RunRecord>(response);
+}
+
+export async function attestCoverage(
+  caseId: number,
+  stage: string,
+  options: {
+    actor?: string;
+    examinedCaptureIds?: number[];
+  } = {},
+): Promise<{
+  case_id: number;
+  stage: string;
+  actor: string;
+  attested_at: string;
+  reading: string;
+  captures_marked_examined: number;
+  coverage: CaseCoverageGauge;
+}> {
+  const response = await fetch(`/api/cases/${caseId}/coverage/${stage}/attest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      actor: options.actor ?? "operator",
+      examined_capture_ids: options.examinedCaptureIds ?? [],
+    }),
+  });
+  return parseJson(response);
 }
 
 export async function approveRun(runId: number): Promise<RunRecord> {

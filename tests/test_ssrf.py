@@ -210,7 +210,12 @@ def test_capture_url_preserves_ssrf_refusal_code_from_fetch(engine: Engine, tmp_
         case = create_case(conn, CreateCaseInput(title="SSRF"))
         run = create_run(
             conn,
-            CreateRunInput(case_id=case.case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         packet = claim_next_run(conn, ClaimNextRunInput())
@@ -236,7 +241,12 @@ def test_capture_url_service_refuses_loopback(engine: Engine, tmp_path: Path) ->
         case = create_case(conn, CreateCaseInput(title="SSRF"))
         run = create_run(
             conn,
-            CreateRunInput(case_id=case.case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         packet = claim_next_run(conn, ClaimNextRunInput())

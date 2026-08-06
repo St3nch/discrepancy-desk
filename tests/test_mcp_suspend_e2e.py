@@ -61,6 +61,7 @@ def live_app(db_path: Path, engine: Engine) -> Iterator[tuple[str, TestClient, E
                 case_id=case.case_id,
                 question="E2E research question?",
                 scope="E2E scope",
+                coverage_dimension="official_foundation",
             ),
         )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))

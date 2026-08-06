@@ -121,7 +121,12 @@ def test_lead_and_run_produce_identical_capture_records(engine: Engine, tmp_path
         case = create_case(conn, CreateCaseInput(title="Compare doors"))
         run = create_run(
             conn,
-            CreateRunInput(case_id=case.case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         claimed = claim_next_run(conn, ClaimNextRunInput())
@@ -190,7 +195,12 @@ def test_lead_holds_no_claims(engine: Engine, tmp_path: Path) -> None:
         case = create_case(conn, CreateCaseInput(title="Other"))
         run = create_run(
             conn,
-            CreateRunInput(case_id=case.case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         claimed = claim_next_run(conn, ClaimNextRunInput())
@@ -373,7 +383,12 @@ def test_executor_add_lead_requires_claim(engine: Engine, tmp_path: Path) -> Non
         case = create_case(conn, CreateCaseInput(title="Claim case"))
         run = create_run(
             conn,
-            CreateRunInput(case_id=case.case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         claimed = claim_next_run(conn, ClaimNextRunInput())

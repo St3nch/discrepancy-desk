@@ -56,6 +56,21 @@ account boundary — it must hold in every query forever, and its failure is sil
 plainly that nothing was written (e.g. `"Nothing was written."`), not a garbled claim about
 what was or was not "read as missing."
 
+**Migrations are tested against populated databases, not only empty ones.** Test
+migrations run against a fresh database, where foreign key enforcement never fires because
+no row exists to violate it. Any migration that rebuilds a table with inbound foreign keys
+— the SQLite create-copy-drop-rename pattern — gets a test that populates the prior revision
+with representative dependent rows, upgrades to head, and asserts the upgrade succeeds, the
+dependent rows survive, and new columns hold the intended value for legacy rows. A rebuild
+that passes on an empty database has not been tested; it has been skipped.
+
+**Seam tests cross operations, not only layers.** Every defect that has broken this project
+has been *operation A changes what operation B reports* — a capture attached by one path
+that another path cannot see, a status set by one operation that another infers
+differently. Tests that exercise one service function with fixture data will not find
+these, because each function is individually correct. When an operation changes state that
+another operation reads, test the pair in sequence and assert what the second one reports.
+
 **One transaction per service call.** `connection_scope` is `engine.begin()`. Each governed
 service function runs in its own transaction. Composing two service calls is two
 transactions — not atomic across the pair. If a later operation needs multi-step atomicity,

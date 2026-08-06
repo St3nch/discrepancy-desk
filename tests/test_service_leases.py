@@ -53,7 +53,12 @@ def _claim_run(engine: Engine) -> tuple[int, str]:
         case = create_case(conn, CreateCaseInput(title="Lease"))
         run = create_run(
             conn,
-            CreateRunInput(case_id=case.case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         packet = claim_next_run(conn, ClaimNextRunInput())
@@ -111,7 +116,15 @@ def test_expired_lease_refuses_propose_and_read_capture(engine: Engine, tmp_path
     vault = VaultStore(tmp_path / "vault")
     with connection_scope(engine) as conn:
         case = create_case(conn, CreateCaseInput(title="Exp"))
-        run = create_run(conn, CreateRunInput(case_id=case.case_id, question="Q", scope="s"))
+        run = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
+        )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         packet = claim_next_run(conn, ClaimNextRunInput())
         assert packet.run is not None
@@ -157,7 +170,12 @@ def test_expired_lease_reclaimable_with_resume(engine: Engine, tmp_path: Path) -
         case = create_case(conn, CreateCaseInput(title="Preserve"))
         run = create_run(
             conn,
-            CreateRunInput(case_id=case.case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         first = claim_next_run(conn, ClaimNextRunInput())
@@ -203,7 +221,7 @@ def test_expired_lease_reclaimable_with_resume(engine: Engine, tmp_path: Path) -
         claims = list_claims_for_case(conn, case.case_id)
         assert any(c.claim_id == claim.claim_id for c in claims)
         caps = list_capture_summaries_for_case(conn, case.case_id)
-        assert any(str(cap.capture_id) in s for s in caps)
+        assert any(s.capture_id == cap.capture_id for s in caps)
 
 
 def test_valid_lease_still_refreshes(engine: Engine, tmp_path: Path) -> None:
@@ -233,7 +251,15 @@ def test_stale_token_refused_while_run_validly_claimed(engine: Engine, tmp_path:
     vault = VaultStore(tmp_path / "vault")
     with connection_scope(engine) as conn:
         case = create_case(conn, CreateCaseInput(title="Stale"))
-        run = create_run(conn, CreateRunInput(case_id=case.case_id, question="Q", scope="s"))
+        run = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
+        )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         first = claim_next_run(conn, ClaimNextRunInput())
         assert first.run is not None
@@ -298,7 +324,15 @@ def test_reclaim_invalidates_previous_token(engine: Engine) -> None:
 def test_fresh_claim_is_not_resume(engine: Engine) -> None:
     with connection_scope(engine) as conn:
         case = create_case(conn, CreateCaseInput(title="Fresh"))
-        run = create_run(conn, CreateRunInput(case_id=case.case_id, question="Q", scope="s"))
+        run = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
+        )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         packet = claim_next_run(conn, ClaimNextRunInput())
     assert packet.run is not None
@@ -311,8 +345,24 @@ def test_fresh_claim_is_not_resume(engine: Engine) -> None:
 def test_case_busy_while_lease_valid(engine: Engine) -> None:
     with connection_scope(engine) as conn:
         case = create_case(conn, CreateCaseInput(title="Busy"))
-        a = create_run(conn, CreateRunInput(case_id=case.case_id, question="One", scope="s"))
-        b = create_run(conn, CreateRunInput(case_id=case.case_id, question="Two", scope="s"))
+        a = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case.case_id,
+                question="One",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
+        )
+        b = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Two",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
+        )
         approve_run(conn, ApproveRunInput(run_id=a.run_id))
         claim_next_run(conn, ClaimNextRunInput())
         with pytest.raises(DeskRefusal) as ei:

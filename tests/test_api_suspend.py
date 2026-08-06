@@ -22,7 +22,9 @@ def test_answer_suspension_http_round_trip(client: TestClient, engine: Engine) -
         case_id = create_case(conn, CreateCaseInput(title="API suspend")).case_id
         draft = create_run(
             conn,
-            CreateRunInput(case_id=case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case_id, question="Q?", scope="s", coverage_dimension="official_foundation"
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=draft.run_id))
         claimed = claim_next_run(conn, ClaimNextRunInput())
@@ -82,7 +84,10 @@ def test_cancel_suspended_via_http(client: TestClient, engine: Engine) -> None:
     with connection_scope(engine) as conn:
         case_id = create_case(conn, CreateCaseInput(title="API cancel")).case_id
         draft = create_run(
-            conn, CreateRunInput(case_id=case_id, question="Q?", scope="s")
+            conn,
+            CreateRunInput(
+                case_id=case_id, question="Q?", scope="s", coverage_dimension="official_foundation"
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=draft.run_id))
         claimed = claim_next_run(conn, ClaimNextRunInput())
@@ -106,7 +111,12 @@ def test_cancel_suspended_via_http(client: TestClient, engine: Engine) -> None:
     # Case is free for a new approval.
     draft2 = client.post(
         "/api/runs",
-        json={"case_id": case_id, "question": "Next?", "scope": "s"},
+        json={
+            "case_id": case_id,
+            "question": "Next?",
+            "scope": "s",
+            "coverage_dimension": "official_foundation",
+        },
     )
     assert draft2.status_code == 200
     approved = client.post(f"/api/runs/{draft2.json()['run_id']}/approve")

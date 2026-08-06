@@ -21,11 +21,13 @@ def test_api_create_approve_list_runs(client: TestClient) -> None:
             "case_id": case_id,
             "question": "What is known officially?",
             "scope": "Official reports",
+            "coverage_dimension": "official_foundation",
         },
     )
     assert created.status_code == 200
     body = created.json()
     assert body["status"] == "draft"
+    assert body["coverage_dimension"] == "official_foundation"
     run_id = body["run_id"]
 
     approved = client.post(f"/api/runs/{run_id}/approve")

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from desk.service.run_status import RunStatus
+
+# Coverage vocabulary lives in coverage.py; imported lazily in validators to
+# avoid circular imports with CaseCoverageGauge definitions below.
 
 
 class _StrictModel(BaseModel):
@@ -74,6 +77,8 @@ class RunRecord(_StrictModel):
     rubric_text: str
     capture_budget: int
     captures_used: int
+    # Operator-set at dispatch (D20). NULL = pre-D20; never counts toward a stage.
+    coverage_dimension: str | None = None
     created_at: str
     updated_at: str
     lease_expires_at: str | None = None
@@ -89,14 +94,36 @@ class RunRecord(_StrictModel):
     # Set when status is suspended so the operator UI distinguishes remedies (F-29).
     instance_vs_class_notice: str | None = None
 
+    @field_validator("coverage_dimension")
+    @classmethod
+    def _coverage_dimension_vocab(cls, value: str | None) -> str | None:
+        from desk.service.coverage import COVERAGE_STAGE_IDS
+
+        if value is None:
+            return None
+        if value not in COVERAGE_STAGE_IDS:
+            raise ValueError(f"coverage_dimension must be one of {sorted(COVERAGE_STAGE_IDS)}")
+        return value
+
 
 class CreateRunInput(_StrictModel):
     case_id: int
     question: str
     scope: str
+    # Required: which coverage dimension this run targets (D20). Human-only at dispatch.
+    coverage_dimension: str
     rubric_version: str | None = None
     rubric_text: str | None = None
     capture_budget: int | None = None
+
+    @field_validator("coverage_dimension")
+    @classmethod
+    def _coverage_dimension_vocab(cls, value: str) -> str:
+        from desk.service.coverage import COVERAGE_STAGE_IDS
+
+        if value not in COVERAGE_STAGE_IDS:
+            raise ValueError(f"coverage_dimension must be one of {sorted(COVERAGE_STAGE_IDS)}")
+        return value
 
 
 class CreateRunResult(RunRecord):
@@ -132,6 +159,9 @@ class ClaimedRunPacket(_StrictModel):
 
     ``is_resume`` is true when this run already has captures or claims (lease
     reclaim / second claim). Counts let the executor avoid re-doing work.
+
+    ``coverage_dimension`` is operator-set at dispatch (D20) — read-only for the
+    executor; nothing at close_run may change it.
     """
 
     run_id: int
@@ -143,6 +173,7 @@ class ClaimedRunPacket(_StrictModel):
     rubric_text: str
     capture_budget: int
     captures_used: int
+    coverage_dimension: str | None = None
     claims_made: int = 0
     is_resume: bool = False
     lease_expires_at: str | None = None
@@ -466,14 +497,121 @@ class GetRunCloseResult(_StrictModel):
     captures: list[CaptureCloseRecord]
 
 
+class StageCoverageReading(_StrictModel):
+    """One stage of the coverage gauge — derived, never declared by the executor."""
+
+    stage: str
+    label: str
+    reading: str
+    signals: list[str] = Field(default_factory=list)
+    note: str | None = None
+
+    @field_validator("stage")
+    @classmethod
+    def _stage_vocab(cls, value: str) -> str:
+        from desk.service.coverage import COVERAGE_STAGE_IDS
+
+        if value not in COVERAGE_STAGE_IDS:
+            raise ValueError(f"stage must be one of {sorted(COVERAGE_STAGE_IDS)}")
+        return value
+
+    @field_validator("reading")
+    @classmethod
+    def _reading_vocab(cls, value: str) -> str:
+        from desk.service.coverage import COVERAGE_READINGS
+
+        if value not in COVERAGE_READINGS:
+            raise ValueError(f"reading must be one of {sorted(COVERAGE_READINGS)}")
+        return value
+
+
+class CaseCoverageGauge(_StrictModel):
+    """Six-stage readiness reading for a case (VISION; ADR 3 / D20).
+
+    Not a state machine: no ordering, no advancement, stages may be revisited.
+    complete is operator attestation, not a count.
+    """
+
+    case_id: int
+    banner: str
+    stages: list[StageCoverageReading]
+    official_foundation_complete: bool
+
+
+class GetCaseCoverageInput(_StrictModel):
+    case_id: int
+
+
+class AttestCoverageInput(_StrictModel):
+    """Human-only: attest that a measurable coverage stage is complete (D20).
+
+    ``examined_capture_ids``: unexamined case captures the operator looked at and
+    found nothing worth claiming (same act as close_run / F-32). Marked examined
+    in this transaction before the unexamined-count refusal is evaluated.
+    """
+
+    case_id: int
+    stage: str
+    actor: str = "operator"
+    examined_capture_ids: list[int] = Field(default_factory=list)
+
+    @field_validator("stage")
+    @classmethod
+    def _stage_vocab(cls, value: str) -> str:
+        from desk.service.coverage import COVERAGE_STAGE_IDS
+
+        if value not in COVERAGE_STAGE_IDS:
+            raise ValueError(f"stage must be one of {sorted(COVERAGE_STAGE_IDS)}")
+        return value
+
+
+class AttestCoverageBody(_StrictModel):
+    """HTTP path carries case_id and stage; body is actor + optional examined ids."""
+
+    actor: str = "operator"
+    examined_capture_ids: list[int] = Field(default_factory=list)
+
+
+class AttestCoverageResult(_StrictModel):
+    case_id: int
+    stage: str
+    actor: str
+    attested_at: str
+    # Derived reading after this write (complete when successful).
+    reading: str
+    captures_marked_examined: int
+    coverage: CaseCoverageGauge
+
+
+class AssertOfficialFoundationInput(_StrictModel):
+    """Gate for angle work — call before any angle operation (ticket 11)."""
+
+    case_id: int
+
+
+class AssertOfficialFoundationResult(_StrictModel):
+    case_id: int
+    official_foundation_complete: bool
+    coverage: CaseCoverageGauge
+
+
+class CaseCaptureSummary(_StrictModel):
+    """Thin case-page capture row (id + status + url) for coverage attest UI."""
+
+    capture_id: int
+    url: str
+    status: str
+
+
 class GetCaseResult(_StrictModel):
     """Case detail projection — incomplete by design; grows ticket by ticket."""
 
     case: CaseRecord
     runs: list[RunRecord]
-    captures: list[str]
+    captures: list[CaseCaptureSummary]
     claims: list[ClaimRecord]
     open_questions: list[OpenQuestionRecord]
+    coverage: CaseCoverageGauge
     angles: list[str]
     renditions: list[str]
 
@@ -505,6 +643,8 @@ class ExecutorHeldRun(_StrictModel):
     rubric_text: str
     capture_budget: int
     captures_used: int
+    # Operator-set at dispatch (D20) — read-only for the executor. NULL if pre-D20.
+    coverage_dimension: str | None = None
     claims_made: int
     lease_expires_at: str | None = None
     suspensions: list[SuspensionRecord] = Field(default_factory=list)
@@ -515,7 +655,7 @@ class ReadCaseContextResult(_StrictModel):
     case: CaseRecord
     held_run: ExecutorHeldRun
     claims: list[ClaimRecord]
-    captures: list[str]
+    captures: list[CaseCaptureSummary]
     open_questions: list[OpenQuestionRecord]
     angles: list[str]
     renditions: list[str]

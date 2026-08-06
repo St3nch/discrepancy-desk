@@ -46,6 +46,7 @@ def _claimed(engine: Engine) -> tuple[int, int, str]:
                 case_id=case_id,
                 question="What is the primary source for Vela?",
                 scope="Public foundation only",
+                coverage_dimension="official_foundation",
             ),
         )
         approve_run(conn, ApproveRunInput(run_id=draft.run_id))
@@ -103,9 +104,7 @@ def test_suspend_and_answer_round_trip(engine: Engine) -> None:
         assert answered.status == "claimed"
         assert answered.human_answer == "Same agency; treat as one source lineage."
         assert answered.lease_expires_at is not None
-        assert answered.suspensions[0].human_answer == (
-            "Same agency; treat as one source lineage."
-        )
+        assert answered.suspensions[0].human_answer == ("Same agency; treat as one source lineage.")
         assert answered.instance_vs_class_notice is None
 
         validate_and_refresh_claim(conn, run_id, token)
@@ -181,7 +180,12 @@ def test_cancel_unblocks_case(engine: Engine) -> None:
         )
         draft2 = create_run(
             conn,
-            CreateRunInput(case_id=case_id, question="Second?", scope="s"),
+            CreateRunInput(
+                case_id=case_id,
+                question="Second?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         with pytest.raises(DeskRefusal) as busy:
             approve_run(conn, ApproveRunInput(run_id=draft2.run_id))
@@ -205,20 +209,38 @@ def test_cancel_from_each_cancellable_status(engine: Engine) -> None:
         case_id = create_case(conn, CreateCaseInput(title="Cancel paths")).case_id
 
         draft = create_run(
-            conn, CreateRunInput(case_id=case_id, question="Draft?", scope="s")
+            conn,
+            CreateRunInput(
+                case_id=case_id,
+                question="Draft?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         c = cancel_run(conn, CancelRunInput(run_id=draft.run_id))
         assert c.status == "cancelled"
 
         draft2 = create_run(
-            conn, CreateRunInput(case_id=case_id, question="Approved?", scope="s")
+            conn,
+            CreateRunInput(
+                case_id=case_id,
+                question="Approved?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=draft2.run_id))
         c2 = cancel_run(conn, CancelRunInput(run_id=draft2.run_id))
         assert c2.status == "cancelled"
 
         draft3 = create_run(
-            conn, CreateRunInput(case_id=case_id, question="Claimed?", scope="s")
+            conn,
+            CreateRunInput(
+                case_id=case_id,
+                question="Claimed?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=draft3.run_id))
         packet = claim_next_run(conn, ClaimNextRunInput())
@@ -353,10 +375,7 @@ def test_reclaim_after_answer_surfaces_history(engine: Engine) -> None:
             AnswerSuspendedRunInput(run_id=run_id, answer="Prefer Agency Y."),
         )
         conn.execute(
-            text(
-                "UPDATE runs SET lease_expires_at = '2000-01-01T00:00:00+00:00' "
-                "WHERE id = :id"
-            ),
+            text("UPDATE runs SET lease_expires_at = '2000-01-01T00:00:00+00:00' WHERE id = :id"),
             {"id": run_id},
         )
 

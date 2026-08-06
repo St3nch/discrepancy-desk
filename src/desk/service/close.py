@@ -14,6 +14,7 @@ from sqlalchemy import Connection, func, insert, select, update
 from desk.db.schema import captures, open_questions, run_low_confidence, runs
 from desk.refusals import DeskRefusal
 from desk.service.claims import list_claims_for_run
+from desk.service.examination import mark_reported_examined
 from desk.service.lease import format_utc, utc_now, validate_and_refresh_claim
 from desk.service.models import (
     OPEN_QUESTION_DISPOSITIONS,
@@ -134,112 +135,6 @@ def list_captures_for_run(conn: Connection, run_id: int) -> list[CaptureCloseRec
     ]
 
 
-def _mark_reported_examined(
-    conn: Connection,
-    run_id: int,
-    case_id: int,
-    capture_ids: list[int],
-) -> int:
-    """Mark only executor-reported uncited captures as examined (F-32).
-
-    Ownership matches propose_claim's axis (null-safe): the capture belongs to
-    this run, *or* belongs to this run's case (attached lead material). Cited
-    stays cited — reporting a cited capture is a refusal. Omitted uncited
-    captures stay unexamined: nobody confirmed looking.
-    """
-    # Preserve order; ignore accidental duplicates in the list.
-    seen: set[int] = set()
-    ordered: list[int] = []
-    for raw_id in capture_ids:
-        cid = int(raw_id)
-        if cid in seen:
-            continue
-        seen.add(cid)
-        ordered.append(cid)
-
-    marked = 0
-    for cid in ordered:
-        row = conn.execute(
-            select(
-                captures.c.id,
-                captures.c.run_id,
-                captures.c.case_id,
-                captures.c.status,
-            ).where(captures.c.id == cid)
-        ).one_or_none()
-        if row is None:
-            raise DeskRefusal(
-                code="CAPTURE_NOT_FOUND",
-                what_happened=f"No capture exists with id {cid}.",
-                what_was_preserved="The run was not closed; no capture statuses changed.",
-                what_was_not_changed="Nothing was written.",
-                what_you_can_do="Pass capture ids from this run's capture_url results.",
-            )
-        # run_id may be NULL (attached lead capture); case_id may be NULL (unattached).
-        owned_by_run = row.run_id is not None and int(row.run_id) == run_id
-        owned_by_case = row.case_id is not None and int(row.case_id) == case_id
-        if not owned_by_run and not owned_by_case:
-            run_label = "none" if row.run_id is None else str(int(row.run_id))
-            case_label = "none" if row.case_id is None else str(int(row.case_id))
-            raise DeskRefusal(
-                code="CAPTURE_WRONG_RUN",
-                what_happened=(
-                    f"Capture {cid} is not owned by run {run_id} or case {case_id} "
-                    f"(capture run_id={run_label}, case_id={case_label})."
-                ),
-                what_was_preserved="The run was not closed; no capture statuses changed.",
-                what_was_not_changed="Nothing was written.",
-                what_you_can_do=(
-                    "Report only captures from this run, or lead material attached "
-                    "to this run's case."
-                ),
-            )
-        status = str(row.status)
-        if status == "cited":
-            raise DeskRefusal(
-                code="EXAMINED_CAPTURE_ALREADY_CITED",
-                what_happened=(
-                    f"Capture {cid} is already cited by a claim; it cannot be "
-                    "reported as examined-with-nothing-claimed."
-                ),
-                what_was_preserved="The run was not closed; no capture statuses changed.",
-                what_was_not_changed="Nothing was written.",
-                what_you_can_do="Omit cited captures from examined_capture_ids.",
-            )
-        if status == "examined":
-            # Idempotent if already examined (should not happen mid-run, but fail open
-            # would be wrong — leave as examined without double-counting).
-            continue
-        if status != "unexamined":
-            raise DeskRefusal(
-                code="CAPTURE_STATUS_INVALID",
-                what_happened=(
-                    f"Capture {cid} has status {status!r}; only unexamined "
-                    "captures can be reported as examined at close."
-                ),
-                what_was_preserved="The run was not closed; no capture statuses changed.",
-                what_was_not_changed="Nothing was written.",
-                what_you_can_do="Report only unexamined, uncited captures.",
-            )
-        # Do not filter UPDATE on run_id — attached lead captures have run_id NULL.
-        result = conn.execute(
-            update(captures)
-            .where(captures.c.id == cid)
-            .where(captures.c.status == "unexamined")
-            .values(status="examined")
-        )
-        if result.rowcount != 1:
-            raise DeskRefusal(
-                code="CAPTURE_STATUS_INVALID",
-                what_happened=f"Could not mark capture {cid} examined (status changed).",
-                what_was_preserved="The run was not closed.",
-                what_was_not_changed="Nothing was written.",
-                what_you_can_do="Retry close_run with a fresh view of capture statuses.",
-            )
-        marked += 1
-    return marked
-
-
 def close_run(conn: Connection, params: CloseRunInput) -> CloseRunResult:
     """Executor: claimed → complete with agenda + low-confidence + examined marks."""
     validate_and_refresh_claim(conn, params.run_id, params.claim_token)
@@ -350,11 +245,11 @@ def close_run(conn: Connection, params: CloseRunInput) -> CloseRunResult:
         )
         low_conf.append(statement)
 
-    examined = _mark_reported_examined(
+    examined = mark_reported_examined(
         conn,
-        params.run_id,
-        case_id,
-        list(params.examined_capture_ids),
+        case_id=case_id,
+        capture_ids=list(params.examined_capture_ids),
+        run_id=params.run_id,
     )
 
     presented = params.claim_token.strip()

@@ -211,8 +211,26 @@ _Avoid_: bookmark, saved link, tip, idea
 
 **Coverage**
 The gauge reporting which of the six research stages a case has genuinely worked.
-Not a state machine; a readiness reading.
-_Avoid_: progress, completeness, status
+Not a state machine; a readiness reading (D20). A run carries one
+`coverage_dimension` set by the operator at dispatch — not executor-writable,
+not touched at `close_run`. Pre-D20 runs have `NULL` dimension and never count
+toward a stage. Readings: `unworked` (no completed run targeting the dimension
+produced claims), `worked` (such a run exists), `complete` (operator attestation
+still stands), `unmeasurable` (no first-class measuring object exists yet).
+`complete` is human attestation with actor and timestamp, not a count; the write
+refuses while unexamined captures remain (`COVERAGE_UNEXAMINED_REMAIN`), and may
+carry `examined_capture_ids` (same F-32 report as close). Later unexamined
+captures make an attestation stale (reading returns to `worked`). Angle work is
+hard-blocked until `official_foundation` reads complete
+(`assert_official_foundation_complete` — call site ticket 11).
+_Avoid_: progress, completeness, status, stage label (as an executor-declared field)
+
+**Coverage stages (six, fixed order for display only)**
+`official_foundation`, `public_question`, `deep_context`, `story_intelligence`,
+`editorial_development`, `composition`. Display order is not a pipeline.
+Measurable via runs today: foundation and deep context. The other four are
+`unmeasurable` until their tables exist.
+_Avoid_: phase, pipeline step, level
 
 **Public question**
 A first-class Angle Room object recording what people are actually asking about a

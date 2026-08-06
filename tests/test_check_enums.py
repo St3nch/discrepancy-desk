@@ -12,6 +12,7 @@ import re
 import pytest
 from sqlalchemy import Engine, text
 
+from desk.service.coverage import COVERAGE_STAGE_IDS
 from desk.service.evidence import (
     CAPTURE_STATUSES,
     CERTAINTY,
@@ -29,6 +30,7 @@ from desk.service.run_status import RUN_STATUSES
 # (table, column, python frozenset) — every application CHECK enum.
 _ENUM_COLUMNS: list[tuple[str, str, frozenset[str]]] = [
     ("runs", "status", RUN_STATUSES),
+    ("runs", "coverage_dimension", COVERAGE_STAGE_IDS),
     ("captures", "status", CAPTURE_STATUSES),
     ("claims", "confirmation_status", CONFIRMATION_STATUSES),
     ("claims", "source_basis", SOURCE_BASIS),
@@ -40,6 +42,7 @@ _ENUM_COLUMNS: list[tuple[str, str, frozenset[str]]] = [
     ("open_questions", "disposition", OPEN_QUESTION_DISPOSITIONS),
     ("leads", "material_status", LEAD_MATERIAL_STATUSES),
     ("leads", "inbox_status", LEAD_INBOX_STATUSES),
+    ("coverage_attestations", "stage", COVERAGE_STAGE_IDS),
 ]
 
 

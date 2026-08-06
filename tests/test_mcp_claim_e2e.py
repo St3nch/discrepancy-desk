@@ -53,6 +53,7 @@ def mcp_server_url(db_path: Path, engine: Engine) -> Iterator[str]:
                 case_id=case.case_id,
                 question="MCP question?",
                 scope="MCP scope",
+                coverage_dimension="official_foundation",
             ),
         )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))

@@ -50,7 +50,12 @@ def _setup_claimed_with_capture(engine: Engine, tmp_path: Path) -> tuple[int, in
         case = create_case(conn, CreateCaseInput(title="Claims"))
         run = create_run(
             conn,
-            CreateRunInput(case_id=case.case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         packet = claim_next_run(conn, ClaimNextRunInput())
@@ -116,8 +121,24 @@ def test_step1_capture_wrong_case(engine: Engine, tmp_path: Path) -> None:
     with connection_scope(engine) as conn:
         case_a = create_case(conn, CreateCaseInput(title="A"))
         case_b = create_case(conn, CreateCaseInput(title="B"))
-        run_a = create_run(conn, CreateRunInput(case_id=case_a.case_id, question="Q", scope="s"))
-        run_b = create_run(conn, CreateRunInput(case_id=case_b.case_id, question="Q", scope="s"))
+        run_a = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case_a.case_id,
+                question="Q",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
+        )
+        run_b = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case_b.case_id,
+                question="Q",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
+        )
         approve_run(conn, ApproveRunInput(run_id=run_a.run_id))
         packet = claim_next_run(conn, ClaimNextRunInput())
         assert packet.run is not None
@@ -272,7 +293,15 @@ def test_multiple_quote_bindings(engine: Engine, tmp_path: Path) -> None:
 
     with connection_scope(engine) as conn:
         case = create_case(conn, CreateCaseInput(title="Multi"))
-        run = create_run(conn, CreateRunInput(case_id=case.case_id, question="Q", scope="s"))
+        run = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
+        )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         packet = claim_next_run(conn, ClaimNextRunInput())
         assert packet.run is not None
@@ -321,7 +350,15 @@ def test_region_locator_quotes_substring(engine: Engine, tmp_path: Path) -> None
 
     with connection_scope(engine) as conn:
         case = create_case(conn, CreateCaseInput(title="Region"))
-        run = create_run(conn, CreateRunInput(case_id=case.case_id, question="Q", scope="s"))
+        run = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
+        )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         packet = claim_next_run(conn, ClaimNextRunInput())
         assert packet.run is not None

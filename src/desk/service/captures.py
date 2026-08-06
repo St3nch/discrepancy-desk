@@ -428,11 +428,20 @@ def read_capture(
     )
 
 
-def list_capture_summaries_for_case(conn: Connection, case_id: int) -> list[str]:
-    """Human projection strings for get_case (grows later into full capture views)."""
+def list_capture_summaries_for_case(conn: Connection, case_id: int) -> list:
+    """Case-page capture rows for get_case (id, status, url)."""
+    from desk.service.models import CaseCaptureSummary
+
     rows = conn.execute(
         select(captures.c.id, captures.c.url, captures.c.status)
         .where(captures.c.case_id == case_id)
         .order_by(captures.c.id.asc())
     ).all()
-    return [f"#{int(r.id)} {r.status} {r.url}" for r in rows]
+    return [
+        CaseCaptureSummary(
+            capture_id=int(r.id),
+            url=str(r.url),
+            status=str(r.status),
+        )
+        for r in rows
+    ]

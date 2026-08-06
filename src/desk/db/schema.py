@@ -28,6 +28,9 @@ runs = Table(
     Column("rubric_version", Text, nullable=False),
     Column("rubric_text", Text, nullable=False),
     Column("capture_budget", Integer, nullable=False),
+    # Operator-set at dispatch (D20). NULL = pre-D20 run; never counts toward a stage.
+    # Not executor-writable; not set at close_run. create_run always sets a value.
+    Column("coverage_dimension", Text, nullable=True),
     Column("created_at", Text, nullable=False),
     Column("updated_at", Text, nullable=False),
     # ISO-8601 UTC (+00:00); set while status=claimed. Null when not under lease.
@@ -42,6 +45,19 @@ runs = Table(
     Column("suspended_at", Text, nullable=True),
     Column("human_answer", Text, nullable=True),
     Column("answered_at", Text, nullable=True),
+)
+
+# Operator attestation that a coverage stage is complete (D20 / ticket 10).
+# History is append-only; latest row per (case_id, stage) is current intent.
+# Derived reading may still show worked if the attestation is stale.
+coverage_attestations = Table(
+    "coverage_attestations",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("case_id", Integer, ForeignKey("cases.id"), nullable=False),
+    Column("stage", Text, nullable=False),
+    Column("actor", Text, nullable=False),
+    Column("attested_at", Text, nullable=False),
 )
 
 # Durable suspend-and-ask instances (ticket 07 / F-28). Ordered per run.

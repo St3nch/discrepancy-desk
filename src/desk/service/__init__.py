@@ -10,6 +10,11 @@ from desk.service.close import (
     decide_open_question,
     get_run_close,
 )
+from desk.service.coverage import (
+    assert_official_foundation_complete,
+    attest_coverage,
+    get_case_coverage,
+)
 from desk.service.leads import (
     add_lead,
     attach_lead,
@@ -32,7 +37,9 @@ __all__ = [
     "add_lead",
     "answer_suspended_run",
     "approve_run",
+    "assert_official_foundation_complete",
     "attach_lead",
+    "attest_coverage",
     "cancel_run",
     "capture_url",
     "claim_next_run",
@@ -43,6 +50,7 @@ __all__ = [
     "decide_open_question",
     "dispose_lead",
     "get_case",
+    "get_case_coverage",
     "get_run_close",
     "list_cases",
     "list_leads",

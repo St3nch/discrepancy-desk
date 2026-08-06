@@ -29,6 +29,9 @@ def test_create_list_get_round_trip(engine: Engine) -> None:
         assert detail.captures == []
         assert detail.claims == []  # list[ClaimRecord], empty until propose_claim
         assert detail.open_questions == []
+        assert detail.coverage.case_id == created.case_id
+        assert detail.coverage.official_foundation_complete is False
+        assert len(detail.coverage.stages) == 6
         assert detail.angles == []
         assert detail.renditions == []
 

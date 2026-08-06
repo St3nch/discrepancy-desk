@@ -11,6 +11,7 @@ from desk.refusals import DeskRefusal
 from desk.service.captures import list_capture_summaries_for_case
 from desk.service.claims import list_claims_for_case
 from desk.service.close import list_open_questions_for_case
+from desk.service.coverage import derive_case_coverage
 from desk.service.models import (
     CaseRecord,
     CreateCaseInput,
@@ -107,6 +108,7 @@ def get_case(conn: Connection, params: GetCaseInput) -> GetCaseResult:
         captures=list_capture_summaries_for_case(conn, params.case_id),
         claims=list_claims_for_case(conn, params.case_id),
         open_questions=list_open_questions_for_case(conn, params.case_id),
+        coverage=derive_case_coverage(conn, params.case_id),
         angles=[],
         renditions=[],
     )

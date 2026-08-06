@@ -3,6 +3,7 @@ import {
   answerSuspendedRun,
   approveRun,
   attachLead,
+  attestCoverage,
   cancelRun,
   createCase,
   createOperatorOpenQuestion,
@@ -840,6 +841,135 @@ export function mount(root: HTMLElement): void {
     }
 
     const c = detail.case;
+    const cov = detail.coverage;
+    const coverageList = el("ul", { className: "coverage-list" });
+    for (const stage of cov.stages) {
+      const item = el("li", { className: `coverage-stage reading-${stage.reading}` }, [
+        el("span", {
+          className: `status-chip coverage-chip reading-${stage.reading}`,
+          text: stage.reading,
+        }),
+        el("strong", { text: ` ${stage.label}` }),
+        el("div", {
+          className: "meta",
+          text: stage.signals.join(" · ") || "—",
+        }),
+      ]);
+      if (stage.note) {
+        item.append(el("p", { className: "coverage-note", text: stage.note }));
+      }
+      coverageList.append(item);
+    }
+    const foundationGate = el("p", {
+      className: cov.official_foundation_complete
+        ? "coverage-gate open"
+        : "coverage-gate blocked",
+      text: cov.official_foundation_complete
+        ? "Official foundation reads complete — angle work is not blocked by the gauge."
+        : "Official foundation incomplete — angle work will be refused until this reads complete (worked + operator attestation, no unexamined captures).",
+    });
+
+    const ofStage = cov.stages.find((s) => s.stage === "official_foundation");
+    const deepStage = cov.stages.find((s) => s.stage === "deep_context");
+    const unexaminedCaps = detail.captures.filter((c) => c.status === "unexamined");
+    /** Explicit selection only (F-32) — never auto-mark-all. */
+    const examinedChecks = new Map<number, HTMLInputElement>();
+    const examineList = el("ul", { className: "examine-list" });
+    if (unexaminedCaps.length === 0) {
+      examineList.append(
+        el("li", {
+          className: "meta",
+          text: "No unexamined captures — attestation does not need a look report.",
+        }),
+      );
+    } else {
+      examineList.append(
+        el("li", {
+          className: "meta",
+          text: "Unexamined captures — check only those you looked at and found nothing worth claiming (required before attest):",
+        }),
+      );
+      for (const cap of unexaminedCaps) {
+        const cb = el("input", {
+          type: "checkbox",
+          "aria-label": `Examined capture ${cap.capture_id}`,
+        }) as HTMLInputElement;
+        examinedChecks.set(cap.capture_id, cb);
+        examineList.append(
+          el("li", { className: "examine-item" }, [
+            cb,
+            document.createTextNode(
+              ` #${cap.capture_id} ${cap.status} ${cap.url}`,
+            ),
+          ]),
+        );
+      }
+    }
+
+    function selectedExaminedIds(): number[] {
+      const ids: number[] = [];
+      for (const [id, cb] of examinedChecks) {
+        if (cb.checked) ids.push(id);
+      }
+      return ids;
+    }
+
+    const attestRow = el("div", { className: "attest-actions" });
+    if (ofStage?.reading === "worked" || deepStage?.reading === "worked") {
+      attestRow.append(examineList);
+    }
+    if (ofStage?.reading === "worked") {
+      const btn = el("button", {
+        type: "button",
+        text: "Attest official foundation complete",
+      });
+      btn.addEventListener("click", () => {
+        void (async () => {
+          try {
+            const r = await attestCoverage(caseId, "official_foundation", {
+              examinedCaptureIds: selectedExaminedIds(),
+            });
+            await setStatus(
+              `Attested official foundation → ${r.reading}` +
+                (r.captures_marked_examined
+                  ? ` (marked ${r.captures_marked_examined} examined).`
+                  : "."),
+            );
+            await render();
+          } catch (err) {
+            await setStatus(err instanceof Error ? err.message : String(err), true);
+          }
+        })();
+      });
+      attestRow.append(el("div", { className: "row" }, [btn]));
+    }
+    if (deepStage?.reading === "worked") {
+      const btn = el("button", {
+        type: "button",
+        className: "secondary",
+        text: "Attest deep context complete",
+      });
+      btn.addEventListener("click", () => {
+        void (async () => {
+          try {
+            const r = await attestCoverage(caseId, "deep_context", {
+              examinedCaptureIds: selectedExaminedIds(),
+            });
+            await setStatus(
+              `Attested deep context → ${r.reading}` +
+                (r.captures_marked_examined
+                  ? ` (marked ${r.captures_marked_examined} examined).`
+                  : "."),
+            );
+            await render();
+          } catch (err) {
+            await setStatus(err instanceof Error ? err.message : String(err), true);
+          }
+        })();
+      });
+      attestRow.append(el("div", { className: "row" }, [btn]));
+    }
+
     const questionInput = el("input", {
       type: "text",
       "aria-label": "Run question",
@@ -850,6 +980,22 @@ export function mount(root: HTMLElement): void {
       "aria-label": "Run scope",
       placeholder: "Bounded scope",
     }) as HTMLTextAreaElement;
+    const dimSelect = el("select", {
+      "aria-label": "Coverage dimension for this run",
+    }) as HTMLSelectElement;
+    for (const [id, label] of [
+      ["official_foundation", "Official foundation"],
+      ["public_question", "The public question"],
+      ["deep_context", "Deep context"],
+      ["story_intelligence", "Story intelligence"],
+      ["editorial_development", "Editorial development"],
+      ["composition", "Composition"],
+    ] as const) {
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = label;
+      dimSelect.append(opt);
+    }
 
     const dispatchBtn = el("button", {
       type: "button",
@@ -858,10 +1004,17 @@ export function mount(root: HTMLElement): void {
     dispatchBtn.addEventListener("click", () => {
       void (async () => {
         try {
-          const run = await createRun(caseId, questionInput.value, scopeInput.value);
+          const run = await createRun(
+            caseId,
+            questionInput.value,
+            scopeInput.value,
+            dimSelect.value,
+          );
           questionInput.value = "";
           scopeInput.value = "";
-          await setStatus(`Created run #${run.run_id} as draft.`);
+          await setStatus(
+            `Created run #${run.run_id} as draft (${run.coverage_dimension}).`,
+          );
           await render();
         } catch (err) {
           await setStatus(err instanceof Error ? err.message : String(err), true);
@@ -910,14 +1063,22 @@ export function mount(root: HTMLElement): void {
           text: `Case #${c.case_id} · created ${c.created_at}`,
         }),
       ]),
+      el("section", { className: "panel panel-coverage" }, [
+        el("h2", { text: "Coverage gauge" }),
+        el("p", { className: "subtitle", text: cov.banner }),
+        foundationGate,
+        coverageList,
+        attestRow,
+      ]),
       el("section", { className: "panel" }, [
         el("h2", { text: "Dispatch research run" }),
         el("p", {
           className: "subtitle",
-          text: "Creates a draft. Approve to make it claimable by an executor (pull).",
+          text: "Creates a draft. Set the coverage dimension this run targets (operator only). Approve to make it claimable.",
         }),
         el("label", {}, ["Question ", questionInput]),
         el("label", {}, ["Scope ", scopeInput]),
+        el("label", {}, ["Coverage dimension ", dimSelect]),
         el("div", { className: "row" }, [dispatchBtn]),
       ]),
       el("section", { className: "panel" }, [
@@ -975,9 +1136,22 @@ export function mount(root: HTMLElement): void {
             ),
       ]),
       el("section", { className: "panel" }, [
+        el("h2", { text: "Captures on this case" }),
+        detail.captures.length === 0
+          ? el("p", { className: "empty", text: "No captures yet." })
+          : el(
+              "ul",
+              { className: "empty-slots" },
+              detail.captures.map((cap) =>
+                el("li", {
+                  text: `#${cap.capture_id} ${cap.status} ${cap.url}`,
+                }),
+              ),
+            ),
+      ]),
+      el("section", { className: "panel" }, [
         el("h2", { text: "Also on this case" }),
         el("ul", { className: "empty-slots" }, [
-          el("li", { text: `Captures: ${detail.captures.length}` }),
           el("li", { text: `Angles: ${detail.angles.length}` }),
           el("li", { text: `Renditions: ${detail.renditions.length}` }),
         ]),

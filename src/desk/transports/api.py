@@ -13,6 +13,7 @@ from desk.service import (
     answer_suspended_run,
     approve_run,
     attach_lead,
+    attest_coverage,
     cancel_run,
     create_case,
     create_operator_open_question,
@@ -38,6 +39,9 @@ from desk.service.models import (
     AttachLeadBody,
     AttachLeadInput,
     AttachLeadResult,
+    AttestCoverageBody,
+    AttestCoverageInput,
+    AttestCoverageResult,
     CancelRunInput,
     CancelRunResult,
     CreateCaseInput,
@@ -134,6 +138,28 @@ def api_create_run(
 ) -> CreateRunResult:
     with connection_scope(engine) as conn:
         return create_run(conn, body)
+
+
+@router.post(
+    "/cases/{case_id}/coverage/{stage}/attest",
+    response_model=AttestCoverageResult,
+    name="attest_coverage",
+)
+def api_attest_coverage(
+    case_id: int,
+    stage: str,
+    body: AttestCoverageBody,
+    engine: EngineDep,
+) -> AttestCoverageResult:
+    """Human-only: attest a measurable coverage stage complete (D20)."""
+    payload = AttestCoverageInput(
+        case_id=case_id,
+        stage=stage,
+        actor=body.actor,
+        examined_capture_ids=list(body.examined_capture_ids),
+    )
+    with connection_scope(engine) as conn:
+        return attest_coverage(conn, payload)
 
 
 @router.post(

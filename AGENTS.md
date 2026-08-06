@@ -22,6 +22,7 @@ Product doctrine lives in a separate repository at `../discrepancy-desk-docs/`:
 | `decisions/stack.md` | D16–D17 — Python, SQLite, FastAPI, TypeScript client; one brand per deployment |
 | `decisions/lead-inbox-transport.md` | D18 — why `add_lead` is on both transports |
 | `decisions/lead-material-admission.md` | D19 — what `identity_only` covers; why no wall detector |
+| `decisions/coverage-measurement.md` | D20 — run coverage dimension; complete is attested |
 | `reference/repository-inventory.md` | Prior research worth consulting before re-deriving an answer |
 
 The ADRs in `docs/adr/` are the binding form of the decisions that matter most.
@@ -70,6 +71,19 @@ by construction cannot accumulate that drift.
 **Update `CONTEXT.md` in the moment.** Any session where a term is challenged,
 sharpened, or resolved updates the glossary immediately, never in a batch
 afterwards. A stale glossary is worse than none because it is trusted.
+
+**Reports say what you noticed, not only what you did.** A ticket report ends with
+what you are uneasy about, what you decided not to build and why, what the ticket
+made you notice about code you did not touch, and anything the acceptance criteria
+asked for that the design does not really deliver. State plainly where you have not
+verified something rather than describing how it usually works — "I did not test this
+against a real one" is more useful than a confident account.
+
+This is not self-review. You are the only party who has read the whole diff and the
+surrounding code at the same time, and some of what you notice is invisible from
+outside. Reviewers have twice changed a decision on the strength of an
+implementer observation. Raising a doubt costs nothing; a doubt you kept costs a
+round.
 
 **Governance must not outrun execution.** The previous documentation repository
 reached 309 files across 131 planning packages and 99 audit records, and the project

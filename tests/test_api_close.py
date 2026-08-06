@@ -23,7 +23,12 @@ def test_operator_create_open_question_http(client: TestClient, engine: Engine) 
         case_id = create_case(conn, CreateCaseInput(title="API own Q")).case_id
         draft = create_run(
             conn,
-            CreateRunInput(case_id=case_id, question="Foundation?", scope="s"),
+            CreateRunInput(
+                case_id=case_id,
+                question="Foundation?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=draft.run_id))
         claimed = claim_next_run(conn, ClaimNextRunInput())
@@ -62,7 +67,12 @@ def test_run_close_http_and_decide(client: TestClient, engine: Engine) -> None:
         case_id = create_case(conn, CreateCaseInput(title="API close")).case_id
         draft = create_run(
             conn,
-            CreateRunInput(case_id=case_id, question="Foundation?", scope="s"),
+            CreateRunInput(
+                case_id=case_id,
+                question="Foundation?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=draft.run_id))
         claimed = claim_next_run(conn, ClaimNextRunInput())

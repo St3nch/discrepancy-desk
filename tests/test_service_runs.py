@@ -38,6 +38,7 @@ def test_create_approve_claim_round_trip(engine: Engine) -> None:
                 case_id=case_id,
                 question="What did the Vela satellite record?",
                 scope="Official foundation sources only",
+                coverage_dimension="official_foundation",
             ),
         )
         assert draft.status == "draft"
@@ -73,11 +74,21 @@ def test_claim_oldest_approved_first(engine: Engine) -> None:
     with connection_scope(engine) as conn:
         first = create_run(
             conn,
-            CreateRunInput(case_id=case_a, question="First?", scope="s"),
+            CreateRunInput(
+                case_id=case_a,
+                question="First?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         second = create_run(
             conn,
-            CreateRunInput(case_id=case_b, question="Second?", scope="s"),
+            CreateRunInput(
+                case_id=case_b,
+                question="Second?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=first.run_id))
         approve_run(conn, ApproveRunInput(run_id=second.run_id))
@@ -93,7 +104,9 @@ def test_approve_refuses_non_draft(engine: Engine) -> None:
     with connection_scope(engine) as conn:
         draft = create_run(
             conn,
-            CreateRunInput(case_id=case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case_id, question="Q?", scope="s", coverage_dimension="official_foundation"
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=draft.run_id))
         with pytest.raises(DeskRefusal) as exc_info:
@@ -106,11 +119,21 @@ def test_case_busy_refuses_second_approve(engine: Engine) -> None:
     with connection_scope(engine) as conn:
         a = create_run(
             conn,
-            CreateRunInput(case_id=case_id, question="One?", scope="s"),
+            CreateRunInput(
+                case_id=case_id,
+                question="One?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         b = create_run(
             conn,
-            CreateRunInput(case_id=case_id, question="Two?", scope="s"),
+            CreateRunInput(
+                case_id=case_id,
+                question="Two?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=a.run_id))
         with pytest.raises(DeskRefusal) as exc_info:
@@ -123,7 +146,12 @@ def test_create_run_refuses_unknown_case(engine: Engine) -> None:
         with pytest.raises(DeskRefusal) as exc_info:
             create_run(
                 conn,
-                CreateRunInput(case_id=99999, question="Q?", scope="s"),
+                CreateRunInput(
+                    case_id=99999,
+                    question="Q?",
+                    scope="s",
+                    coverage_dimension="official_foundation",
+                ),
             )
     assert exc_info.value.code == "CASE_NOT_FOUND"
 
@@ -134,7 +162,12 @@ def test_create_run_refuses_empty_question(engine: Engine) -> None:
         with pytest.raises(DeskRefusal) as exc_info:
             create_run(
                 conn,
-                CreateRunInput(case_id=case_id, question="  ", scope="s"),
+                CreateRunInput(
+                    case_id=case_id,
+                    question="  ",
+                    scope="s",
+                    coverage_dimension="official_foundation",
+                ),
             )
     assert exc_info.value.code == "RUN_QUESTION_EMPTY"
 
@@ -144,7 +177,9 @@ def test_list_runs_for_case(engine: Engine) -> None:
     with connection_scope(engine) as conn:
         create_run(
             conn,
-            CreateRunInput(case_id=case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case_id, question="Q?", scope="s", coverage_dimension="official_foundation"
+            ),
         )
         listed = list_runs(conn, ListRunsInput(case_id=case_id))
     assert listed.case_id == case_id

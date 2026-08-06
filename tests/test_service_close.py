@@ -62,6 +62,7 @@ def _claimed(engine: Engine) -> tuple[int, int, str]:
                 case_id=case_id,
                 question="What did the official report establish?",
                 scope="Foundation sources",
+                coverage_dimension="official_foundation",
             ),
         )
         approve_run(conn, ApproveRunInput(run_id=draft.run_id))

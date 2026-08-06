@@ -30,6 +30,8 @@ def test_api_create_list_get_case(client: TestClient) -> None:
     assert payload["captures"] == []
     assert payload["claims"] == []  # claim records; empty until propose_claim
     assert payload["open_questions"] == []
+    assert payload["coverage"]["official_foundation_complete"] is False
+    assert len(payload["coverage"]["stages"]) == 6
     assert payload["angles"] == []
     assert payload["renditions"] == []
     # No complete/closed fields on the projection.

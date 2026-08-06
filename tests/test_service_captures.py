@@ -38,6 +38,7 @@ def _claimed_run(engine: Engine, *, budget: int = 5) -> tuple[int, str]:
                 case_id=case.case_id,
                 question="Q?",
                 scope="s",
+                coverage_dimension="official_foundation",
                 capture_budget=budget,
             ),
         )
@@ -108,7 +109,12 @@ def test_capture_url_refuses_unclaimed_run(engine: Engine, tmp_path: Path) -> No
         case = create_case(conn, CreateCaseInput(title="C"))
         run = create_run(
             conn,
-            CreateRunInput(case_id=case.case_id, question="Q?", scope="s"),
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q?",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         with pytest.raises(DeskRefusal) as exc_info:
             capture_url(

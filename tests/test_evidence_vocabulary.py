@@ -55,7 +55,12 @@ def test_claims_dimension_check_rejects_unknown(engine: Engine) -> None:
         case = create_case(conn, CreateCaseInput(title="vocab"))
         run = create_run(
             conn,
-            CreateRunInput(case_id=case.case_id, question="Q", scope="s"),
+            CreateRunInput(
+                case_id=case.case_id,
+                question="Q",
+                scope="s",
+                coverage_dimension="official_foundation",
+            ),
         )
         approve_run(conn, ApproveRunInput(run_id=run.run_id))
         with pytest.raises(IntegrityError):

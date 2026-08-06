@@ -10,6 +10,7 @@ API_ONLY: frozenset[str] = frozenset(
         "create_run",
         "approve_run",
         "list_runs",
+        "attest_coverage",
         "answer_suspended_run",
         "cancel_run",
         "get_run_close",

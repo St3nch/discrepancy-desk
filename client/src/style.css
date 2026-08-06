@@ -445,6 +445,94 @@ select {
   color: #5c4a00;
 }
 
+/* Coverage gauge — readiness reading, not a pipeline. */
+.panel-coverage {
+  border: 2px solid #3d5a40;
+}
+
+.coverage-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+}
+
+.coverage-stage {
+  padding: 0.55rem 0;
+  border-bottom: 1px solid #eee;
+}
+
+.coverage-chip.reading-unworked {
+  background: #e0e0e0;
+  color: #444;
+}
+
+.coverage-chip.reading-worked {
+  background: #cfe0f5;
+  color: #0d2d5c;
+}
+
+.coverage-chip.reading-complete {
+  background: #d4e8c8;
+  color: #1a4a0a;
+}
+
+.coverage-chip.reading-unmeasurable {
+  background: #f0e6d2;
+  color: #5c3b00;
+}
+
+.coverage-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: #666;
+  font-style: italic;
+}
+
+.coverage-gate {
+  margin: 0.5rem 0;
+  padding: 0.45rem 0.55rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border-radius: 4px;
+}
+
+.coverage-gate.blocked {
+  background: #fdf2f2;
+  color: #5c1010;
+  border-left: 3px solid #8b1a1a;
+}
+
+.coverage-gate.open {
+  background: #edf7ed;
+  color: #1a4a0a;
+  border-left: 3px solid #1a4a0a;
+}
+
+.examine-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+
+.examine-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.25rem 0;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.examine-item input[type="checkbox"] {
+  margin-top: 0.2rem;
+}
+
+.attest-actions {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #bbb;
+}
+
 .lead-url {
   margin: 0.25rem 0;
   font-weight: 600;

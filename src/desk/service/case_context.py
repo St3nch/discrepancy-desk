@@ -122,6 +122,11 @@ def read_case_context(
         rubric_text=str(refreshed.rubric_text),
         capture_budget=int(refreshed.capture_budget),
         captures_used=_captures_used(conn, run_id),
+        coverage_dimension=(
+            None
+            if refreshed.coverage_dimension is None
+            else str(refreshed.coverage_dimension)
+        ),
         claims_made=_claims_made(conn, run_id),
         lease_expires_at=str(lease) if lease is not None else None,
         suspensions=suspensions,
