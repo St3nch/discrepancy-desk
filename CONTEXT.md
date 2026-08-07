@@ -106,6 +106,11 @@ bytes). Forms:
 | `e/{ordinal}` | Full element text |
 | `e/{ordinal}/r/{start}-{end}` | Character slice of element text (`start` inclusive, `end` exclusive) |
 
+A bare `e/{n}` means the quotation surface is the **entire element**, not text findable
+within it. `find_quote` (MCP, read-only) takes a capture id and an exact substring and
+returns the region locator, or a structured miss (`not_found` vs multiple matches). Exact
+substring only — no fuzzy matching. `propose_claim` still verifies independently.
+
 _Avoid_: pointer, position, offset, anchor
 
 **Confirmed**

@@ -10,7 +10,7 @@ from desk.service.angles import (
     link_claim_to_public_question,
     list_rendition_eligible_claims,
 )
-from desk.service.captures import capture_url, read_capture
+from desk.service.captures import capture_url, find_quote, read_capture
 from desk.service.case_context import read_case_context
 from desk.service.cases import create_case, get_case, list_cases
 from desk.service.claims import propose_claim
@@ -65,6 +65,7 @@ __all__ = [
     "decide_open_question",
     "dismiss_angle",
     "dispose_lead",
+    "find_quote",
     "get_case",
     "get_case_coverage",
     "get_run_close",

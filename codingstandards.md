@@ -28,6 +28,23 @@ either transport. The `code` must be specific enough that an executor can self-c
 `QUOTE_MISMATCH` and `LOCATOR_UNRESOLVED` and `BUDGET_EXHAUSTED` lead to different next
 actions by a model, so they must be different codes.
 
+**MCP tool boundary is three categories (ticket 12a).** The intercept is at tool
+**dispatch** (not only the body decorator), so framework argument validation is covered
+while schemas stay intact:
+
+1. `DeskRefusal` — five-field envelope, code unchanged (actionable domain refusal).
+2. Framework argument validation failure — `TOOL_ARGUMENT_INVALID`, actionable: names
+   the parameter and what was expected. Missing keys, wrong types, nulls. An unlearnable
+   framework error here is F-54 in a new costume.
+3. Anything genuinely unexpected — `TOOL_INTERNAL_ERROR`, non-correctable, no internals
+   leaked, loud in the logs.
+
+A blanket wrapper that dresses every failure as an actionable refusal is F-17 one level
+up: an executor will loop trying to "fix" a programming error while the bug stays
+invisible. Do not re-label domain codes inside a broad `except Exception`. Tests of the
+envelope must go through the registered dispatch path, not `tool.fn` (which bypasses
+validation).
+
 **HTTP refusals are always 409.** Domain refusals render as HTTP 409 with the five-field
 body. The `code` carries the meaning; do not map different refusal codes to different HTTP
 statuses. A second, weaker signal invites callers to switch on the wrong one. Request-shape

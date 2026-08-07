@@ -30,6 +30,18 @@ not possible — a claim records the version that made it, or the record is wron
 - [ ] A first draft exists for each operation, seeded from the indicative questions in
       VISION §10. Short. These are tuned against real output, not written to completeness
       in advance.
+- [ ] **The classification vocabulary ships inside the work packet.** The `source_basis`,
+      `certainty`, `posture`, `publication_risk`, and `corroboration` enums, each with a
+      one-line meaning, live in the rubric text that `claim_next_run` already returns.
+
+      Origin is F-56: the first live executor classified claims by pattern-matching two
+      previously confirmed claims on the same case, and recorded in its low-confidence areas
+      that its classifications were pattern-matched rather than rubric-driven. That means
+      classifications propagate from case history rather than from the contract, and a fresh
+      case has no history to pattern-match against — the executor would be probing blind
+      against fail-closed validation.
+- [ ] **One canonical worked example claim** ships with the extraction rubric, so cold-start
+      behaviour does not depend on what any operator happened to confirm earlier.
 - [ ] The operator can see which rubric version a claim came from.
 
 **Explicitly out of scope:** a rubric editor in the browser, cross-version comparison views,

@@ -49,6 +49,7 @@ MCP_ONLY: frozenset[str] = frozenset(
         "read_case_context",
         "capture_url",
         "read_capture",
+        "find_quote",
         "propose_claim",
         "propose_rendition",
         "suspend_run",

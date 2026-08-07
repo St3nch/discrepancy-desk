@@ -293,6 +293,48 @@ class ReadCaptureResult(_StrictModel):
     projection_is_authoritative: bool = False
 
 
+# --- find_quote (ticket 12a / F-55) ---
+
+
+class FindQuoteInput(_StrictModel):
+    """Locate an exact substring in a capture's quotation surface.
+
+    Read-only: validates claim_token authority but does not refresh the lease
+    and does not consume capture budget.
+    """
+
+    capture_id: int
+    claim_token: str
+    quoted_text: str
+
+
+class FindQuoteMatch(_StrictModel):
+    """One exact occurrence of the substring inside an element."""
+
+    locator: str  # e/{n}/r/{start}-{end}
+    element_locator: str  # e/{n}
+    start: int
+    end: int  # exclusive
+
+
+class FindQuoteResult(_StrictModel):
+    """Lookup result — success or structured miss (not a DeskRefusal when absent).
+
+    ``reason``:
+    * ``unique`` — exactly one match; ``locator`` is set
+    * ``not_found`` — substring absent from every element
+    * ``multiple_elements`` — matches in more than one element
+    * ``multiple_in_element`` — more than one match inside a single element
+    """
+
+    capture_id: int
+    found: bool
+    reason: str
+    match_count: int
+    locator: str | None = None
+    matches: list[FindQuoteMatch] = Field(default_factory=list)
+
+
 # --- Claims (ticket 05) ---
 
 

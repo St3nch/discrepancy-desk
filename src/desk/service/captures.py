@@ -24,10 +24,13 @@ from sqlalchemy import Connection, func, insert, select
 
 from desk.db.schema import captures, document_versions, elements, regions, runs
 from desk.refusals import DeskRefusal
-from desk.service.lease import validate_and_refresh_claim
+from desk.service.lease import validate_and_refresh_claim, validate_claim
 from desk.service.models import (
     CaptureUrlInput,
     CaptureUrlResult,
+    FindQuoteInput,
+    FindQuoteMatch,
+    FindQuoteResult,
     LocatorElement,
     ReadCaptureInput,
     ReadCaptureResult,
@@ -298,36 +301,47 @@ def capture_url(
     )
 
 
-def read_capture(
+def assert_executor_may_read_capture(
     conn: Connection,
-    params: ReadCaptureInput,
-) -> ReadCaptureResult:
-    """Read further elements from an already-made capture (beyond capture_url cap).
+    capture_id: int,
+    claim_token: str,
+    *,
+    refresh_lease: bool = True,
+) -> None:
+    """Authority gate for executor reads of a capture (read_capture / find_quote).
 
-    Run-owned captures: claim_token must hold that run.
-    Case-attached lead captures (run_id null, case_id set): claim_token must hold
-    a claimed run on that case. Unattached lead captures are operator-only (API).
+    Run-owned: claim_token must hold that run.
+    Case-attached lead: claim_token must hold a claimed run on that case.
+    Unattached lead: refused (operator-only).
+
+    ``refresh_lease=False`` validates without extending the lease (find_quote is
+    read-only and must not mutate run state — ticket 12a).
     """
     cap = conn.execute(
         select(captures.c.id, captures.c.run_id, captures.c.case_id).where(
-            captures.c.id == params.capture_id
+            captures.c.id == capture_id
         )
     ).one_or_none()
     if cap is None:
         raise DeskRefusal(
             code="CAPTURE_NOT_FOUND",
-            what_happened=f"No capture exists with id {params.capture_id}.",
+            what_happened=f"No capture exists with id {capture_id}.",
             what_was_preserved="Existing captures are unchanged.",
             what_was_not_changed="Nothing was written.",
-            what_you_can_do="Call capture_url first, then read_capture with that capture_id.",
+            what_you_can_do="Call capture_url first, then read with that capture_id.",
         )
 
     if cap.run_id is not None:
-        validate_and_refresh_claim(conn, int(cap.run_id), params.claim_token)
-    elif cap.case_id is not None:
+        if refresh_lease:
+            validate_and_refresh_claim(conn, int(cap.run_id), claim_token)
+        else:
+            validate_claim(conn, int(cap.run_id), claim_token, refresh=False)
+        return
+
+    if cap.case_id is not None:
         # Lead material attached to a case: claim_token must hold a claimed run
         # on that case (same token authority pattern as read_case_context).
-        presented = (params.claim_token or "").strip()
+        presented = (claim_token or "").strip()
         candidates = conn.execute(
             select(runs.c.id, runs.c.claim_token)
             .where(runs.c.case_id == int(cap.case_id))
@@ -345,7 +359,7 @@ def read_capture(
                 code="RUN_CLAIM_STALE",
                 what_happened=(
                     "claim_token does not hold a claimed run on the case that owns "
-                    f"capture {params.capture_id}."
+                    f"capture {capture_id}."
                 ),
                 what_was_preserved="Existing captures are unchanged.",
                 what_was_not_changed="Nothing was written.",
@@ -353,38 +367,62 @@ def read_capture(
                     "Present the claim_token for a claimed run on this capture's case."
                 ),
             )
-        validate_and_refresh_claim(conn, held_run_id, presented)
-    else:
-        raise DeskRefusal(
-            code="CAPTURE_NOT_ON_CASE",
-            what_happened=(
-                f"Capture {params.capture_id} is unattached lead material and cannot "
-                "be read through the executor tool surface."
-            ),
-            what_was_preserved="Existing captures are unchanged.",
-            what_was_not_changed="Nothing was written.",
-            what_you_can_do=(
-                "The operator must attach the lead to a case before an executor "
-                "can read this capture."
-            ),
-        )
+        if refresh_lease:
+            validate_and_refresh_claim(conn, held_run_id, presented)
+        else:
+            validate_claim(conn, held_run_id, presented, refresh=False)
+        return
 
+    raise DeskRefusal(
+        code="CAPTURE_NOT_ON_CASE",
+        what_happened=(
+            f"Capture {capture_id} is unattached lead material and cannot "
+            "be read through the executor tool surface."
+        ),
+        what_was_preserved="Existing captures are unchanged.",
+        what_was_not_changed="Nothing was written.",
+        what_you_can_do=(
+            "The operator must attach the lead to a case before an executor can read this capture."
+        ),
+    )
+
+
+def _latest_document_version_id(conn: Connection, capture_id: int) -> int:
     dv = conn.execute(
         select(document_versions.c.id)
-        .where(document_versions.c.capture_id == params.capture_id)
+        .where(document_versions.c.capture_id == capture_id)
         .order_by(document_versions.c.version_number.desc())
         .limit(1)
     ).one_or_none()
     if dv is None:
         raise DeskRefusal(
             code="CAPTURE_NOT_PARSED",
-            what_happened=f"Capture {params.capture_id} has no document_version.",
+            what_happened=f"Capture {capture_id} has no document_version.",
             what_was_preserved="Existing captures are unchanged.",
             what_was_not_changed="Nothing was written.",
             what_you_can_do="Re-capture the URL if parsing failed; report if this persists.",
         )
+    return int(dv.id)
 
-    document_version_id = int(dv.id)
+
+def read_capture(
+    conn: Connection,
+    params: ReadCaptureInput,
+) -> ReadCaptureResult:
+    """Read further elements from an already-made capture (beyond capture_url cap).
+
+    Run-owned captures: claim_token must hold that run.
+    Case-attached lead captures (run_id null, case_id set): claim_token must hold
+    a claimed run on that case. Unattached lead captures are operator-only (API).
+    """
+    assert_executor_may_read_capture(
+        conn,
+        params.capture_id,
+        params.claim_token,
+        refresh_lease=True,
+    )
+
+    document_version_id = _latest_document_version_id(conn, params.capture_id)
     total = int(
         conn.execute(
             select(func.count())
@@ -425,6 +463,98 @@ def read_capture(
         elements=elems,
         projection_markdown=_projection_markdown(elems),
         projection_is_authoritative=False,
+    )
+
+
+def find_quote(conn: Connection, params: FindQuoteInput) -> FindQuoteResult:
+    """Locate an exact substring in a capture's element text (ticket 12a / F-55).
+
+    Returns ``e/{n}/r/{start}-{end}`` when the substring occurs exactly once.
+    Structured miss distinguishes not-found from ambiguous (multiple hits).
+    Exact match only — never fuzzy, never normalised. Does not refresh the lease
+    and does not consume capture budget. ``propose_claim`` still verifies independently.
+    """
+    quoted = params.quoted_text
+    if quoted == "":
+        raise DeskRefusal(
+            code="FIND_QUOTE_EMPTY",
+            what_happened="quoted_text was empty; every position would match.",
+            what_was_preserved="Existing captures are unchanged.",
+            what_was_not_changed="Nothing was written.",
+            what_you_can_do=(
+                "Pass the exact non-empty substring to locate. "
+                "Copy it from the element text returned by capture_url / read_capture."
+            ),
+        )
+
+    assert_executor_may_read_capture(
+        conn,
+        params.capture_id,
+        params.claim_token,
+        refresh_lease=False,
+    )
+
+    document_version_id = _latest_document_version_id(conn, params.capture_id)
+    rows = conn.execute(
+        select(
+            elements.c.locator,
+            elements.c.ordinal,
+            elements.c.text,
+        )
+        .where(elements.c.document_version_id == document_version_id)
+        .order_by(elements.c.ordinal.asc())
+    ).all()
+
+    matches: list[FindQuoteMatch] = []
+    for row in rows:
+        text = str(row.text)
+        element_locator = str(row.locator)
+        start = 0
+        while True:
+            idx = text.find(quoted, start)
+            if idx < 0:
+                break
+            end = idx + len(quoted)
+            matches.append(
+                FindQuoteMatch(
+                    locator=f"{element_locator}/r/{idx}-{end}",
+                    element_locator=element_locator,
+                    start=idx,
+                    end=end,
+                )
+            )
+            start = idx + 1
+
+    count = len(matches)
+    if count == 0:
+        return FindQuoteResult(
+            capture_id=params.capture_id,
+            found=False,
+            reason="not_found",
+            match_count=0,
+            locator=None,
+            matches=[],
+        )
+    if count > 1:
+        element_ids = {m.element_locator for m in matches}
+        reason = "multiple_elements" if len(element_ids) > 1 else "multiple_in_element"
+        return FindQuoteResult(
+            capture_id=params.capture_id,
+            found=False,
+            reason=reason,
+            match_count=count,
+            locator=None,
+            matches=matches,
+        )
+
+    only = matches[0]
+    return FindQuoteResult(
+        capture_id=params.capture_id,
+        found=True,
+        reason="unique",
+        match_count=1,
+        locator=only.locator,
+        matches=matches,
     )
 
 
