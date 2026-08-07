@@ -35,13 +35,16 @@ from desk.service import (
     attest_coverage,
     cancel_run,
     capture_url,
+    choose_angle,
     claim_next_run,
     close_run,
+    create_angle,
     create_case,
     create_run,
     get_case,
     get_case_coverage,
     propose_claim,
+    propose_rendition,
     read_case_context,
     suspend_run,
 )
@@ -53,15 +56,20 @@ from desk.service.models import (
     AttestCoverageInput,
     CancelRunInput,
     CaptureUrlInput,
+    ChooseAngleInput,
     ClaimNextRunInput,
     CloseRunInput,
+    CreateAngleInput,
     CreateCaseInput,
     CreateRunInput,
     EvidenceDimensions,
     GetCaseCoverageInput,
     GetCaseInput,
+    LinkClaimDimensions,
     ProposeClaimInput,
+    ProposeRenditionInput,
     ReadCaseContextInput,
+    RenditionUnitInput,
     SuspendRunInput,
 )
 from desk.vault.store import VaultStore
@@ -433,3 +441,96 @@ def test_cancel_with_unexamined_then_attest_after_report(engine: Engine, tmp_pat
         )
         assert result.reading == "complete"
         assert result.captures_marked_examined == 1
+
+
+def test_propose_rendition_then_coverage_composition_worked(engine: Engine, tmp_path: Path) -> None:
+    """Ticket 12: propose_rendition must move composition off unworked (S-01 class)."""
+    vault = VaultStore(tmp_path / "vault")
+    case_id, run_id, token = _claimed(engine)
+    with connection_scope(engine) as conn:
+        cap = capture_url(
+            conn,
+            CaptureUrlInput(
+                run_id=run_id,
+                url="https://example.com/compose",
+                claim_token=token,
+            ),
+            vault=vault,
+            fetch=_html_fetch,
+        )
+        elem = cap.elements[0]
+        claim = propose_claim(
+            conn,
+            ProposeClaimInput(
+                run_id=run_id,
+                claim_token=token,
+                proposition="Compose spine.",
+                dimensions=_dims(),
+                capture_id=cap.capture_id,
+                locator=elem.locator,
+                quoted_text=elem.text,
+            ),
+        )
+        close_run(conn, CloseRunInput(run_id=run_id, claim_token=token))
+        attest_coverage(
+            conn,
+            AttestCoverageInput(case_id=case_id, stage="official_foundation"),
+        )
+        angle = create_angle(
+            conn,
+            CreateAngleInput(
+                case_id=case_id,
+                title="Compose angle",
+                claim_ids=[claim.claim_id],
+                dimensions_by_claim_id={
+                    claim.claim_id: LinkClaimDimensions(
+                        source_basis="contemporaneous_report",
+                        corroboration="single_source",
+                        certainty="probable",
+                        posture="factual_assertion",
+                        publication_risk="not_applicable",
+                    )
+                },
+            ),
+        )
+        choose_angle(conn, ChooseAngleInput(angle_id=angle.angle_id))
+
+        before = get_case_coverage(conn, GetCaseCoverageInput(case_id=case_id))
+        assert next(s for s in before.stages if s.stage == "composition").reading == "unworked"
+
+        comp = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case_id,
+                question="Compose thread",
+                scope="composition",
+                coverage_dimension="composition",
+                capture_budget=1,
+            ),
+        )
+        approve_run(conn, ApproveRunInput(run_id=comp.run_id))
+        claimed = claim_next_run(conn, ClaimNextRunInput())
+        assert claimed.run is not None
+
+        propose_rendition(
+            conn,
+            ProposeRenditionInput(
+                run_id=claimed.run.run_id,
+                claim_token=claimed.run.claim_token,
+                angle_id=angle.angle_id,
+                platform="x",
+                format="thread",
+                units=[
+                    RenditionUnitInput(
+                        body="Compose spine stands.",
+                        claim_ids=[claim.claim_id],
+                    )
+                ],
+            ),
+        )
+
+        after = get_case_coverage(conn, GetCaseCoverageInput(case_id=case_id))
+        assert next(s for s in after.stages if s.stage == "composition").reading == "worked"
+        detail = get_case(conn, GetCaseInput(case_id=case_id))
+        assert len(detail.renditions) == 1
+        assert detail.renditions[0].units[0].body == "Compose spine stands."

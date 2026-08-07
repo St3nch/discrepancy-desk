@@ -23,6 +23,9 @@ from desk.service.evidence import (
     LEAD_MATERIAL_STATUSES,
     POSTURE,
     PUBLICATION_RISK,
+    RENDITION_FORMATS,
+    RENDITION_PLATFORMS,
+    RENDITION_STATUSES,
     SOURCE_BASIS,
 )
 from desk.service.models import AGENDA_DECISIONS, OPEN_QUESTION_DISPOSITIONS
@@ -45,6 +48,9 @@ _ENUM_COLUMNS: list[tuple[str, str, frozenset[str]]] = [
     ("leads", "inbox_status", LEAD_INBOX_STATUSES),
     ("coverage_attestations", "stage", COVERAGE_STAGE_IDS),
     ("angles", "status", ANGLE_STATUSES),
+    ("renditions", "status", RENDITION_STATUSES),
+    ("renditions", "platform", RENDITION_PLATFORMS),
+    ("renditions", "format", RENDITION_FORMATS),
 ]
 
 

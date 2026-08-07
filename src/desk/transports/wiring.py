@@ -50,6 +50,7 @@ MCP_ONLY: frozenset[str] = frozenset(
         "capture_url",
         "read_capture",
         "propose_claim",
+        "propose_rendition",
         "suspend_run",
         "close_run",
     }

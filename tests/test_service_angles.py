@@ -315,7 +315,8 @@ def test_public_question_links_claims_and_coverage(engine: Engine, tmp_path: Pat
         si = next(s for s in gauge3.stages if s.stage == "story_intelligence")
         comp = next(s for s in gauge3.stages if s.stage == "composition")
         assert si.reading == "unmeasurable"
-        assert comp.reading == "unmeasurable"
+        # Composition is object-backed from ticket 12; no renditions yet → unworked.
+        assert comp.reading == "unworked"
 
 
 def test_f24_categorical_unknown_fails_closed(engine: Engine, tmp_path: Path) -> None:

@@ -16,7 +16,7 @@ Readings (D20):
 | complete | Operator attestation stands (not stale) |
 | unmeasurable | No first-class measuring object exists yet for this stage |
 
-Measurable (D20 + ticket 11 objects):
+Measurable (D20 + tickets 11–12 objects):
 
 | Stage | Measuring objects |
 |---|---|
@@ -24,13 +24,14 @@ Measurable (D20 + ticket 11 objects):
 | deep_context | completed runs with coverage_dimension + claims |
 | public_question | public_questions with ≥1 claim link |
 | editorial_development | angles with ≥1 claim link |
+| composition | renditions with ≥1 unit that cites ≥1 claim |
 
-Still unmeasurable (no first-class object — explicit decision, not neglect):
+Still unmeasurable (explicit decision, not neglect):
 
 | Stage | Why |
 |---|---|
-| story_intelligence | no table / object yet |
-| composition | renditions arrive ticket 12 |
+| story_intelligence | no distinct measuring object (entities/conflicts/timeline |
+|  | not built; inferring from angles would be the proxy D20 rejects) |
 
 complete is human attestation only. An attestation is stale when any unexamined
 capture is on the case (including lead material attached after the fact) — the
@@ -55,6 +56,9 @@ from desk.db.schema import (
     coverage_attestations,
     public_question_claims,
     public_questions,
+    rendition_unit_claims,
+    rendition_units,
+    renditions,
     runs,
 )
 from desk.refusals import DeskRefusal
@@ -87,11 +91,13 @@ COVERAGE_READINGS: frozenset[str] = frozenset({"unworked", "worked", "complete",
 # Stages measured by completed runs with that coverage_dimension (D20).
 _RUN_MEASURABLE_STAGES: frozenset[str] = frozenset({"official_foundation", "deep_context"})
 
-# Stages measured by Angle Room first-class objects (ticket 11 / D20).
-_OBJECT_MEASURABLE_STAGES: frozenset[str] = frozenset({"public_question", "editorial_development"})
+# Stages measured by first-class objects (tickets 11–12 / D20).
+_OBJECT_MEASURABLE_STAGES: frozenset[str] = frozenset(
+    {"public_question", "editorial_development", "composition"}
+)
 
-# Explicit unmeasurable — no measuring object yet (ticket 12 for composition).
-_UNMEASURABLE_STAGES: frozenset[str] = frozenset({"story_intelligence", "composition"})
+# Explicit unmeasurable — no measuring object, and that is a decision (D20).
+_UNMEASURABLE_STAGES: frozenset[str] = frozenset({"story_intelligence"})
 
 _MEASURABLE_STAGES: frozenset[str] = _RUN_MEASURABLE_STAGES | _OBJECT_MEASURABLE_STAGES
 
@@ -99,11 +105,8 @@ _UNMEASURABLE_REASONS: dict[str, str] = {
     "story_intelligence": (
         "No first-class measuring object for story intelligence yet "
         "(entities/conflicts/timeline tables not built). Absence is not "
-        "'unworked' — nothing could record the work (D20)."
-    ),
-    "composition": (
-        "No first-class measuring object for composition yet (renditions "
-        "arrive ticket 12). Absence is not 'unworked' (D20)."
+        "'unworked' — nothing could record the work. Stated decision, not "
+        "neglect (D20): do not infer this stage from angle existence."
     ),
 }
 
@@ -234,6 +237,30 @@ def _editorial_activity(conn: Connection, case_id: int) -> tuple[int, int]:
     return angle_n, with_links
 
 
+def _composition_activity(conn: Connection, case_id: int) -> tuple[int, int]:
+    """Return (rendition_count, renditions_with_≥1_unit_citing_≥1_claim)."""
+    rendition_n = int(
+        conn.execute(
+            select(func.count()).select_from(renditions).where(renditions.c.case_id == case_id)
+        ).scalar_one()
+    )
+    with_cites = int(
+        conn.execute(
+            select(func.count(func.distinct(renditions.c.id)))
+            .select_from(
+                renditions.join(
+                    rendition_units, rendition_units.c.rendition_id == renditions.c.id
+                ).join(
+                    rendition_unit_claims,
+                    rendition_unit_claims.c.unit_id == rendition_units.c.id,
+                )
+            )
+            .where(renditions.c.case_id == case_id)
+        ).scalar_one()
+    )
+    return rendition_n, with_cites
+
+
 def _object_stage_worked(conn: Connection, case_id: int, stage: str) -> tuple[bool, list[str]]:
     """Whether an object-backed stage has enough activity to count as worked."""
     if stage == "public_question":
@@ -250,6 +277,13 @@ def _object_stage_worked(conn: Connection, case_id: int, stage: str) -> tuple[bo
             f"{with_links} with ≥1 claim link",
         ]
         return with_links >= 1, signals
+    if stage == "composition":
+        rendition_n, with_cites = _composition_activity(conn, case_id)
+        signals = [
+            f"{rendition_n} rendition(s) on the case",
+            f"{with_cites} with ≥1 unit citing ≥1 claim",
+        ]
+        return with_cites >= 1, signals
     raise RuntimeError(f"not an object-backed stage: {stage!r}")
 
 
@@ -484,8 +518,9 @@ def attest_coverage(
             what_was_not_changed="No attestation was written.",
             what_you_can_do=(
                 "Attest only measurable stages: official_foundation, deep_context, "
-                "public_question, editorial_development. story_intelligence and "
-                "composition remain unmeasurable until their objects exist."
+                "public_question, editorial_development, composition. "
+                "story_intelligence remains unmeasurable (no measuring object — "
+                "stated decision, D20)."
             ),
         )
 
@@ -527,13 +562,14 @@ def attest_coverage(
                 what_happened=(
                     f"Stage {stage!r} is not yet worked: "
                     f"{'; '.join(signals)}. "
-                    "Object-backed stages require at least one Angle Room object "
-                    "with a claim link (VISION §7)."
+                    "Object-backed stages require their measuring object with a "
+                    "claim link (angles/public questions) or a unit cite "
+                    "(renditions)."
                 ),
                 what_was_preserved="Existing attestations are unchanged.",
                 what_was_not_changed="No attestation was written.",
                 what_you_can_do=(
-                    "Create the measuring object and link at least one claim, then attest."
+                    "Create the measuring object with the required claim linkage, then attest."
                 ),
             )
 

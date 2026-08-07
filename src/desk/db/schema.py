@@ -266,6 +266,39 @@ claim_inference_citations = Table(
     Column("ordinal", Integer, nullable=False),
 )
 
+# Renditions (ticket 12 / D2 / D7) — one angle → N independent platform-native drafts.
+renditions = Table(
+    "renditions",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("case_id", Integer, ForeignKey("cases.id"), nullable=False),
+    Column("angle_id", Integer, ForeignKey("angles.id"), nullable=False),
+    Column("run_id", Integer, ForeignKey("runs.id"), nullable=False),
+    Column("platform", Text, nullable=False),
+    Column("format", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("rubric_version", Text, nullable=False),
+    Column("created_at", Text, nullable=False),
+)
+
+rendition_units = Table(
+    "rendition_units",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("rendition_id", Integer, ForeignKey("renditions.id"), nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("body", Text, nullable=False),
+)
+
+rendition_unit_claims = Table(
+    "rendition_unit_claims",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("unit_id", Integer, ForeignKey("rendition_units.id"), nullable=False),
+    Column("claim_id", Integer, ForeignKey("claims.id"), nullable=False),
+    Column("ordinal", Integer, nullable=False),
+)
+
 # Open questions proposed at run close (ticket 08 / D13). Disposition set on approve.
 open_questions = Table(
     "open_questions",

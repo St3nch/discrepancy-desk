@@ -13,6 +13,7 @@ import {
   createPublicQuestion,
   createRun,
   decideOpenQuestion,
+  DEFAULT_CAPTURE_BUDGET,
   dismissAngle,
   disposeLead,
   getCase,
@@ -32,6 +33,7 @@ import {
   type LinkClaimDimensions,
   type OpenQuestionRecord,
   type PublicQuestionRecord,
+  type RenditionRecord,
   type RunRecord,
 } from "./api.ts";
 
@@ -449,7 +451,18 @@ export function mount(root: HTMLElement): void {
       el("strong", { text: `#${run.run_id} ` }),
       el("span", { className: `status-chip status-${run.status}`, text: run.status }),
       document.createTextNode(` — ${run.question}`),
-      el("div", { className: "meta", text: `scope: ${run.scope}` }),
+      el("div", {
+        className: "meta",
+        text: `scope: ${run.scope}${
+          run.coverage_dimension != null && run.coverage_dimension !== ""
+            ? ` · ${run.coverage_dimension}`
+            : ""
+        }${
+          run.capture_budget != null
+            ? ` · budget ${run.captures_used ?? 0}/${run.capture_budget}`
+            : ""
+        }`,
+      }),
     ]);
 
     if (run.status === "draft") {
@@ -1078,6 +1091,15 @@ export function mount(root: HTMLElement): void {
       opt.textContent = label;
       dimSelect.append(opt);
     }
+    // F-53 / F-44 shape: service has capture_budget; form must expose what the
+    // operator spends. Default matches backend DEFAULT_CAPTURE_BUDGET.
+    const budgetInput = el("input", {
+      type: "number",
+      min: "1",
+      step: "1",
+      value: String(DEFAULT_CAPTURE_BUDGET),
+      "aria-label": "Capture budget for this run",
+    }) as HTMLInputElement;
 
     const dispatchBtn = el("button", {
       type: "button",
@@ -1086,16 +1108,27 @@ export function mount(root: HTMLElement): void {
     dispatchBtn.addEventListener("click", () => {
       void (async () => {
         try {
+          const budgetRaw = budgetInput.value.trim();
+          const budget = budgetRaw === "" ? DEFAULT_CAPTURE_BUDGET : Number(budgetRaw);
+          if (!Number.isFinite(budget) || budget < 1 || !Number.isInteger(budget)) {
+            await setStatus(
+              "Capture budget must be a whole number ≥ 1 (backend refuses otherwise).",
+              true,
+            );
+            return;
+          }
           const run = await createRun(
             caseId,
             questionInput.value,
             scopeInput.value,
             dimSelect.value,
+            budget,
           );
           questionInput.value = "";
           scopeInput.value = "";
+          budgetInput.value = String(DEFAULT_CAPTURE_BUDGET);
           await setStatus(
-            `Created run #${run.run_id} as draft (${run.coverage_dimension}).`,
+            `Created run #${run.run_id} as draft (${run.coverage_dimension}, budget ${run.capture_budget ?? budget}).`,
           );
           await render();
         } catch (err) {
@@ -1156,11 +1189,19 @@ export function mount(root: HTMLElement): void {
         el("h2", { text: "Dispatch research run" }),
         el("p", {
           className: "subtitle",
-          text: "Creates a draft. Set the coverage dimension this run targets (operator only). Approve to make it claimable.",
+          text: "Creates a draft. Set the coverage dimension this run targets and the capture budget (operator only — D8: the executor cannot overspend because it is not the one spending). Approve to make it claimable.",
         }),
         el("label", {}, ["Question ", questionInput]),
         el("label", {}, ["Scope ", scopeInput]),
         el("label", {}, ["Coverage dimension ", dimSelect]),
+        el("label", {}, [
+          "Capture budget ",
+          budgetInput,
+          el("span", {
+            className: "meta",
+            text: ` (default ${DEFAULT_CAPTURE_BUDGET}; minimum 1)`,
+          }),
+        ]),
         el("div", { className: "row" }, [dispatchBtn]),
       ]),
       el("section", { className: "panel" }, [
@@ -1207,12 +1248,55 @@ export function mount(root: HTMLElement): void {
             ),
       ]),
       el("section", { className: "panel" }, [
-        el("h2", { text: "Also on this case" }),
-        el("ul", { className: "empty-slots" }, [
-          el("li", { text: `Renditions: ${detail.renditions.length}` }),
-        ]),
+        el("h2", { text: "Renditions" }),
+        el("p", {
+          className: "subtitle",
+          text: "Draft threads proposed by the executor under a composition run. Approval is a later ticket — read them here.",
+        }),
+        detail.renditions.length === 0
+          ? el("p", { className: "empty", text: "No renditions yet." })
+          : el(
+              "div",
+              { className: "rendition-list" },
+              detail.renditions.map((ren) => renditionCard(ren)),
+            ),
       ]),
     );
+  }
+
+  function renditionCard(ren: RenditionRecord): HTMLElement {
+    const header = el("div", { className: "rendition-header" }, [
+      el("h3", {
+        text: `#${ren.rendition_id} · ${ren.platform}/${ren.format} · ${ren.status}`,
+      }),
+      el("p", {
+        className: "meta",
+        text: `angle #${ren.angle_id} · run #${ren.run_id} · rubric ${ren.rubric_version} · ${ren.created_at}`,
+      }),
+    ]);
+    const units =
+      ren.units.length === 0
+        ? el("p", { className: "empty", text: "No units." })
+        : el(
+            "ol",
+            { className: "rendition-thread" },
+            ren.units.map((u) =>
+              el("li", { className: "rendition-unit" }, [
+                el("p", {
+                  className: "rendition-unit-body",
+                  text: u.body,
+                }),
+                el("p", {
+                  className: "meta",
+                  text:
+                    u.claim_ids.length === 0
+                      ? "cites no claims"
+                      : `cites claim(s): ${u.claim_ids.join(", ")}`,
+                }),
+              ]),
+            ),
+          );
+    return el("article", { className: "rendition-card" }, [header, units]);
   }
 
   function claimCard(cl: ClaimRecord): HTMLElement {

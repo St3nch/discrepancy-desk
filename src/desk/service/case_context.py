@@ -14,6 +14,11 @@ from sqlalchemy import Connection, select
 
 from desk.db.schema import cases, runs
 from desk.refusals import DeskRefusal
+from desk.service.angles import (
+    list_angles_for_case,
+    list_public_questions_for_case,
+    quotation_shelf_for_case,
+)
 from desk.service.captures import list_capture_summaries_for_case
 from desk.service.claims import list_claims_for_case
 from desk.service.close import list_open_questions_for_case
@@ -24,6 +29,7 @@ from desk.service.models import (
     ReadCaseContextInput,
     ReadCaseContextResult,
 )
+from desk.service.renditions import list_renditions_for_case
 from desk.service.runs import (
     _RUN_COLUMNS,
     _captures_used,
@@ -52,9 +58,7 @@ def read_case_context(
         )
 
     case_row = conn.execute(
-        select(cases.c.id, cases.c.title, cases.c.created_at).where(
-            cases.c.id == params.case_id
-        )
+        select(cases.c.id, cases.c.title, cases.c.created_at).where(cases.c.id == params.case_id)
     ).one_or_none()
     if case_row is None:
         raise DeskRefusal(
@@ -83,8 +87,7 @@ def read_case_context(
         raise DeskRefusal(
             code="RUN_CLAIM_STALE",
             what_happened=(
-                f"No claimed or suspended run on case {params.case_id} matches "
-                "this claim_token."
+                f"No claimed or suspended run on case {params.case_id} matches this claim_token."
             ),
             what_was_preserved="No run lease or token was changed.",
             what_was_not_changed="Nothing was written.",
@@ -105,9 +108,7 @@ def read_case_context(
     )
 
     # Re-read after possible lease refresh.
-    refreshed = conn.execute(
-        select(*_RUN_COLUMNS).where(runs.c.id == run_id)
-    ).one()
+    refreshed = conn.execute(select(*_RUN_COLUMNS).where(runs.c.id == run_id)).one()
     suspensions = _list_suspensions(conn, run_id)
     current = suspensions[-1] if suspensions else None
     lease = refreshed.lease_expires_at
@@ -123,9 +124,7 @@ def read_case_context(
         capture_budget=int(refreshed.capture_budget),
         captures_used=_captures_used(conn, run_id),
         coverage_dimension=(
-            None
-            if refreshed.coverage_dimension is None
-            else str(refreshed.coverage_dimension)
+            None if refreshed.coverage_dimension is None else str(refreshed.coverage_dimension)
         ),
         claims_made=_claims_made(conn, run_id),
         lease_expires_at=str(lease) if lease is not None else None,
@@ -143,6 +142,8 @@ def read_case_context(
         claims=list_claims_for_case(conn, params.case_id),
         captures=list_capture_summaries_for_case(conn, params.case_id),
         open_questions=list_open_questions_for_case(conn, params.case_id),
-        angles=[],
-        renditions=[],
+        angles=list_angles_for_case(conn, params.case_id),
+        public_questions=list_public_questions_for_case(conn, params.case_id),
+        quotation_shelf=quotation_shelf_for_case(conn, params.case_id),
+        renditions=list_renditions_for_case(conn, params.case_id),
     )

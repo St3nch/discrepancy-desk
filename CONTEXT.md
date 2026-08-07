@@ -22,13 +22,19 @@ wakes.
 _Avoid_: dossier, topic, work item, story, investigation
 
 **Rendition**
-One publishable artifact belonging to exactly one case, targeting one platform and
-format. Carries the publication lifecycle.
+One publishable artifact belonging to exactly one case and one angle, targeting
+one platform and format. Generated independently (D7), never cut from another
+rendition. Proposed by the executor through MCP (`propose_rendition`) under a
+composition rubric — the backend never calls a model. Records the rubric version
+it was composed under. Lifecycle includes `draft` (ticket 12), then cleared /
+published / rejected in later tickets. A unit may only cite claims from that
+angle's confirmed set.
 _Avoid_: post, draft, content item, work item, piece
 
 **Unit**
-One ordered component of a rendition — a single post within a thread, a section
-within an article. The thing approval binds to.
+One ordered component of a rendition — a single post within an X thread, a section
+within an article. The thing approval binds to. Required qualification language
+on a cited claim must appear in the unit body that cites it.
 _Avoid_: tweet, segment, part
 
 **Angle**
@@ -242,9 +248,11 @@ _Avoid_: progress, completeness, status, stage label (as an executor-declared fi
 `official_foundation`, `public_question`, `deep_context`, `story_intelligence`,
 `editorial_development`, `composition`. Display order is not a pipeline.
 Measurable: `official_foundation` and `deep_context` via runs; `public_question`
-and `editorial_development` via Angle Room objects with claim links (ticket 11).
-Still unmeasurable (no first-class object — explicit, not neglect):
-`story_intelligence`, `composition` (renditions ticket 12).
+and `editorial_development` via Angle Room objects with claim links (ticket 11);
+`composition` via renditions with ≥1 unit that cites ≥1 claim (ticket 12).
+Still unmeasurable as a stated decision (no distinct measuring object — not
+neglect): `story_intelligence` (entities/conflicts/timeline not built; do not
+infer from angle existence — the proxy D20 rejects).
 _Avoid_: phase, pipeline step, level
 
 **Public question**
@@ -294,5 +302,9 @@ candidates. Answers "what makes this worth reading?" Every write path requires
 empty angles are drafts, and choosing one requires linked confirmed claims. The
 quotation shelf holds operator-selected bindings with speaker and attribution
 frame — not an automatic dump of every quote on linked claims. Region locators
-are preserved when supplied (`e/{n}/r/{start}-{end}`).
+are preserved when supplied (`e/{n}/r/{start}-{end}`). Shelf remains **case-scoped**
+(ticket 12 evidence: composition eligibility is angle-scoped; the shelf is a
+shared pool of strongest quotations for the case, not a second eligibility
+boundary). Whole-element locators (`e/{n}`) are allowed when the element *is* the
+quotation.
 _Avoid_: editorial, drafting, workspace

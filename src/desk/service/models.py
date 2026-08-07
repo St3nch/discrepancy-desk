@@ -784,6 +784,54 @@ class RenditionEligibleClaimsResult(_StrictModel):
     claims: list[ClaimRecord]
 
 
+# --- Renditions (ticket 12 / D2 / D7) ---
+
+
+class RenditionUnitInput(_StrictModel):
+    """One ordered unit (e.g. one post in an X thread)."""
+
+    body: str
+    claim_ids: list[int] = Field(default_factory=list)
+
+
+class ProposeRenditionInput(_StrictModel):
+    """propose_rendition — executor composes under a claimed run (MCP).
+
+    Backend never calls a model. Units cite only the angle's confirmed claims.
+    """
+
+    run_id: int
+    claim_token: str
+    angle_id: int
+    platform: str
+    format: str
+    units: list[RenditionUnitInput]
+
+
+class RenditionUnitRecord(_StrictModel):
+    unit_id: int
+    ordinal: int
+    body: str
+    claim_ids: list[int]
+
+
+class RenditionRecord(_StrictModel):
+    rendition_id: int
+    case_id: int
+    angle_id: int
+    run_id: int
+    platform: str
+    format: str
+    status: str
+    rubric_version: str
+    created_at: str
+    units: list[RenditionUnitRecord]
+
+
+class ProposeRenditionResult(RenditionRecord):
+    pass
+
+
 class GetCaseResult(_StrictModel):
     """Case detail projection — incomplete by design; grows ticket by ticket."""
 
@@ -796,7 +844,7 @@ class GetCaseResult(_StrictModel):
     angles: list[AngleRecord]
     public_questions: list[PublicQuestionRecord]
     quotation_shelf: list[QuotationShelfItem]
-    renditions: list[str]
+    renditions: list[RenditionRecord]
 
 
 # --- Executor case context (ticket 07 / F-27) ---
@@ -840,8 +888,10 @@ class ReadCaseContextResult(_StrictModel):
     claims: list[ClaimRecord]
     captures: list[CaseCaptureSummary]
     open_questions: list[OpenQuestionRecord]
-    angles: list[str]
-    renditions: list[str]
+    angles: list[AngleRecord]
+    public_questions: list[PublicQuestionRecord]
+    quotation_shelf: list[QuotationShelfItem]
+    renditions: list[RenditionRecord]
 
 
 # --- Lead inbox (ticket 09 / ADR 7 / D18) ---

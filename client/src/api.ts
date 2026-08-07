@@ -11,7 +11,22 @@ export type DeskRefusalBody = {
 };
 
 async function parseJson<T>(response: Response): Promise<T> {
-  const data: unknown = await response.json();
+  // Read text first: a missing / wrong backend (or Vite SPA fallthrough) returns
+  // HTML/plain text; response.json() then throws "unexpected character at line 1"
+  // with no useful context (F-51).
+  const text = await response.text();
+  let data: unknown;
+  try {
+    data = text.length === 0 ? null : JSON.parse(text);
+  } catch {
+    const ct = response.headers.get("content-type") ?? "unknown";
+    const preview = text.slice(0, 80).replace(/\s+/g, " ");
+    throw new Error(
+      `API returned non-JSON (HTTP ${response.status}, content-type ${ct}). ` +
+        `Is the Desk backend on the Vite proxy target (127.0.0.1:8000)? ` +
+        `Body starts: ${JSON.stringify(preview)}`,
+    );
+  }
   if (!response.ok) {
     const refusal = data as DeskRefusalBody;
     if (refusal && typeof refusal === "object" && "refusal" in refusal) {
@@ -212,6 +227,26 @@ export type CaseCaptureSummary = {
   status: string;
 };
 
+export type RenditionUnitRecord = {
+  unit_id: number;
+  ordinal: number;
+  body: string;
+  claim_ids: number[];
+};
+
+export type RenditionRecord = {
+  rendition_id: number;
+  case_id: number;
+  angle_id: number;
+  run_id: number;
+  platform: string;
+  format: string;
+  status: string;
+  rubric_version: string;
+  created_at: string;
+  units: RenditionUnitRecord[];
+};
+
 export type GetCaseResult = {
   case: CaseRecord;
   runs: RunRecord[];
@@ -222,7 +257,7 @@ export type GetCaseResult = {
   angles: AngleRecord[];
   public_questions: PublicQuestionRecord[];
   quotation_shelf: QuotationShelfItem[];
-  renditions: string[];
+  renditions: RenditionRecord[];
 };
 
 export async function createCase(title: string): Promise<CaseRecord> {
@@ -246,11 +281,15 @@ export async function getCase(caseId: number): Promise<GetCaseResult> {
 
 // --- Run ---
 
+/** Matches backend DEFAULT_CAPTURE_BUDGET when the form leaves the default. */
+export const DEFAULT_CAPTURE_BUDGET = 20;
+
 export async function createRun(
   caseId: number,
   question: string,
   scope: string,
   coverageDimension: string,
+  captureBudget: number = DEFAULT_CAPTURE_BUDGET,
 ): Promise<RunRecord> {
   const response = await fetch("/api/runs", {
     method: "POST",
@@ -260,6 +299,7 @@ export async function createRun(
       question,
       scope,
       coverage_dimension: coverageDimension,
+      capture_budget: captureBudget,
     }),
   });
   return parseJson<RunRecord>(response);

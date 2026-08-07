@@ -33,6 +33,7 @@ from desk.service.leads import (
     promote_lead,
     summarise_lead,
 )
+from desk.service.renditions import propose_rendition
 from desk.service.runs import (
     answer_suspended_run,
     approve_run,
@@ -75,6 +76,7 @@ __all__ = [
     "list_runs",
     "promote_lead",
     "propose_claim",
+    "propose_rendition",
     "read_capture",
     "read_case_context",
     "summarise_lead",

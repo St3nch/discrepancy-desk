@@ -71,6 +71,14 @@ NON_PUBLISHABLE_PUBLICATION_RISKS: Final[frozenset[str]] = frozenset({"unknown",
 
 ANGLE_STATUSES: Final[frozenset[str]] = frozenset({"active", "chosen", "dismissed"})
 
+# Rendition lifecycle (ticket 12 writes draft only; 13 clears; 14 publishes/rejects).
+RENDITION_STATUSES: Final[frozenset[str]] = frozenset({"draft", "cleared", "published", "rejected"})
+
+# Destination platform/format pairs. Extend deliberately — not free text.
+RENDITION_PLATFORMS: Final[frozenset[str]] = frozenset({"x"})
+RENDITION_FORMATS: Final[frozenset[str]] = frozenset({"thread"})
+ALLOWED_RENDITION_PLATFORM_FORMATS: Final[frozenset[tuple[str, str]]] = frozenset({("x", "thread")})
+
 # Postures that require non-empty qualification (ADR 9 step 5).
 QUALIFICATION_REQUIRED_POSTURES: Final[frozenset[str]] = frozenset(
     {

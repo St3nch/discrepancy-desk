@@ -16,6 +16,7 @@ from desk.service import (
     claim_next_run,
     close_run,
     propose_claim,
+    propose_rendition,
     read_capture,
     read_case_context,
     suspend_run,
@@ -28,14 +29,136 @@ from desk.service.models import (
     EvidenceDimensions,
     ProposeClaimInput,
     ProposedOpenQuestionInput,
+    ProposeRenditionInput,
     QuoteBindingInput,
     ReadCaptureInput,
     ReadCaseContextInput,
+    RenditionUnitInput,
     SuspendRunInput,
 )
 from desk.transports.refusal_mcp import raise_tool_refusal
 from desk.transports.wiring import mcp_tool_names
 from desk.vault.store import VaultStore
+
+
+def parse_proposed_open_question(
+    item: object,
+    *,
+    index: int,
+) -> ProposedOpenQuestionInput:
+    """Map one close_run proposed_questions dict to the service model (F-54).
+
+    Canonical keys: ``text``, ``rationale``, ``proposed_scope``.
+    Alias: ``scope`` is accepted for ``proposed_scope`` (the tool description
+    historically said "scope"; bare KeyError on ``proposed_scope`` leaked as a
+    non-refusal string at the last step of a live run).
+    """
+    if not isinstance(item, dict):
+        raise DeskRefusal(
+            code="OPEN_QUESTION_SHAPE_INVALID",
+            what_happened=(
+                f"proposed_questions[{index}] must be an object with text, "
+                "rationale, and proposed_scope (or scope)."
+            ),
+            what_was_preserved="The run was not closed; no agenda was written.",
+            what_was_not_changed="Run status, captures, and claims are unchanged.",
+            what_you_can_do=(
+                "Pass a list of objects: "
+                '{"text": "...", "rationale": "...", "proposed_scope": "..."}.'
+            ),
+        )
+
+    missing: list[str] = []
+    if "text" not in item:
+        missing.append("text")
+    if "rationale" not in item:
+        missing.append("rationale")
+    has_scope = "proposed_scope" in item or "scope" in item
+    if not has_scope:
+        missing.append("proposed_scope (or scope)")
+
+    if missing:
+        raise DeskRefusal(
+            code="OPEN_QUESTION_FIELD_MISSING",
+            what_happened=(
+                f"proposed_questions[{index}] is missing required field(s): {', '.join(missing)}."
+            ),
+            what_was_preserved="The run was not closed; no agenda was written.",
+            what_was_not_changed="Run status, captures, and claims are unchanged.",
+            what_you_can_do=(
+                "Each proposed question needs text, rationale, and proposed_scope. "
+                "The field name is proposed_scope (scope is accepted as an alias). "
+                "Do not omit keys — empty string is different from missing."
+            ),
+        )
+
+    # Prefer the canonical key when both are present.
+    scope_val = item["proposed_scope"] if "proposed_scope" in item else item["scope"]
+    return ProposedOpenQuestionInput(
+        text=str(item["text"]),
+        rationale=str(item["rationale"]),
+        proposed_scope=str(scope_val),
+    )
+
+
+def parse_rendition_unit(item: object, *, index: int) -> RenditionUnitInput:
+    """Map one propose_rendition units dict to the service model (F-58).
+
+    Required keys: ``body``, ``claim_ids`` (list of ints). Missing or wrong
+    shape refuses with DeskRefusal — never AttributeError/ValueError.
+    """
+    if not isinstance(item, dict):
+        raise DeskRefusal(
+            code="RENDITION_UNIT_SHAPE_INVALID",
+            what_happened=(f"units[{index}] must be an object with body and claim_ids."),
+            what_was_preserved="No rendition was written.",
+            what_was_not_changed="The Record is unchanged.",
+            what_you_can_do=('Pass units as objects: {"body": "...", "claim_ids": [1, 2]}.'),
+        )
+
+    missing: list[str] = []
+    if "body" not in item:
+        missing.append("body")
+    if "claim_ids" not in item:
+        missing.append("claim_ids")
+    if missing:
+        raise DeskRefusal(
+            code="RENDITION_UNIT_FIELD_MISSING",
+            what_happened=(f"units[{index}] is missing required field(s): {', '.join(missing)}."),
+            what_was_preserved="No rendition was written.",
+            what_was_not_changed="The Record is unchanged.",
+            what_you_can_do=(
+                "Each unit needs body (string) and claim_ids (list of claim id integers). "
+                "Keys are body and claim_ids."
+            ),
+        )
+
+    claim_raw = item["claim_ids"]
+    if not isinstance(claim_raw, list):
+        raise DeskRefusal(
+            code="RENDITION_UNIT_CLAIM_IDS_INVALID",
+            what_happened=(
+                f"units[{index}].claim_ids must be a list of integers "
+                f"(got {type(claim_raw).__name__})."
+            ),
+            what_was_preserved="No rendition was written.",
+            what_was_not_changed="The Record is unchanged.",
+            what_you_can_do="Pass claim_ids as a JSON array of integers, e.g. [12, 15].",
+        )
+    claim_ids: list[int] = []
+    for j, c in enumerate(claim_raw):
+        try:
+            claim_ids.append(int(c))
+        except (TypeError, ValueError) as exc:
+            raise DeskRefusal(
+                code="RENDITION_UNIT_CLAIM_IDS_INVALID",
+                what_happened=(f"units[{index}].claim_ids[{j}] is not an integer (got {c!r})."),
+                what_was_preserved="No rendition was written.",
+                what_was_not_changed="The Record is unchanged.",
+                what_you_can_do="Use integer claim ids from the angle's eligible set.",
+            ) from None
+
+    return RenditionUnitInput(body=str(item["body"]), claim_ids=claim_ids)
 
 
 def build_mcp_server(engine: Engine, *, vault: VaultStore | None = None) -> MCPServer[Any]:
@@ -188,6 +311,43 @@ def build_mcp_server(engine: Engine, *, vault: VaultStore | None = None) -> MCPS
             raise_tool_refusal(refusal)
 
     @server.tool(
+        name="propose_rendition",
+        description=(
+            "Propose a draft rendition for a chosen angle — ordered units "
+            "written natively for the platform (destination: x/thread). "
+            "units is a list of objects with keys body (string) and claim_ids "
+            "(list of integers). Requires claim_token from claim_next_run. "
+            "Each unit may cite only confirmed claims linked to that angle; "
+            "required qualification language on a cited claim must appear in "
+            "the unit body. Backend never generates text — the executor composes. "
+            "Missing unit keys refuse with RENDITION_UNIT_FIELD_MISSING."
+        ),
+    )
+    def propose_rendition_tool(
+        run_id: int,
+        claim_token: str,
+        angle_id: int,
+        platform: str,
+        format: str,
+        units: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        try:
+            unit_models = [parse_rendition_unit(u, index=i) for i, u in enumerate(units)]
+            params = ProposeRenditionInput(
+                run_id=run_id,
+                claim_token=claim_token,
+                angle_id=angle_id,
+                platform=platform,
+                format=format,
+                units=unit_models,
+            )
+            with connection_scope(engine) as conn:
+                result = propose_rendition(conn, params)
+            return result.model_dump()
+        except DeskRefusal as refusal:
+            raise_tool_refusal(refusal)
+
+    @server.tool(
         name="suspend_run",
         description=(
             "Suspend a claimed run to ask the human mid-flight. State the "
@@ -222,11 +382,13 @@ def build_mcp_server(engine: Engine, *, vault: VaultStore | None = None) -> MCPS
     @server.tool(
         name="close_run",
         description=(
-            "Close a claimed run: propose new open questions (text, rationale, "
-            "scope), report low-confidence areas, list uncited capture ids you "
-            "examined and found nothing worth claiming (only those become "
-            "examined; omit any you did not look at), and set status complete. "
-            "Requires claim_token."
+            "Close a claimed run: propose new open questions as objects with "
+            "keys text, rationale, and proposed_scope (scope is accepted as an "
+            "alias for proposed_scope); report low_confidence_areas; list "
+            "uncited capture ids you examined and found nothing worth claiming "
+            "(only those become examined; omit any you did not look at); set "
+            "status complete. Requires claim_token. Missing keys refuse with "
+            "OPEN_QUESTION_FIELD_MISSING — never a bare field name."
         ),
     )
     def close_run_tool(
@@ -238,12 +400,8 @@ def build_mcp_server(engine: Engine, *, vault: VaultStore | None = None) -> MCPS
     ) -> dict[str, Any]:
         try:
             props = [
-                ProposedOpenQuestionInput(
-                    text=str(p["text"]),
-                    rationale=str(p["rationale"]),
-                    proposed_scope=str(p["proposed_scope"]),
-                )
-                for p in (proposed_questions or [])
+                parse_proposed_open_question(p, index=i)
+                for i, p in enumerate(proposed_questions or [])
             ]
             with connection_scope(engine) as conn:
                 result = close_run(

@@ -609,6 +609,42 @@ select {
   background: rgba(100, 120, 140, 0.12);
 }
 
+.rendition-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.rendition-card {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  background: rgba(40, 50, 60, 0.04);
+}
+
+.rendition-header h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.rendition-thread {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.rendition-unit {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.65rem;
+  border-left: 3px solid #3a6ea5;
+  background: rgba(58, 110, 165, 0.08);
+}
+
+.rendition-unit-body {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
 .attest-actions {
   margin-top: 0.5rem;
   padding-top: 0.5rem;

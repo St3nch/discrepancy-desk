@@ -27,6 +27,7 @@ from desk.service.models import (
     ListCasesResult,
     ListRunsInput,
 )
+from desk.service.renditions import list_renditions_for_case
 from desk.service.runs import list_runs
 
 
@@ -117,5 +118,5 @@ def get_case(conn: Connection, params: GetCaseInput) -> GetCaseResult:
         angles=list_angles_for_case(conn, params.case_id),
         public_questions=list_public_questions_for_case(conn, params.case_id),
         quotation_shelf=quotation_shelf_for_case(conn, params.case_id),
-        renditions=[],
+        renditions=list_renditions_for_case(conn, params.case_id),
     )
