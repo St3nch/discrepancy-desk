@@ -11,7 +11,7 @@ asymmetry runs against the inbox's stated purpose.
 
 **Blocked by:** 09 — Lead inbox
 
-**Status:** complete
+**Status:** complete — accepted on both axes (`../review-09a-unsupported-type-leads.md`)
 
 **Origin:** F-35 (seam review), S-03/S-05 (spec review), ticket 09. Deliberately not folded
 into 09 after implementation and review. See D19 consequences.
