@@ -254,6 +254,24 @@ export type ApprovalInvalidation = {
   detail: string;
 };
 
+export type PublicationUnitRecord = {
+  unit_ordinal: number;
+  platform: string;
+  external_post_id: string;
+  canonical_url: string;
+  published_at: string;
+  verification_state: string;
+};
+
+export type RenditionPublicationRecord = {
+  publication_id: number;
+  rendition_id: number;
+  approval_id: number;
+  actor: string;
+  recorded_at: string;
+  units: PublicationUnitRecord[];
+};
+
 export type RenditionRecord = {
   rendition_id: number;
   case_id: number;
@@ -270,11 +288,21 @@ export type RenditionRecord = {
   approval_invalidation?: ApprovalInvalidation | null;
   current_approval?: RenditionApprovalRecord | null;
   approvals?: RenditionApprovalRecord[];
+  publication?: RenditionPublicationRecord | null;
 };
 
 export type RenditionUnitWrite = {
   body: string;
   claim_ids: number[];
+};
+
+export type PublicationUnitWrite = {
+  ordinal: number;
+  platform: string;
+  external_post_id: string;
+  canonical_url: string;
+  published_at: string;
+  verification_state: string;
 };
 
 export async function updateRendition(
@@ -294,6 +322,31 @@ export async function approveRendition(
   actor: string = "operator",
 ): Promise<RenditionRecord> {
   const response = await fetch(`/api/renditions/${renditionId}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor }),
+  });
+  return parseJson<RenditionRecord>(response);
+}
+
+export async function recordPublication(
+  renditionId: number,
+  units: PublicationUnitWrite[],
+  actor: string = "operator",
+): Promise<RenditionRecord> {
+  const response = await fetch(`/api/renditions/${renditionId}/publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ units, actor }),
+  });
+  return parseJson<RenditionRecord>(response);
+}
+
+export async function rejectRendition(
+  renditionId: number,
+  actor: string = "operator",
+): Promise<RenditionRecord> {
+  const response = await fetch(`/api/renditions/${renditionId}/reject`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ actor }),

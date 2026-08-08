@@ -34,6 +34,10 @@ API_ONLY: frozenset[str] = frozenset(
         # Rendition approval (ticket 13) — human-only; exact-content clearance.
         "update_rendition",
         "approve_rendition",
+        # Publication recording (ticket 14) — human-only; after manual post.
+        "record_publication",
+        "reject_rendition",
+        "update_publication_times",
     }
 )
 

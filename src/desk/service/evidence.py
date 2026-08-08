@@ -79,6 +79,11 @@ RENDITION_PLATFORMS: Final[frozenset[str]] = frozenset({"x"})
 RENDITION_FORMATS: Final[frozenset[str]] = frozenset({"thread"})
 ALLOWED_RENDITION_PLATFORM_FORMATS: Final[frozenset[tuple[str, str]]] = frozenset({("x", "thread")})
 
+# Per-unit external verification after manual post (ticket 14). No account_id (D17).
+PUBLICATION_VERIFICATION_STATES: Final[frozenset[str]] = frozenset(
+    {"unverified", "verified", "failed"}
+)
+
 # Postures that require non-empty qualification (ADR 9 step 5).
 QUALIFICATION_REQUIRED_POSTURES: Final[frozenset[str]] = frozenset(
     {

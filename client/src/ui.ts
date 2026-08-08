@@ -4,6 +4,8 @@ import {
   answerSuspendedRun,
   approveRendition,
   approveRun,
+  recordPublication,
+  rejectRendition,
   attachLead,
   attestCoverage,
   cancelRun,
@@ -1393,6 +1395,26 @@ export function mount(root: HTMLElement): void {
         })();
       });
       actions.append(saveBtn, clearBtn);
+
+      const rejectBtn = el("button", {
+        type: "button",
+        text: "Reject rendition",
+      }) as HTMLButtonElement;
+      rejectBtn.addEventListener("click", () => {
+        void (async () => {
+          try {
+            await rejectRendition(ren.rendition_id);
+            await setStatus(`Rejected rendition #${ren.rendition_id}.`);
+            refresh();
+          } catch (err) {
+            await setStatus(
+              err instanceof Error ? err.message : String(err),
+              true,
+            );
+          }
+        })();
+      });
+      actions.append(rejectBtn);
     }
 
     const history =
@@ -1409,12 +1431,158 @@ export function mount(root: HTMLElement): void {
             ),
           );
 
+    // Publication: operator posts manually, then pastes back what actually went out.
+    // Never invent external_post_id or canonical_url — empty fields the operator must fill.
+    let pubBlock: HTMLElement;
+    if (ren.publication != null) {
+      pubBlock = el("div", { className: "publication-record" }, [
+        el("p", {
+          className: "meta",
+          text: `Publication #${ren.publication.publication_id} authorized by clearance #${ren.publication.approval_id} · recorded ${ren.publication.recorded_at} by ${ren.publication.actor}`,
+        }),
+        el(
+          "ul",
+          { className: "empty-slots" },
+          ren.publication.units.map((u) =>
+            el("li", {
+              text: `ord ${u.unit_ordinal}: ${u.platform} ${u.external_post_id} · ${u.canonical_url} · ${u.published_at} · ${u.verification_state}`,
+            }),
+          ),
+        ),
+      ]);
+    } else if (ren.approval_stands && ren.status !== "published") {
+      const defaultPublishedAt = new Date().toISOString();
+      type PubFields = {
+        externalId: HTMLInputElement;
+        url: HTMLInputElement;
+        publishedAt: HTMLInputElement;
+        verification: HTMLSelectElement;
+      };
+      const fields: PubFields[] = [];
+      const rows = el(
+        "ol",
+        { className: "publication-paste-form" },
+        ren.units.map((u) => {
+          const externalId = el("input", {
+            type: "text",
+            placeholder: "External post id (required — paste from platform)",
+            "aria-label": `Unit ${u.ordinal} external post id`,
+            autocomplete: "off",
+          }) as HTMLInputElement;
+          externalId.value = "";
+          const url = el("input", {
+            type: "url",
+            placeholder: "Canonical URL (required — paste actual link)",
+            "aria-label": `Unit ${u.ordinal} canonical URL`,
+            autocomplete: "off",
+          }) as HTMLInputElement;
+          url.value = "";
+          const publishedAt = el("input", {
+            type: "text",
+            "aria-label": `Unit ${u.ordinal} published time`,
+          }) as HTMLInputElement;
+          publishedAt.value = defaultPublishedAt;
+          const verification = el("select", {
+            "aria-label": `Unit ${u.ordinal} verification state`,
+          }) as HTMLSelectElement;
+          for (const v of ["unverified", "verified", "failed"] as const) {
+            const opt = document.createElement("option");
+            opt.value = v;
+            opt.textContent = v;
+            if (v === "unverified") opt.selected = true;
+            verification.append(opt);
+          }
+          fields.push({ externalId, url, publishedAt, verification });
+          return el("li", { className: "publication-unit-fields" }, [
+            el("p", {
+              className: "meta",
+              text: `Unit ${u.ordinal} — paste what actually went out (not invented)`,
+            }),
+            el("label", { text: "External post id" }),
+            externalId,
+            el("label", { text: "Canonical URL" }),
+            url,
+            el("label", { text: "Published time (ISO-8601, editable)" }),
+            publishedAt,
+            el("label", { text: "Verification state" }),
+            verification,
+          ]);
+        }),
+      );
+      const submitBtn = el("button", {
+        type: "button",
+        text: "Record publication (complete set required)",
+      }) as HTMLButtonElement;
+      submitBtn.addEventListener("click", () => {
+        void (async () => {
+          try {
+            for (let i = 0; i < fields.length; i++) {
+              const f = fields[i]!;
+              if (!f.externalId.value.trim() || !f.url.value.trim()) {
+                await setStatus(
+                  `Unit ${ren.units[i]!.ordinal}: external post id and canonical URL are required. Paste what the platform actually assigned — do not invent them.`,
+                  true,
+                );
+                return;
+              }
+              if (!f.publishedAt.value.trim()) {
+                await setStatus(
+                  `Unit ${ren.units[i]!.ordinal}: published time is required.`,
+                  true,
+                );
+                return;
+              }
+            }
+            // Complete set only — every cleared unit must be recorded. Partial
+            // threads (3 of 4 posted) are F-64: new rendition, not a partial set.
+            const published = await recordPublication(
+              ren.rendition_id,
+              ren.units.map((u, i) => ({
+                ordinal: u.ordinal,
+                platform: ren.platform,
+                external_post_id: fields[i]!.externalId.value.trim(),
+                canonical_url: fields[i]!.url.value.trim(),
+                published_at: fields[i]!.publishedAt.value.trim(),
+                verification_state: fields[i]!.verification.value,
+              })),
+            );
+            await setStatus(
+              `Recorded publication for #${published.rendition_id} under approval #${published.publication?.approval_id}.`,
+            );
+            refresh();
+          } catch (err) {
+            await setStatus(
+              err instanceof Error ? err.message : String(err),
+              true,
+            );
+          }
+        })();
+      });
+      pubBlock = el("div", { className: "publication-form" }, [
+        el("p", {
+          className: "subtitle",
+          text: "Post manually on the platform, then paste back the real post id, URL, and time for every unit. Empty id/URL fields are required — the form will not invent them. Complete set only.",
+        }),
+        rows,
+        submitBtn,
+      ]);
+    } else {
+      pubBlock = el("p", {
+        className: "meta",
+        text: ren.approval_stands
+          ? "No publication recorded."
+          : "Clearance must stand before publication can be recorded.",
+      });
+    }
+
     return el("article", { className: "rendition-card" }, [
       header,
       unitEditors,
       actions,
       el("h4", { text: "Clearance history" }),
       history,
+      el("h4", { text: "Publication" }),
+      pubBlock,
     ]);
   }
 

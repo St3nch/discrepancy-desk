@@ -902,6 +902,8 @@ class RenditionRecord(_StrictModel):
     current_approval: RenditionApprovalRecord | None = None
     # Full clearance history, oldest first.
     approvals: list[RenditionApprovalRecord] = Field(default_factory=list)
+    # Ticket 14: publication set if recorded (bound to approval_id).
+    publication: RenditionPublicationRecord | None = None
 
 
 class ProposeRenditionResult(RenditionRecord):
@@ -943,6 +945,88 @@ class ApproveRenditionBody(_StrictModel):
 
 
 class ApproveRenditionResult(RenditionRecord):
+    pass
+
+
+# --- Publication recording (ticket 14) ---
+
+
+class PublicationUnitInput(_StrictModel):
+    """One external post corresponding to one unit ordinal in the cleared thread."""
+
+    ordinal: int
+    platform: str
+    external_post_id: str
+    canonical_url: str
+    published_at: str
+    verification_state: str
+
+
+class PublicationUnitRecord(_StrictModel):
+    unit_ordinal: int
+    platform: str
+    external_post_id: str
+    canonical_url: str
+    published_at: str
+    verification_state: str
+
+
+class RenditionPublicationRecord(_StrictModel):
+    """One publication set authorized by exactly one clearance (VISION §14)."""
+
+    publication_id: int
+    rendition_id: int
+    approval_id: int
+    actor: str
+    recorded_at: str
+    units: list[PublicationUnitRecord]
+
+
+class RecordPublicationInput(_StrictModel):
+    """Record what went out after a manual post. Requires standing clearance + eligibility."""
+
+    rendition_id: int
+    units: list[PublicationUnitInput]
+    actor: str = "operator"
+
+
+class RecordPublicationBody(_StrictModel):
+    units: list[PublicationUnitInput]
+    actor: str = "operator"
+
+
+class RecordPublicationResult(RenditionRecord):
+    pass
+
+
+class RejectRenditionInput(_StrictModel):
+    """End-state rejection — asserts nothing about publishability (no claim revalidation)."""
+
+    rendition_id: int
+    actor: str = "operator"
+
+
+class RejectRenditionBody(_StrictModel):
+    actor: str = "operator"
+
+
+class RejectRenditionResult(RenditionRecord):
+    pass
+
+
+class UpdatePublicationTimesInput(_StrictModel):
+    """Edit recorded published_at values only — never touches cleared text."""
+
+    rendition_id: int
+    # Complete map: unit_ordinal → published_at (all published units required).
+    published_at_by_ordinal: dict[int, str]
+
+
+class UpdatePublicationTimesBody(_StrictModel):
+    published_at_by_ordinal: dict[int, str]
+
+
+class UpdatePublicationTimesResult(RenditionRecord):
     pass
 
 

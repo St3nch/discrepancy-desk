@@ -139,6 +139,15 @@ invalidates the standing approval without silently reverting status to draft. Re
 after edit is a new record. Media binding is deferred until renditions carry media.
 _Avoid_: approved, signed off, confirmed, ready
 
+**Published**
+End state of a rendition after the operator records what went out externally (per unit:
+ordinal, platform, external post id, canonical URL, published time, verification state).
+Recording requires **derived standing** and current claim/qualification eligibility (same
+shared helper as clearance). The publication set binds the `approval_id` that authorized it
+— not the projection pointer alone. No `account_id` (D17). Editing published time never
+alters cleared text. Rejection is asymmetric: no claim revalidation.
+_Avoid_: posted, shipped, live
+
 ---
 
 ## Research

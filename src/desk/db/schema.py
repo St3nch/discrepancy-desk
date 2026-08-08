@@ -322,6 +322,31 @@ rendition_approval_units = Table(
     Column("body", Text, nullable=False),
 )
 
+# Publication set authorized by one clearance (ticket 14 / VISION §14).
+# approval_id is durable lineage — not renditions.current_approval_id.
+rendition_publications = Table(
+    "rendition_publications",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("rendition_id", Integer, ForeignKey("renditions.id"), nullable=False),
+    Column("approval_id", Integer, ForeignKey("rendition_approvals.id"), nullable=False),
+    Column("actor", Text, nullable=False),
+    Column("recorded_at", Text, nullable=False),
+)
+
+rendition_publication_units = Table(
+    "rendition_publication_units",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("publication_id", Integer, ForeignKey("rendition_publications.id"), nullable=False),
+    Column("unit_ordinal", Integer, nullable=False),
+    Column("platform", Text, nullable=False),
+    Column("external_post_id", Text, nullable=False),
+    Column("canonical_url", Text, nullable=False),
+    Column("published_at", Text, nullable=False),
+    Column("verification_state", Text, nullable=False),
+)
+
 # Open questions proposed at run close (ticket 08 / D13). Disposition set on approve.
 open_questions = Table(
     "open_questions",

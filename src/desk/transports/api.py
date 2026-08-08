@@ -35,7 +35,10 @@ from desk.service import (
     list_rendition_eligible_claims,
     list_runs,
     promote_lead,
+    record_publication,
+    reject_rendition,
     summarise_lead,
+    update_publication_times,
     update_rendition,
 )
 from desk.service.models import (
@@ -99,11 +102,20 @@ from desk.service.models import (
     PromoteLeadBody,
     PromoteLeadInput,
     PromoteLeadResult,
+    RecordPublicationBody,
+    RecordPublicationInput,
+    RecordPublicationResult,
+    RejectRenditionBody,
+    RejectRenditionInput,
+    RejectRenditionResult,
     RenditionEligibleClaimsInput,
     RenditionEligibleClaimsResult,
     SummariseLeadBody,
     SummariseLeadInput,
     SummariseLeadResult,
+    UpdatePublicationTimesBody,
+    UpdatePublicationTimesInput,
+    UpdatePublicationTimesResult,
     UpdateRenditionBody,
     UpdateRenditionInput,
     UpdateRenditionResult,
@@ -564,4 +576,63 @@ def api_approve_rendition(
         return approve_rendition(
             conn,
             ApproveRenditionInput(rendition_id=rendition_id, actor=actor),
+        )
+
+
+@router.post(
+    "/renditions/{rendition_id}/publish",
+    response_model=RecordPublicationResult,
+    name="record_publication",
+)
+def api_record_publication(
+    rendition_id: int,
+    body: RecordPublicationBody,
+    engine: EngineDep,
+) -> RecordPublicationResult:
+    with connection_scope(engine) as conn:
+        return record_publication(
+            conn,
+            RecordPublicationInput(
+                rendition_id=rendition_id,
+                units=body.units,
+                actor=body.actor,
+            ),
+        )
+
+
+@router.post(
+    "/renditions/{rendition_id}/reject",
+    response_model=RejectRenditionResult,
+    name="reject_rendition",
+)
+def api_reject_rendition(
+    rendition_id: int,
+    engine: EngineDep,
+    body: RejectRenditionBody | None = None,
+) -> RejectRenditionResult:
+    actor = (body.actor if body is not None else "operator") or "operator"
+    with connection_scope(engine) as conn:
+        return reject_rendition(
+            conn,
+            RejectRenditionInput(rendition_id=rendition_id, actor=actor),
+        )
+
+
+@router.patch(
+    "/renditions/{rendition_id}/publication-times",
+    response_model=UpdatePublicationTimesResult,
+    name="update_publication_times",
+)
+def api_update_publication_times(
+    rendition_id: int,
+    body: UpdatePublicationTimesBody,
+    engine: EngineDep,
+) -> UpdatePublicationTimesResult:
+    with connection_scope(engine) as conn:
+        return update_publication_times(
+            conn,
+            UpdatePublicationTimesInput(
+                rendition_id=rendition_id,
+                published_at_by_ordinal=body.published_at_by_ordinal,
+            ),
         )

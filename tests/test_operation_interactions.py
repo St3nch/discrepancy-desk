@@ -642,3 +642,119 @@ def test_approve_rendition_then_edit_then_get_case_shows_invalidation(
     assert r.approval_invalidation is not None
     assert r.units[0].body == "Edited after clearance."
     assert len(r.approvals) == 1
+
+
+def test_record_publication_then_get_case_shows_publication_bound_to_approval(
+    engine: Engine, tmp_path: Path
+) -> None:
+    """record_publication → get_case projects publication.approval_id lineage."""
+    from desk.service import approve_rendition, record_publication
+    from desk.service.models import (
+        ApproveRenditionInput,
+        PublicationUnitInput,
+        RecordPublicationInput,
+    )
+
+    case_id, run_id, token = _claimed(engine)
+    vault = VaultStore(tmp_path / "vault")
+    with connection_scope(engine) as conn:
+        cap = capture_url(
+            conn,
+            CaptureUrlInput(
+                run_id=run_id,
+                url="https://example.com/pub-interact",
+                claim_token=token,
+            ),
+            vault=vault,
+            fetch=_html_fetch,
+        )
+        elem = cap.elements[0]
+        claim = propose_claim(
+            conn,
+            ProposeClaimInput(
+                run_id=run_id,
+                claim_token=token,
+                proposition="Pub interact spine.",
+                dimensions=_dims(),
+                capture_id=cap.capture_id,
+                locator=elem.locator,
+                quoted_text=elem.text,
+            ),
+        )
+        close_run(conn, CloseRunInput(run_id=run_id, claim_token=token))
+        attest_coverage(
+            conn,
+            AttestCoverageInput(case_id=case_id, stage="official_foundation"),
+        )
+        angle = create_angle(
+            conn,
+            CreateAngleInput(
+                case_id=case_id,
+                title="Pub interact angle",
+                claim_ids=[claim.claim_id],
+                dimensions_by_claim_id={
+                    claim.claim_id: LinkClaimDimensions(
+                        source_basis="contemporaneous_report",
+                        corroboration="single_source",
+                        certainty="probable",
+                        posture="factual_assertion",
+                        publication_risk="not_applicable",
+                    )
+                },
+            ),
+        )
+        choose_angle(conn, ChooseAngleInput(angle_id=angle.angle_id))
+        comp = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case_id,
+                question="Compose",
+                scope="c",
+                coverage_dimension="composition",
+                capture_budget=1,
+            ),
+        )
+        approve_run(conn, ApproveRunInput(run_id=comp.run_id))
+        claimed = claim_next_run(conn, ClaimNextRunInput())
+        assert claimed.run is not None
+        ren = propose_rendition(
+            conn,
+            ProposeRenditionInput(
+                run_id=claimed.run.run_id,
+                claim_token=claimed.run.claim_token,
+                angle_id=angle.angle_id,
+                platform="x",
+                format="thread",
+                units=[
+                    RenditionUnitInput(
+                        body="Published interact body.",
+                        claim_ids=[claim.claim_id],
+                    )
+                ],
+            ),
+        )
+        cleared = approve_rendition(conn, ApproveRenditionInput(rendition_id=ren.rendition_id))
+        assert cleared.current_approval_id is not None
+        record_publication(
+            conn,
+            RecordPublicationInput(
+                rendition_id=ren.rendition_id,
+                units=[
+                    PublicationUnitInput(
+                        ordinal=0,
+                        platform="x",
+                        external_post_id="tw-1",
+                        canonical_url="https://x.com/desk/status/1",
+                        published_at="2099-01-01T15:00:00+00:00",
+                        verification_state="verified",
+                    )
+                ],
+            ),
+        )
+        detail = get_case(conn, GetCaseInput(case_id=case_id))
+
+    r = next(x for x in detail.renditions if x.rendition_id == ren.rendition_id)
+    assert r.status == "published"
+    assert r.publication is not None
+    assert r.publication.approval_id == cleared.current_approval_id
+    assert r.publication.units[0].external_post_id == "tw-1"

@@ -23,6 +23,7 @@ from desk.service.evidence import (
     LEAD_MATERIAL_STATUSES,
     POSTURE,
     PUBLICATION_RISK,
+    PUBLICATION_VERIFICATION_STATES,
     RENDITION_FORMATS,
     RENDITION_PLATFORMS,
     RENDITION_STATUSES,
@@ -51,6 +52,8 @@ _ENUM_COLUMNS: list[tuple[str, str, frozenset[str]]] = [
     ("renditions", "status", RENDITION_STATUSES),
     ("renditions", "platform", RENDITION_PLATFORMS),
     ("renditions", "format", RENDITION_FORMATS),
+    ("rendition_publication_units", "platform", RENDITION_PLATFORMS),
+    ("rendition_publication_units", "verification_state", PUBLICATION_VERIFICATION_STATES),
 ]
 
 
