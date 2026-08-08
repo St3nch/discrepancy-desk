@@ -31,6 +31,9 @@ API_ONLY: frozenset[str] = frozenset(
         "link_claim_to_public_question",
         "add_quotation_to_shelf",
         "list_rendition_eligible_claims",
+        # Rendition approval (ticket 13) — human-only; exact-content clearance.
+        "update_rendition",
+        "approve_rendition",
     }
 )
 

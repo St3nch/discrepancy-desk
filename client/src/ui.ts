@@ -2,6 +2,7 @@ import {
   addLead,
   addQuotationToShelf,
   answerSuspendedRun,
+  approveRendition,
   approveRun,
   attachLead,
   attestCoverage,
@@ -24,6 +25,7 @@ import {
   listLeads,
   promoteLead,
   summariseLead,
+  updateRendition,
   type AngleRecord,
   type CaseRecord,
   type ClaimRecord,
@@ -1251,20 +1253,46 @@ export function mount(root: HTMLElement): void {
         el("h2", { text: "Renditions" }),
         el("p", {
           className: "subtitle",
-          text: "Draft threads proposed by the executor under a composition run. Approval is a later ticket — read them here.",
+          text: "Threads proposed by the executor. Clear exact content before publish — edit first if needed; approval binds the ordered text as reviewed.",
         }),
         detail.renditions.length === 0
           ? el("p", { className: "empty", text: "No renditions yet." })
           : el(
               "div",
               { className: "rendition-list" },
-              detail.renditions.map((ren) => renditionCard(ren)),
+              detail.renditions.map((ren) =>
+                renditionCard(ren, () => {
+                  void render();
+                }),
+              ),
             ),
       ]),
     );
   }
 
-  function renditionCard(ren: RenditionRecord): HTMLElement {
+  function renditionStandingLabel(ren: RenditionRecord): string {
+    if (ren.approval_stands) {
+      return "approval stands (content matches clearance)";
+    }
+    if (ren.approval_invalidation) {
+      return `approval invalidated — ${ren.approval_invalidation.detail}`;
+    }
+    if (ren.status === "cleared") {
+      return "cleared status but standing unknown";
+    }
+    return "not cleared";
+  }
+
+  function renditionCard(ren: RenditionRecord, refresh: () => void): HTMLElement {
+    const editable = ren.status === "draft" || ren.status === "cleared";
+    const standing = el("p", {
+      className: ren.approval_stands
+        ? "meta approval-stands"
+        : ren.approval_invalidation
+          ? "meta approval-invalidated"
+          : "meta",
+      text: renditionStandingLabel(ren),
+    });
     const header = el("div", { className: "rendition-header" }, [
       el("h3", {
         text: `#${ren.rendition_id} · ${ren.platform}/${ren.format} · ${ren.status}`,
@@ -1273,19 +1301,25 @@ export function mount(root: HTMLElement): void {
         className: "meta",
         text: `angle #${ren.angle_id} · run #${ren.run_id} · rubric ${ren.rubric_version} · ${ren.created_at}`,
       }),
+      standing,
     ]);
-    const units =
+
+    const bodyAreas: HTMLTextAreaElement[] = [];
+    const unitEditors =
       ren.units.length === 0
         ? el("p", { className: "empty", text: "No units." })
         : el(
             "ol",
             { className: "rendition-thread" },
-            ren.units.map((u) =>
-              el("li", { className: "rendition-unit" }, [
-                el("p", {
-                  className: "rendition-unit-body",
-                  text: u.body,
-                }),
+            ren.units.map((u) => {
+              const area = document.createElement("textarea");
+              area.className = "rendition-unit-edit";
+              area.rows = 4;
+              area.value = u.body;
+              area.disabled = !editable;
+              bodyAreas.push(area);
+              return el("li", { className: "rendition-unit" }, [
+                area,
                 el("p", {
                   className: "meta",
                   text:
@@ -1293,10 +1327,95 @@ export function mount(root: HTMLElement): void {
                       ? "cites no claims"
                       : `cites claim(s): ${u.claim_ids.join(", ")}`,
                 }),
-              ]),
+              ]);
+            }),
+          );
+
+    const actions = el("div", { className: "row gap" });
+    if (editable) {
+      const saveBtn = el("button", {
+        type: "button",
+        text: "Save unit text",
+      }) as HTMLButtonElement;
+      saveBtn.addEventListener("click", () => {
+        void (async () => {
+          try {
+            await updateRendition(
+              ren.rendition_id,
+              ren.units.map((u, i) => ({
+                body: bodyAreas[i]?.value ?? u.body,
+                claim_ids: u.claim_ids,
+              })),
+            );
+            await setStatus(`Saved units on rendition #${ren.rendition_id}.`);
+            refresh();
+          } catch (err) {
+            await setStatus(
+              err instanceof Error ? err.message : String(err),
+              true,
+            );
+          }
+        })();
+      });
+      const clearBtn = el("button", {
+        type: "button",
+        text: ren.approval_stands
+          ? "Re-clear current text"
+          : "Clear exact content",
+      }) as HTMLButtonElement;
+      clearBtn.addEventListener("click", () => {
+        void (async () => {
+          try {
+            // Persist editor text first so clearance binds what the operator sees.
+            const dirty = ren.units.some(
+              (u, i) => (bodyAreas[i]?.value ?? u.body) !== u.body,
+            );
+            if (dirty) {
+              await updateRendition(
+                ren.rendition_id,
+                ren.units.map((u, i) => ({
+                  body: bodyAreas[i]?.value ?? u.body,
+                  claim_ids: u.claim_ids,
+                })),
+              );
+            }
+            const cleared = await approveRendition(ren.rendition_id);
+            await setStatus(
+              `Cleared rendition #${cleared.rendition_id} (approval #${cleared.current_approval_id}).`,
+            );
+            refresh();
+          } catch (err) {
+            await setStatus(
+              err instanceof Error ? err.message : String(err),
+              true,
+            );
+          }
+        })();
+      });
+      actions.append(saveBtn, clearBtn);
+    }
+
+    const history =
+      (ren.approvals?.length ?? 0) === 0
+        ? el("p", { className: "meta", text: "No clearance records yet." })
+        : el(
+            "ul",
+            { className: "approval-history" },
+            (ren.approvals ?? []).map((a) =>
+              el("li", {
+                className: "meta",
+                text: `clearance #${a.sequence} by ${a.actor} at ${a.approved_at} (${a.units.length} unit(s))`,
+              }),
             ),
           );
-    return el("article", { className: "rendition-card" }, [header, units]);
+
+    return el("article", { className: "rendition-card" }, [
+      header,
+      unitEditors,
+      actions,
+      el("h4", { text: "Clearance history" }),
+      history,
+    ]);
   }
 
   function claimCard(cl: ClaimRecord): HTMLElement {

@@ -12,6 +12,7 @@ from desk.service import (
     add_lead,
     add_quotation_to_shelf,
     answer_suspended_run,
+    approve_rendition,
     approve_run,
     attach_lead,
     attest_coverage,
@@ -35,6 +36,7 @@ from desk.service import (
     list_runs,
     promote_lead,
     summarise_lead,
+    update_rendition,
 )
 from desk.service.models import (
     AddLeadInput,
@@ -44,6 +46,9 @@ from desk.service.models import (
     AnswerSuspendedRunBody,
     AnswerSuspendedRunInput,
     AnswerSuspendedRunResult,
+    ApproveRenditionBody,
+    ApproveRenditionInput,
+    ApproveRenditionResult,
     ApproveRunInput,
     ApproveRunResult,
     AttachLeadBody,
@@ -99,6 +104,9 @@ from desk.service.models import (
     SummariseLeadBody,
     SummariseLeadInput,
     SummariseLeadResult,
+    UpdateRenditionBody,
+    UpdateRenditionInput,
+    UpdateRenditionResult,
 )
 
 router = APIRouter()
@@ -521,3 +529,39 @@ def api_list_rendition_eligible_claims(
 ) -> RenditionEligibleClaimsResult:
     with connection_scope(engine) as conn:
         return list_rendition_eligible_claims(conn, RenditionEligibleClaimsInput(angle_id=angle_id))
+
+
+# --- Rendition approval (ticket 13) — human-only; never MCP ---
+
+
+@router.put(
+    "/renditions/{rendition_id}",
+    response_model=UpdateRenditionResult,
+    name="update_rendition",
+)
+def api_update_rendition(
+    rendition_id: int,
+    body: UpdateRenditionBody,
+    engine: EngineDep,
+) -> UpdateRenditionResult:
+    payload = UpdateRenditionInput(rendition_id=rendition_id, units=body.units)
+    with connection_scope(engine) as conn:
+        return update_rendition(conn, payload)
+
+
+@router.post(
+    "/renditions/{rendition_id}/approve",
+    response_model=ApproveRenditionResult,
+    name="approve_rendition",
+)
+def api_approve_rendition(
+    rendition_id: int,
+    engine: EngineDep,
+    body: ApproveRenditionBody | None = None,
+) -> ApproveRenditionResult:
+    actor = (body.actor if body is not None else "operator") or "operator"
+    with connection_scope(engine) as conn:
+        return approve_rendition(
+            conn,
+            ApproveRenditionInput(rendition_id=rendition_id, actor=actor),
+        )

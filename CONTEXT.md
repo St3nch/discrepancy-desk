@@ -131,6 +131,12 @@ _Avoid_: verified, approved, accepted, cleared
 
 **Cleared**
 State of a rendition whose exact content the human has approved for publication.
+Clearance is an **append-only approval record** carrying the ordered unit bodies as
+reviewed (actor, timestamp, snapshot). The rendition holds status and a pointer for
+projection; whether that clearance still stands is **derived** by comparing current
+content to the snapshot — not an `is_valid` flag. Reorder, edit, add, or remove units
+invalidates the standing approval without silently reverting status to draft. Re-clear
+after edit is a new record. Media binding is deferred until renditions carry media.
 _Avoid_: approved, signed off, confirmed, ready
 
 ---

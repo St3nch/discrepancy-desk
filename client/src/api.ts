@@ -234,6 +234,26 @@ export type RenditionUnitRecord = {
   claim_ids: number[];
 };
 
+export type ApprovalSnapshotUnit = {
+  ordinal: number;
+  body: string;
+};
+
+export type RenditionApprovalRecord = {
+  approval_id: number;
+  rendition_id: number;
+  sequence: number;
+  actor: string;
+  approved_at: string;
+  units: ApprovalSnapshotUnit[];
+};
+
+export type ApprovalInvalidation = {
+  approval_id: number;
+  changes: string[];
+  detail: string;
+};
+
 export type RenditionRecord = {
   rendition_id: number;
   case_id: number;
@@ -245,7 +265,41 @@ export type RenditionRecord = {
   rubric_version: string;
   created_at: string;
   units: RenditionUnitRecord[];
+  current_approval_id?: number | null;
+  approval_stands?: boolean;
+  approval_invalidation?: ApprovalInvalidation | null;
+  current_approval?: RenditionApprovalRecord | null;
+  approvals?: RenditionApprovalRecord[];
 };
+
+export type RenditionUnitWrite = {
+  body: string;
+  claim_ids: number[];
+};
+
+export async function updateRendition(
+  renditionId: number,
+  units: RenditionUnitWrite[],
+): Promise<RenditionRecord> {
+  const response = await fetch(`/api/renditions/${renditionId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ units }),
+  });
+  return parseJson<RenditionRecord>(response);
+}
+
+export async function approveRendition(
+  renditionId: number,
+  actor: string = "operator",
+): Promise<RenditionRecord> {
+  const response = await fetch(`/api/renditions/${renditionId}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ actor }),
+  });
+  return parseJson<RenditionRecord>(response);
+}
 
 export type GetCaseResult = {
   case: CaseRecord;

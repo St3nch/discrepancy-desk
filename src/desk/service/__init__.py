@@ -33,7 +33,7 @@ from desk.service.leads import (
     promote_lead,
     summarise_lead,
 )
-from desk.service.renditions import propose_rendition
+from desk.service.renditions import approve_rendition, propose_rendition, update_rendition
 from desk.service.runs import (
     answer_suspended_run,
     approve_run,
@@ -48,6 +48,7 @@ __all__ = [
     "add_lead",
     "add_quotation_to_shelf",
     "answer_suspended_run",
+    "approve_rendition",
     "approve_run",
     "assert_official_foundation_complete",
     "attach_lead",
@@ -82,4 +83,5 @@ __all__ = [
     "read_case_context",
     "summarise_lead",
     "suspend_run",
+    "update_rendition",
 ]

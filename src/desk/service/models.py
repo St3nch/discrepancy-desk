@@ -857,6 +857,32 @@ class RenditionUnitRecord(_StrictModel):
     claim_ids: list[int]
 
 
+class ApprovalSnapshotUnit(_StrictModel):
+    """One unit body in an approval snapshot (ordered sequence is the artifact)."""
+
+    ordinal: int
+    body: str
+
+
+class RenditionApprovalRecord(_StrictModel):
+    """One append-only clearance of exact ordered content (ticket 13)."""
+
+    approval_id: int
+    rendition_id: int
+    sequence: int
+    actor: str
+    approved_at: str
+    units: list[ApprovalSnapshotUnit]
+
+
+class ApprovalInvalidation(_StrictModel):
+    """Derived: current draft content no longer matches the cleared snapshot."""
+
+    approval_id: int
+    changes: list[str]
+    detail: str
+
+
 class RenditionRecord(_StrictModel):
     rendition_id: int
     case_id: int
@@ -868,9 +894,55 @@ class RenditionRecord(_StrictModel):
     rubric_version: str
     created_at: str
     units: list[RenditionUnitRecord]
+    # Projection pointer to the latest clearance (ticket 13).
+    current_approval_id: int | None = None
+    # Whether that clearance still matches current content — always derived.
+    approval_stands: bool = False
+    approval_invalidation: ApprovalInvalidation | None = None
+    current_approval: RenditionApprovalRecord | None = None
+    # Full clearance history, oldest first.
+    approvals: list[RenditionApprovalRecord] = Field(default_factory=list)
 
 
 class ProposeRenditionResult(RenditionRecord):
+    pass
+
+
+class UpdateRenditionInput(_StrictModel):
+    """Replace ordered units on a draft/cleared rendition (complete model — no partial).
+
+    Human-only. Re-validates claim eligibility. Does not touch approval history;
+    standing is re-derived on read.
+    """
+
+    rendition_id: int
+    units: list[RenditionUnitInput]
+
+
+class UpdateRenditionBody(_StrictModel):
+    """HTTP path carries rendition_id; body is the complete unit list."""
+
+    units: list[RenditionUnitInput]
+
+
+class UpdateRenditionResult(RenditionRecord):
+    pass
+
+
+class ApproveRenditionInput(_StrictModel):
+    """Clear exact current content — appends a snapshot; never overwrites history."""
+
+    rendition_id: int
+    actor: str = "operator"
+
+
+class ApproveRenditionBody(_StrictModel):
+    """HTTP body for approve (path carries rendition_id)."""
+
+    actor: str = "operator"
+
+
+class ApproveRenditionResult(RenditionRecord):
     pass
 
 

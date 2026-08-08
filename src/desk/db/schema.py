@@ -267,6 +267,7 @@ claim_inference_citations = Table(
 )
 
 # Renditions (ticket 12 / D2 / D7) — one angle → N independent platform-native drafts.
+# current_approval_id is a projection pointer only (ticket 13); standing is derived.
 renditions = Table(
     "renditions",
     metadata,
@@ -279,6 +280,7 @@ renditions = Table(
     Column("status", Text, nullable=False),
     Column("rubric_version", Text, nullable=False),
     Column("created_at", Text, nullable=False),
+    Column("current_approval_id", Integer, nullable=True),
 )
 
 rendition_units = Table(
@@ -297,6 +299,27 @@ rendition_unit_claims = Table(
     Column("unit_id", Integer, ForeignKey("rendition_units.id"), nullable=False),
     Column("claim_id", Integer, ForeignKey("claims.id"), nullable=False),
     Column("ordinal", Integer, nullable=False),
+)
+
+# Append-only exact-content clearances (ticket 13 / VISION §14). History is never
+# the projection alone — same shape as claim_confirmations / run_suspensions.
+rendition_approvals = Table(
+    "rendition_approvals",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("rendition_id", Integer, ForeignKey("renditions.id"), nullable=False),
+    Column("sequence", Integer, nullable=False),
+    Column("actor", Text, nullable=False),
+    Column("approved_at", Text, nullable=False),
+)
+
+rendition_approval_units = Table(
+    "rendition_approval_units",
+    metadata,
+    Column("id", Integer, primary_key=True, nullable=False),
+    Column("approval_id", Integer, ForeignKey("rendition_approvals.id"), nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("body", Text, nullable=False),
 )
 
 # Open questions proposed at run close (ticket 08 / D13). Disposition set on approve.

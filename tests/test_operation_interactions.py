@@ -534,3 +534,111 @@ def test_propose_rendition_then_coverage_composition_worked(engine: Engine, tmp_
         detail = get_case(conn, GetCaseInput(case_id=case_id))
         assert len(detail.renditions) == 1
         assert detail.renditions[0].units[0].body == "Compose spine stands."
+
+
+def test_approve_rendition_then_edit_then_get_case_shows_invalidation(
+    engine: Engine, tmp_path: Path
+) -> None:
+    """update_rendition after approve_rendition → get_case reports standing false."""
+    from desk.service import approve_rendition, update_rendition
+    from desk.service.models import ApproveRenditionInput, UpdateRenditionInput
+
+    case_id, run_id, token = _claimed(engine)
+    vault = VaultStore(tmp_path / "vault")
+    with connection_scope(engine) as conn:
+        cap = capture_url(
+            conn,
+            CaptureUrlInput(
+                run_id=run_id,
+                url="https://example.com/approve-edit",
+                claim_token=token,
+            ),
+            vault=vault,
+            fetch=_html_fetch,
+        )
+        elem = cap.elements[0]
+        claim = propose_claim(
+            conn,
+            ProposeClaimInput(
+                run_id=run_id,
+                claim_token=token,
+                proposition="Spine for approval.",
+                dimensions=_dims(),
+                capture_id=cap.capture_id,
+                locator=elem.locator,
+                quoted_text=elem.text,
+            ),
+        )
+        close_run(conn, CloseRunInput(run_id=run_id, claim_token=token))
+        attest_coverage(
+            conn,
+            AttestCoverageInput(case_id=case_id, stage="official_foundation"),
+        )
+        angle = create_angle(
+            conn,
+            CreateAngleInput(
+                case_id=case_id,
+                title="Approval angle",
+                claim_ids=[claim.claim_id],
+                dimensions_by_claim_id={
+                    claim.claim_id: LinkClaimDimensions(
+                        source_basis="contemporaneous_report",
+                        corroboration="single_source",
+                        certainty="probable",
+                        posture="factual_assertion",
+                        publication_risk="not_applicable",
+                    )
+                },
+            ),
+        )
+        choose_angle(conn, ChooseAngleInput(angle_id=angle.angle_id))
+        comp = create_run(
+            conn,
+            CreateRunInput(
+                case_id=case_id,
+                question="Compose",
+                scope="composition",
+                coverage_dimension="composition",
+                capture_budget=1,
+            ),
+        )
+        approve_run(conn, ApproveRunInput(run_id=comp.run_id))
+        claimed = claim_next_run(conn, ClaimNextRunInput())
+        assert claimed.run is not None
+        ren = propose_rendition(
+            conn,
+            ProposeRenditionInput(
+                run_id=claimed.run.run_id,
+                claim_token=claimed.run.claim_token,
+                angle_id=angle.angle_id,
+                platform="x",
+                format="thread",
+                units=[
+                    RenditionUnitInput(
+                        body="Cleared text as reviewed.",
+                        claim_ids=[claim.claim_id],
+                    )
+                ],
+            ),
+        )
+        approve_rendition(conn, ApproveRenditionInput(rendition_id=ren.rendition_id))
+        update_rendition(
+            conn,
+            UpdateRenditionInput(
+                rendition_id=ren.rendition_id,
+                units=[
+                    RenditionUnitInput(
+                        body="Edited after clearance.",
+                        claim_ids=[claim.claim_id],
+                    )
+                ],
+            ),
+        )
+        detail = get_case(conn, GetCaseInput(case_id=case_id))
+
+    r = next(x for x in detail.renditions if x.rendition_id == ren.rendition_id)
+    assert r.status == "cleared"
+    assert r.approval_stands is False
+    assert r.approval_invalidation is not None
+    assert r.units[0].body == "Edited after clearance."
+    assert len(r.approvals) == 1
