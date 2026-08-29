@@ -29,12 +29,14 @@ def passing_observations() -> ProofCObservations:
         forward_rows=copy.deepcopy(EXPECTED_FORWARD_ROWS),
         reverse_rows=copy.deepcopy(EXPECTED_REVERSE_ROWS),
         adversary_results={
-            label: {
+            adversary.label: {
                 "rejected": True,
-                "sqlstate": "23503",
+                "sqlstate": adversary.expected_sqlstate,
+                "expected_sqlstate": adversary.expected_sqlstate,
+                "expected_condition": adversary.expected_condition,
                 "error_category": "rejected_by_postgresql",
             }
-            for label, _statement, _savepoint in ADVERSARIES
+            for adversary in ADVERSARIES
         },
     )
 
@@ -103,7 +105,7 @@ def test_reverse_pointing_at_another_dependent_breaks_agreement():
     assert "forward_and_reverse_traversals_agree" in failed_names(obs)
 
 
-@pytest.mark.parametrize("label", [a[0] for a in ADVERSARIES])
+@pytest.mark.parametrize("label", [a.label for a in ADVERSARIES])
 def test_an_adversary_that_succeeds_is_a_proof_failure(label):
     obs = passing_observations()
     obs.adversary_results[label] = {
@@ -114,8 +116,53 @@ def test_an_adversary_that_succeeds_is_a_proof_failure(label):
     assert f"{label}_rejected_by_postgresql" in failed_names(obs)
 
 
+def test_each_adversary_pins_the_sqlstate_of_the_constraint_it_exercises():
+    pinned = {a.label: (a.expected_sqlstate, a.expected_condition) for a in ADVERSARIES}
+    assert pinned == {
+        "C.adversary.nonexistent_fk": ("23503", "foreign_key_violation"),
+        "C.adversary.invented_relation": ("23514", "check_violation"),
+        "C.adversary.view_insert": ("55000", "object_not_in_prerequisite_state"),
+    }
+
+
+def test_the_three_adversaries_do_not_share_a_sqlstate():
+    # A shared expectation would let one constraint's rejection stand in for
+    # another's, which is the weakness this pinning removes.
+    states = [a.expected_sqlstate for a in ADVERSARIES]
+    assert len(set(states)) == len(states)
+
+
+@pytest.mark.parametrize("adversary", ADVERSARIES, ids=lambda a: a.label)
+def test_rejection_with_the_wrong_sqlstate_fails(adversary):
+    # A syntax error (42601), a permission error (42501), or any other
+    # rejection must not masquerade as the property under proof.
+    for wrong in ("42601", "42501", "23505", None):
+        if wrong == adversary.expected_sqlstate:
+            continue
+        obs = passing_observations()
+        obs.adversary_results[adversary.label] = {
+            "rejected": True,
+            "sqlstate": wrong,
+            "error_category": "rejected_by_postgresql",
+        }
+        failures = failed_names(obs)
+        name = f"{adversary.label}_sqlstate_{adversary.expected_condition}"
+        assert name in failures, (adversary.label, wrong)
+        # Rejection itself still holds; only the reason is wrong.
+        assert f"{adversary.label}_rejected_by_postgresql" not in failures
+
+
+@pytest.mark.parametrize("adversary", ADVERSARIES, ids=lambda a: a.label)
+def test_another_adversarys_sqlstate_does_not_satisfy_this_one(adversary):
+    others = [a.expected_sqlstate for a in ADVERSARIES if a.label != adversary.label]
+    for wrong in others:
+        obs = passing_observations()
+        obs.adversary_results[adversary.label] = {"rejected": True, "sqlstate": wrong}
+        assert f"{adversary.label}_sqlstate_{adversary.expected_condition}" in failed_names(obs)
+
+
 def test_all_three_adversaries_are_required():
-    labels = {a[0] for a in ADVERSARIES}
+    labels = {a.label for a in ADVERSARIES}
     assert labels == {
         "C.adversary.nonexistent_fk",
         "C.adversary.invented_relation",
@@ -127,9 +174,10 @@ def test_unrecorded_adversary_fails_closed():
     obs = passing_observations()
     obs.adversary_results = {}
     failures = failed_names(obs)
-    for label, _statement, _savepoint in ADVERSARIES:
-        assert f"{label}_rejected_by_postgresql" in failures
+    for adversary in ADVERSARIES:
+        assert f"{adversary.label}_rejected_by_postgresql" in failures
+        assert f"{adversary.label}_sqlstate_{adversary.expected_condition}" in failures
 
 
 def test_empty_observations_fail_everything():
-    assert len(failed_names(ProofCObservations())) >= 7
+    assert len(failed_names(ProofCObservations())) >= 10

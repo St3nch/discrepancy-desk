@@ -24,6 +24,7 @@ class ErrorCategory(StrEnum):
     PROOF_STEP_UNEXPECTED = "proof_step_unexpected"
     DEADLINE_EXCEEDED = "deadline_exceeded"
     CLEANUP_FAILED = "cleanup_failed"
+    CONNECTION_CLOSE_FAILED = "connection_close_failed"
     EVIDENCE_INCOMPLETE = "evidence_incomplete"
     REPORT_CONTAMINATED = "report_contaminated"
     INTERNAL_ERROR = "internal_error"

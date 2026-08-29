@@ -30,6 +30,11 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["tests/proofs"]
 addopts = "-q"
+# The proof tooling is executed as `python -m tools.postgres_foundation_proofs`
+# from the repository root and is deliberately not an installable package, so
+# the canonical governed task `uv run pytest` needs the root on sys.path. The
+# console script does not add it the way `python -m pytest` does.
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100

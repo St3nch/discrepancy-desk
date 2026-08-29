@@ -13,13 +13,13 @@ adversary attempts a mutation through the view and requires rejection.
 
 from __future__ import annotations
 
-import contextlib
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NamedTuple
 
 import psycopg
 
 from . import sql
+from .databases import close_connections
 from .evidence import Assertion, ProofResult, SqlStep, assert_that
 from .execution import StepRecorder, run_setup
 
@@ -45,10 +45,44 @@ EXPECTED_REVERSE_ROWS: dict[str, list[list[str]]] = {
     "observation:O4": [["claim_version", "C7V1", "supports"]],
 }
 
-ADVERSARIES: tuple[tuple[str, str, str], ...] = (
-    ("C.adversary.nonexistent_fk", sql.PROOF_C_ADVERSARY_NONEXISTENT_FK, "bad_fk"),
-    ("C.adversary.invented_relation", sql.PROOF_C_ADVERSARY_INVENTED_RELATION, "bad_kind"),
-    ("C.adversary.view_insert", sql.PROOF_C_ADVERSARY_VIEW_INSERT, "bad_view_insert"),
+
+class Adversary(NamedTuple):
+    """One integrity adversary and the exact rejection it must provoke."""
+
+    label: str
+    statement: str
+    savepoint: str
+    expected_sqlstate: str
+    expected_condition: str
+
+
+#: Rejection alone is not sufficient evidence. A syntax error, a permission
+#: error, or an unrelated failure would also be "rejected", and would then
+#: masquerade as the database-enforced property under proof. Each adversary
+#: therefore pins the exact SQLSTATE that corresponds to the constraint it is
+#: meant to exercise.
+ADVERSARIES: tuple[Adversary, ...] = (
+    Adversary(
+        "C.adversary.nonexistent_fk",
+        sql.PROOF_C_ADVERSARY_NONEXISTENT_FK,
+        "bad_fk",
+        "23503",
+        "foreign_key_violation",
+    ),
+    Adversary(
+        "C.adversary.invented_relation",
+        sql.PROOF_C_ADVERSARY_INVENTED_RELATION,
+        "bad_kind",
+        "23514",
+        "check_violation",
+    ),
+    Adversary(
+        "C.adversary.view_insert",
+        sql.PROOF_C_ADVERSARY_VIEW_INSERT,
+        "bad_view_insert",
+        "55000",
+        "object_not_in_prerequisite_state",
+    ),
 )
 
 
@@ -120,13 +154,22 @@ def evaluate_proof_c(obs: ProofCObservations) -> list[Assertion]:
         )
     )
 
-    for label, _statement, _savepoint in ADVERSARIES:
-        recorded = obs.adversary_results.get(label, {})
+    for adversary in ADVERSARIES:
+        recorded = obs.adversary_results.get(adversary.label, {})
         assertions.append(
             assert_that(
-                f"{label}_rejected_by_postgresql",
+                f"{adversary.label}_rejected_by_postgresql",
                 True,
                 recorded.get("rejected"),
+            )
+        )
+        # The rejection must come from the constraint under proof, not from
+        # any other error that would also have failed.
+        assertions.append(
+            assert_that(
+                f"{adversary.label}_sqlstate_{adversary.expected_condition}",
+                adversary.expected_sqlstate,
+                recorded.get("sqlstate"),
             )
         )
     return assertions
@@ -168,18 +211,20 @@ def run_proof_c(
                 )
             ]
 
-        for label, statement, savepoint in ADVERSARIES:
-            step: SqlStep = recorder.run_expecting_failure(conn, label, statement, savepoint)
-            obs.adversary_results[label] = {
+        for adversary in ADVERSARIES:
+            step: SqlStep = recorder.run_expecting_failure(
+                conn, adversary.label, adversary.statement, adversary.savepoint
+            )
+            obs.adversary_results[adversary.label] = {
                 "rejected": not step.succeeded,
                 "sqlstate": step.sqlstate,
+                "expected_sqlstate": adversary.expected_sqlstate,
+                "expected_condition": adversary.expected_condition,
                 "error_category": step.error_category,
             }
 
         conn.commit()
         return obs
     finally:
-        if conn is not None:
-            # A close failure must not mask the real proof result.
-            with contextlib.suppress(Exception):
-                conn.close()
+        # An explicit close failure is recorded rather than left to FORCE.
+        result.connection_closures.extend(close_connections([("proof_c", conn)]))

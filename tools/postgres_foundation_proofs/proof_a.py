@@ -25,6 +25,7 @@ from typing import Any
 import psycopg
 
 from . import sql
+from .databases import close_connections
 from .deadline import Deadline
 from .errors import DeadlineExceeded, ErrorCategory, ProofRunError
 from .evidence import Assertion, ProofResult, assert_that
@@ -86,40 +87,53 @@ def _lock_row(rows: list[Any], pid: int | None) -> tuple | None:
     return None
 
 
-def evaluate_proof_a(obs: ProofAObservations) -> list[Assertion]:
-    """Decide Proof A from recorded observations. Pure and database-free."""
+def observer_expectations(obs: ProofAObservations) -> dict[str, tuple[Any, Any]]:
+    """The five observer facts, as ``name -> (expected, observed)`` pairs.
+
+    Reconciliation section 2.1 requires all five to be observed *before*
+    Session A commits, and the same five appear as report assertions. Deriving
+    both from this one function keeps the release gate and the recorded
+    verdict from drifting apart.
+    """
     a_row = _lock_row(obs.observer_lock_rows, obs.a_pid)
     b_row = _lock_row(obs.observer_lock_rows, obs.b_pid)
+    return {
+        "observer_saw_A_holding_advisory_lock": (True, bool(a_row[1]) if a_row else None),
+        "observer_saw_B_waiting_on_advisory_lock": (False, bool(b_row[1]) if b_row else None),
+        "observer_saw_B_wait_event_type_Lock": ("Lock", b_row[2] if b_row else None),
+        "pg_blocking_pids_of_B_contains_A": (
+            True,
+            obs.a_pid in obs.blocking_pids if obs.a_pid is not None else None,
+        ),
+        # Paired with the allocation flag so an unobserved sequence cannot
+        # satisfy this condition by comparing None against a missing ordinal.
+        "sequence_unadvanced_while_B_blocked": (
+            {"a_ordinal_allocated": True, "sequence_last_value": obs.a_ordinal},
+            {
+                "a_ordinal_allocated": obs.a_ordinal is not None,
+                "sequence_last_value": obs.sequence_last_value_while_b_blocked,
+            },
+        ),
+    }
 
+
+def observer_conditions(obs: ProofAObservations) -> dict[str, bool]:
+    """Whether each observer fact currently holds. Pure and database-free."""
+    return {
+        name: expected == observed
+        for name, (expected, observed) in observer_expectations(obs).items()
+    }
+
+
+def evaluate_proof_a(obs: ProofAObservations) -> list[Assertion]:
+    """Decide Proof A from recorded observations. Pure and database-free."""
     committed_orders = [row[0] for row in obs.committed_rows]
 
     return [
         # -- Observed blocking. This, not elapsed time, is the proof. ----------
-        assert_that(
-            "observer_saw_A_holding_advisory_lock",
-            True,
-            bool(a_row[1]) if a_row else None,
-        ),
-        assert_that(
-            "observer_saw_B_waiting_on_advisory_lock",
-            False,
-            bool(b_row[1]) if b_row else None,
-        ),
-        assert_that(
-            "observer_saw_B_wait_event_type_Lock",
-            "Lock",
-            b_row[2] if b_row else None,
-        ),
-        assert_that(
-            "pg_blocking_pids_of_B_contains_A",
-            True,
-            obs.a_pid in obs.blocking_pids if obs.a_pid is not None else None,
-        ),
-        # -- B could not allocate its ordinal while A held the lock. -----------
-        assert_that(
-            "sequence_unadvanced_while_B_blocked",
-            obs.a_ordinal,
-            obs.sequence_last_value_while_b_blocked,
+        *(
+            assert_that(name, expected, observed)
+            for name, (expected, observed) in observer_expectations(obs).items()
         ),
         # -- Serialized gate order. -------------------------------------------
         assert_that(
@@ -164,7 +178,6 @@ class _SessionB:
         self.after_lock: str | None = None
         self.ordinal: int | None = None
         self.error: BaseException | None = None
-        self.lock_acquired = threading.Event()
         self.finished = threading.Event()
         self.thread = threading.Thread(target=self._run, name="fnd-pg01-session-b", daemon=True)
 
@@ -180,8 +193,6 @@ class _SessionB:
                 sql.ACQUIRE_ADVISORY_XACT_LOCK,
                 {"lock_key": sql.PROOF_A_LOCK_KEY},
             )
-            self.lock_acquired.set()
-
             rows = self._recorder.run(self._conn, "A.b.after_lock", sql.SELECT_CLOCK_TIMESTAMP)
             self.after_lock = str(rows[0][0])
 
@@ -196,34 +207,69 @@ class _SessionB:
             self.finished.set()
 
 
-def _poll_until_b_blocked(
+def _poll_until_observer_evidence_complete(
     observer: psycopg.Connection,
     recorder: StepRecorder,
     obs: ProofAObservations,
     deadline: Deadline,
 ) -> None:
-    """Wait for positive PostgreSQL state showing B waiting and A holding."""
-    pids = [obs.a_pid, obs.b_pid]
+    """Block until every observer condition holds, or fail closed.
+
+    This is the release gate for Session A's commit. Reconciliation section 2.1
+    is explicit: "Only after all observer assertions pass does the runner commit
+    A." Committing on a partial observation -- say, B registered as waiting but
+    ``pg_blocking_pids`` not yet naming A -- would leave the decisive evidence
+    to be gathered after the very transaction it was supposed to constrain.
+
+    If the deadline elapses, this raises and Session A is never committed. The
+    caller's failure handling unwinds, cancels, rolls back and closes, and
+    database cleanup still runs.
+    """
+    if obs.a_pid is None or obs.b_pid is None or obs.a_ordinal is None:
+        raise ProofRunError(
+            ErrorCategory.INTERNAL_ERROR,
+            "observer gate reached before session A allocated its ordinal",
+        )
+
+    lock_params = {"lock_key": sql.PROOF_A_LOCK_KEY, "pids": [obs.a_pid, obs.b_pid]}
+    pid_params = {"pid": obs.b_pid}
     while True:
-        deadline.check("session B to register as waiting on the advisory lock")
+        deadline.check(
+            "complete observer evidence that session B is blocked by session A on the advisory lock"
+        )
         obs.observer_poll_count += 1
         with observer.cursor() as cur:
-            cur.execute(
-                sql.OBSERVER_ADVISORY_LOCKS,
-                {"lock_key": sql.PROOF_A_LOCK_KEY, "pids": pids},
-            )
-            rows = cur.fetchall()
-        a_row = _lock_row(rows, obs.a_pid)
-        b_row = _lock_row(rows, obs.b_pid)
-        if a_row and b_row and a_row[1] is True and b_row[1] is False:
-            # Record exactly the rows that satisfied the condition. Earlier
-            # polls differ only in that B had not yet registered its request.
-            obs.observer_lock_rows = [list(r) for r in rows]
+            cur.execute(sql.OBSERVER_ADVISORY_LOCKS, lock_params)
+            lock_rows = [list(row) for row in cur.fetchall()]
+            cur.execute(sql.OBSERVER_BLOCKING_PIDS, pid_params)
+            blocking_pids = list(cur.fetchone()[0] or [])
+            cur.execute(sql.OBSERVER_SEQUENCE_LAST_VALUE)
+            last_value = cur.fetchone()[0]
+
+        obs.observer_lock_rows = lock_rows
+        obs.blocking_pids = blocking_pids
+        obs.sequence_last_value_while_b_blocked = last_value
+
+        if all(observer_conditions(obs).values()):
+            # Record exactly the readings that satisfied the gate. Earlier polls
+            # differ only in that the evidence was not yet complete.
             recorder.record_rows(
                 "A.observer.advisory_locks_while_B_blocked",
                 sql.OBSERVER_ADVISORY_LOCKS,
-                {"lock_key": sql.PROOF_A_LOCK_KEY, "pids": pids},
-                obs.observer_lock_rows,
+                lock_params,
+                lock_rows,
+            )
+            recorder.record_rows(
+                "A.observer.blocking_pids_while_B_blocked",
+                sql.OBSERVER_BLOCKING_PIDS,
+                pid_params,
+                [[blocking_pids]],
+            )
+            recorder.record_rows(
+                "A.observer.sequence_last_value_while_B_blocked",
+                sql.OBSERVER_SEQUENCE_LAST_VALUE,
+                None,
+                [[last_value]],
             )
             return
         time.sleep(_POLL_INTERVAL_SECONDS)
@@ -271,19 +317,13 @@ def run_proof_a(
         session_b = _SessionB(conn_b, recorder)
         session_b.thread.start()
 
-        # 6. Observer proves B is waiting on A and the sequence has not moved.
-        _poll_until_b_blocked(observer, recorder, obs, Deadline(OBSERVER_DEADLINE_SECONDS))
-
-        obs.blocking_pids = list(
-            recorder.run(
-                observer, "A.observer.blocking_pids", sql.OBSERVER_BLOCKING_PIDS, {"pid": obs.b_pid}
-            )[0][0]
+        # 6. The release gate. Every observer condition must hold before A is
+        #    allowed to commit; a missed deadline fails the proof instead.
+        _poll_until_observer_evidence_complete(
+            observer, recorder, obs, Deadline(OBSERVER_DEADLINE_SECONDS)
         )
-        obs.sequence_last_value_while_b_blocked = recorder.run(
-            observer, "A.observer.sequence_last_value", sql.OBSERVER_SEQUENCE_LAST_VALUE
-        )[0][0]
 
-        # 7. Only now does A commit.
+        # 7. Only after all observer conditions passed does A commit.
         conn_a.commit()
 
         # 8. B must acquire within a bounded deadline.
@@ -335,13 +375,19 @@ def run_proof_a(
         conn_a.commit()
         return obs
     finally:
-        # Runner-owned connections are closed here so DROP DATABASE has nothing
-        # of ours left to force-terminate (reconciliation section 5).
+        # Unwind, cancel, roll back, then close. Runner-owned connections are
+        # closed here so DROP DATABASE has nothing of ours left to
+        # force-terminate (reconciliation section 5).
         if session_b is not None and session_b.thread.is_alive():
             _cancel_quietly(conn_b)
             session_b.thread.join(timeout=5)
-        for conn in (observer, conn_b, conn_a):
-            _close_quietly(conn)
+        for conn in (conn_a, conn_b):
+            _rollback_quietly(conn)
+        result.connection_closures.extend(
+            close_connections(
+                [("observer", observer), ("session_b", conn_b), ("session_a", conn_a)]
+            )
+        )
 
 
 def _cancel_quietly(conn: psycopg.Connection | None) -> None:
@@ -352,9 +398,13 @@ def _cancel_quietly(conn: psycopg.Connection | None) -> None:
         conn.cancel()
 
 
-def _close_quietly(conn: psycopg.Connection | None) -> None:
-    """Close a runner-owned connection; a close failure must not mask the real error."""
+def _rollback_quietly(conn: psycopg.Connection | None) -> None:
+    """Discard any transaction left open by a failure path.
+
+    Best-effort: closing would roll back anyway, and a rollback failure is
+    subsumed by the close outcome, which *is* recorded.
+    """
     if conn is None:
         return
     with contextlib.suppress(Exception):
-        conn.close()
+        conn.rollback()

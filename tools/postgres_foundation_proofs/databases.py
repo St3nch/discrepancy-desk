@@ -18,7 +18,7 @@ Reconciliation section 5 governs this module:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 import psycopg
@@ -120,6 +120,41 @@ def assert_database_empty(conn: psycopg.Connection, name: str) -> list[Any]:
             "a proof must begin from an empty database",
         )
     return rows
+
+
+def close_connections(pairs: Iterable[tuple[str, Any]]) -> list[dict[str, Any]]:
+    """Close every runner-owned proof connection, recording each outcome.
+
+    Reconciliation section 5 makes ``WITH (FORCE)`` a cleanup *backstop*, not a
+    substitute for closing owned connections. Suppressing a close failure would
+    quietly hand the work to FORCE and let the proof still look clean, so each
+    failure becomes visible evidence instead.
+
+    One failure never prevents the remaining connections from being closed, and
+    this function never raises: the caller decides how a failure affects the
+    overall result.
+    """
+    outcomes: list[dict[str, Any]] = []
+    for label, conn in pairs:
+        if conn is None:
+            continue
+        try:
+            conn.close()
+        except Exception as exc:  # noqa: BLE001 - recorded as evidence, never raised
+            outcomes.append(
+                {
+                    "connection": label,
+                    "closed": False,
+                    "error_category": str(ErrorCategory.CONNECTION_CLOSE_FAILED),
+                    "message": (
+                        f"could not close runner-owned connection {label!r} "
+                        f"(sqlstate={getattr(exc, 'sqlstate', None)})"
+                    ),
+                }
+            )
+        else:
+            outcomes.append({"connection": label, "closed": True})
+    return outcomes
 
 
 class ProofDatabaseRegistry:

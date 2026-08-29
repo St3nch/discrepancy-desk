@@ -13,13 +13,13 @@ rewrite the historical B=14 answer.
 
 from __future__ import annotations
 
-import contextlib
 from dataclasses import dataclass, field
 from typing import Any
 
 import psycopg
 
 from . import sql
+from .databases import close_connections
 from .evidence import Assertion, ProofResult, assert_that
 from .execution import StepRecorder, run_setup
 
@@ -199,7 +199,5 @@ def run_proof_b(
         conn.commit()
         return obs
     finally:
-        if conn is not None:
-            # A close failure must not mask the real proof result.
-            with contextlib.suppress(Exception):
-                conn.close()
+        # An explicit close failure is recorded rather than left to FORCE.
+        result.connection_closures.extend(close_connections([("proof_b", conn)]))

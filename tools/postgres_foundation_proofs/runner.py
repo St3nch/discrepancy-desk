@@ -76,6 +76,26 @@ def _runner_metadata() -> dict[str, Any]:
     }
 
 
+def apply_close_failure_precedence(result: ProofResult) -> None:
+    """Record a close failure as the proof's failure only if nothing else is.
+
+    A close failure is cleanup debt in its own right and always forces a
+    non-zero result (via ``ProofResult.outcome``), but it must never overwrite
+    an already-recorded primary failure: the original cause stays the reported
+    one, with the close failures listed alongside as evidence.
+    """
+    if not result.close_failures:
+        return
+    if result.failure_category is not None:
+        return
+    result.failure_category = str(ErrorCategory.CONNECTION_CLOSE_FAILED)
+    result.failure_message = (
+        f"proof {result.proof} could not explicitly close "
+        f"{len(result.close_failures)} runner-owned connection(s); "
+        "DROP DATABASE ... WITH (FORCE) is a backstop, not a substitute"
+    )
+
+
 def _run_one_proof(
     key: str,
     title: str,
@@ -128,6 +148,7 @@ def _run_one_proof(
         result.failure_category = str(ErrorCategory.INTERNAL_ERROR)
         result.failure_message = f"proof {key} raised an unexpected runner error"
     finally:
+        apply_close_failure_precedence(result)
         if database is not None:
             result.teardown = registry.drop(database)
     return result
@@ -193,13 +214,16 @@ def run() -> tuple[dict[str, Any], int]:
             maintenance.close()
 
     outcomes = {p.proof: p.outcome for p in proofs}
-    teardown_ok = registry.all_dropped
+    close_failures = [failure for p in proofs for failure in p.close_failures]
+    teardown_ok = registry.all_dropped and not close_failures
     all_passed = bool(proofs) and all(o is Outcome.PASS for o in outcomes.values())
     overall = Outcome.PASS if (all_passed and teardown_ok) else Outcome.FAIL
 
     document["proofs"] = [p.to_json() for p in proofs]
     document["teardown"] = {
         "results": registry.results,
+        "all_databases_dropped": registry.all_dropped,
+        "connection_close_failures": close_failures,
         "all_dropped": teardown_ok,
         "outstanding": list(registry.outstanding),
         "failures": registry.failures,

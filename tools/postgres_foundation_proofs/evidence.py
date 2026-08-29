@@ -166,6 +166,7 @@ class ProofResult:
     assertions: list[Assertion] = field(default_factory=list)
     failure_category: str | None = None
     failure_message: str | None = None
+    connection_closures: list[dict[str, Any]] = field(default_factory=list)
     teardown: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -175,6 +176,11 @@ class ProofResult:
     @property
     def failed_assertions(self) -> list[Assertion]:
         return [a for a in self.assertions if not a.passed]
+
+    @property
+    def close_failures(self) -> list[dict[str, Any]]:
+        """Runner-owned connections that could not be closed explicitly."""
+        return [c for c in self.connection_closures if not c.get("closed")]
 
     @property
     def outcome(self) -> Outcome:
@@ -188,6 +194,10 @@ class ProofResult:
         if not self.assertions:
             return Outcome.FAIL
         if self.failed_assertions or self.unexpected_steps:
+            return Outcome.FAIL
+        # An explicit close failure means FORCE, not the runner, released the
+        # connection. That is cleanup debt and must not read as a clean proof.
+        if self.close_failures:
             return Outcome.FAIL
         return Outcome.PASS
 
@@ -205,5 +215,7 @@ class ProofResult:
             "failed_assertion_names": [a.name for a in self.failed_assertions],
             "unexpected_step_labels": [s.label for s in self.unexpected_steps],
             "steps": [s.to_json() for s in self.steps],
+            "connection_closures": self.connection_closures,
+            "connection_close_failures": self.close_failures,
             "teardown": self.teardown,
         }
