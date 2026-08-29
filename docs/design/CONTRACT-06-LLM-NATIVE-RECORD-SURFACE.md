@@ -131,6 +131,10 @@ An LLM may read requirements and prepare proposals or review material. It cannot
 
 This boundary must exist in the operation/authorization layer, not merely in prompts.
 
+No credential, capability, session token, database role, or delegated authority available to a model Run may be sufficient to invoke the human-Decision path. Human actor labels are metadata, not authorization.
+
+The human-only channel/capability must be independently authenticated and recorded with the resulting Decision under the Claim/Decision contract.
+
 ---
 
 # 6. Producer provenance is distinct from human authority
@@ -169,7 +173,11 @@ Run mode affects which operations are legal. It does not alter evidence truth.
 
 A Quinton/editorial Run has no legal write path into authoritative Evidence state, Observation admission/meaning, Entity resolution, Claim posture, human-only Notice disposition, or Decisions. It may draft Renditions from governed Record material.
 
-A governed Run does not silently switch from neutral research to editorial voice and then back into evidence extraction while retaining the same write permissions. If work needs another mode, create a new Run or explicit governed child Run.
+A governed Run does not silently switch from neutral research to editorial voice and then back into evidence extraction while retaining the same write permissions. If work needs another mode, create a new separately authorized Run or an explicit governed child Run.
+
+A child Run's operation/capability authority is always a subset of its parent's authority ceiling. Child creation cannot be used to regain an operation the parent was forbidden to invoke.
+
+If work requires broader authority than the parent Run possesses, that broader authority requires a separately authorized Run outside the parent escalation path.
 
 ---
 

@@ -182,11 +182,12 @@ Physical design remains open: typed provenance tables + unified traversal versus
 
 Keep separate:
 
-- **effective/world time**
-- **source-declared time**
-- **acquired time**
-- **recorded time**
-- **decided time**
+- **world time**
+- **source-presented time**
+- **capture time**
+- **Record admission time/order**
+- **decision time**
+- **publication time**
 
 UUIDv7 time is not a substitute for any of them.
 
@@ -212,17 +213,29 @@ An **Event** is a likely future first-class anchor for a world occurrence, but i
 
 Current Relationship direction:
 
+When a source explicitly presents the relationship:
+
 ```text
 Observation(relation_as_stated)
-        ↓
-Notice(relationship_candidate)
         ↓
 Claim(shape=relationship)
         ↓
 Decision
-        ↓
-relationship traversal / graph projection
 ```
+
+When the Desk/model notices a possible relationship that the source did not itself state:
+
+```text
+Observation(s) / Claim(s)
+        ↓
+Notice(relationship_candidate)
+        ↓
+later Claim(shape=relationship), if warranted
+        ↓
+Decision
+```
+
+Both paths may feed relationship traversal / graph projection after the governed Claim/Decision boundary. The Notice step is mandatory for inferred candidate relationships, not for a relationship already presented by evidence and represented source-locally in an Observation.
 
 A governed Relationship is a structured Claim shape/projection, not a second truth system.
 

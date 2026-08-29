@@ -65,7 +65,7 @@ Those names are illustrative, not final schema vocabulary.
 
 An `as_of` Record read means:
 
-> **Show the governed Record state that the Desk had admitted or made operative by that historical point.**
+> **Show the governed Record state visible at the corresponding immutable Record-admission boundary.**
 
 It does **not** mean:
 
@@ -79,6 +79,12 @@ Desk learns evidence: 2028
 ```
 
 An as-of-2026 Record view cannot contain the 2028 knowledge.
+
+Human-supplied or domain `decision time` metadata does not backdate Record visibility. A Decision made offline at T1 but admitted to the Record at T2 becomes part of Record history at its T2 admission boundary, while preserving T1 as decision-time metadata.
+
+The final physical mechanism must provide a system-assigned, immutable, deterministic admission ordering consistent with committed governed visibility. A wall-clock timestamp column alone is insufficient. Ordinary sequence allocation alone is also insufficient because allocation order is not necessarily commit order.
+
+The exact PostgreSQL mechanism remains open and must be proven with concurrent transactions before schema promotion.
 
 This is foundational to honest institutional memory.
 
@@ -428,8 +434,8 @@ If the physical design cannot perform this proof, the temporal/as-of contract ha
 
 # 18. Open before ADR/schema promotion
 
-1. Exact canonical vocabulary for world/effective, source-presented, capture, Record/admission, Decision, and publication clocks.
-2. Exact `as_of` inclusion convention and boundary semantics.
+1. Physical field/type representation for the frozen semantic clocks: world time, source-presented time, capture time, Record admission time/order, decision time, and publication time.
+2. Exact `as_of` admission-order mechanism, time-to-admission-boundary mapping, inclusion convention, and concurrency proof.
 3. Temporal precision/qualifier type system.
 4. Physical representation of exact dates, partial dates, approximate periods, bounded ranges, and open ranges.
 5. Whether structured temporal interpretations are stored directly on Observations, in typed supporting structures, or through another narrow mechanism.
@@ -446,6 +452,8 @@ If the physical design cannot perform this proof, the temporal/as-of contract ha
 # 19. Rejected shortcuts
 
 - one generic timestamp for all temporal meanings;
+- `as_of` driven solely by a mutable/backdatable wall-clock column;
+- ordinary sequence allocation treated as proof of commit-ordered Record visibility;
 - back-projecting later knowledge into earlier as-of Record state;
 - overwriting old Decisions to make current history look clean;
 - forcing one canonical chronology when sources disagree;
