@@ -111,7 +111,15 @@ For the Desk specifically:
 
 # 5. Approved project-local skill set — initial Desk set
 
-Install/adapt these project-local Grok skills under `.grok/skills/`:
+Install/adapt one canonical project-local skill set under `.agents/skills/` and expose it to both supported coding agents:
+
+```text
+.agents/skills/   canonical reviewed copies
+.grok/skills/     Grok Build links
+.claude/skills/   Claude Code links
+```
+
+Skills belong to the project, not to one model vendor. Grok Build and Claude Code must consume the same reviewed Desk adaptations rather than maintaining drifting copies.
 
 ## Alignment and domain
 

@@ -8,7 +8,26 @@ disable-model-invocation: true
 
 Break a plan, spec, or conversation into a set of **tickets**: tracer-bullet vertical slices, each declaring the tickets that **block** it.
 
-The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
+## Discrepancy Desk mode
+
+Desk mode supersedes upstream issue-tracker publication behavior.
+
+- Use the shared canonical project skill under `.agents/skills/`; Grok Build and Claude Code consume the same adapted method.
+- Work from an accepted spec, accepted design boundary, or explicit Steward request. Generated ticket text is a proposal until the Project Steward reconciles and accepts it.
+- Prefer tracer-bullet vertical slices with observable behavior and explicit blocking edges.
+- Keep each implementation ticket small enough for one fresh Writer context and one reviewable implementation commit.
+- Do not turn architecture cleanup, speculative future capability, or adjacent discoveries into hidden scope.
+- **Do not publish tickets to GitHub/GitLab or apply triage labels by default.** Desk tickets are governed repository artifacts unless the Product Owner and Steward later change that policy explicitly.
+- The Steward controls durable ticket identifiers, location, acceptance, and exact implementation start commit.
+- A generated ticket never authorizes implementation, network/provider/spend actions, credentials, production mutation, or push.
+
+Desk flow:
+
+```text
+accepted spec/design → tracer-bullet proposal → Steward reconciliation → accepted repo ticket → adversarial pre-implementation review
+```
+
+In Desk mode, ignore the upstream requirement for issue-tracker or triage configuration. The remaining upstream publication instructions are reference behavior for projects that use such a tracker.
 
 ## Process
 

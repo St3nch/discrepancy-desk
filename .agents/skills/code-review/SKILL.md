@@ -10,7 +10,29 @@ Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
 
 Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings.
 
-The issue tracker should have been provided to you. If `docs/agents/issue-tracker.md` is missing, tell the user to run `/setup-matt-pocock-skills`.
+## Discrepancy Desk mode
+
+Desk review keeps Pocock's independent **Standards** and **Spec** axes and adds project-specific seam checks. It does not require `docs/agents/issue-tracker.md`.
+
+- Use the shared canonical skill under `.agents/skills/`; Grok Build and Claude Code consume the same review method.
+- The fixed point should normally be the exact Steward-issued implementation start commit.
+- Prefer the accepted repository ticket/spec as the Spec source. External issue lookup is optional evidence, never authority by itself.
+- Read current Desk authority, canonical `CONTEXT.md` vocabulary, coding standards, and relevant ADR/spec/ticket before reviewing.
+- The implementer's report is useful evidence but cannot be the only review source; inspect the committed diff and tests directly.
+- Distinguish hard defects, likely false greens, and judgement calls.
+- Review findings are inputs. They do not rewrite Product authority or silently widen the ticket.
+- Never push or mutate production/provider state during review.
+
+In addition to the upstream Standards baseline, inventory these Desk seams whenever applicable:
+
+1. **Vocabulary reconciliation** — new/changed terms agree with canonical domain language.
+2. **Fail-open inventory** — malformed, missing, unauthorized, ambiguous, or unproven states cannot silently become success.
+3. **Destructive-write inventory** — governed history/evidence/decisions are not overwritten or bulk-rewritten contrary to lineage rules.
+4. **Dead-capability inventory** — no hidden or obsolete write/control path bypasses the accepted surface.
+5. **Write-once / lineage inventory** — identities, approvals, evidence bindings, and historical states preserve their required immutability/version lineage.
+6. **Projection / read-path completeness** — accepted authoritative state is actually reachable through the intended governed read surface with provenance and limitations.
+
+Do not collapse these into a score. Report concrete findings against the exact diff and accepted contract.
 
 ## Process
 

@@ -6,6 +6,60 @@ disable-model-invocation: true
 
 # Setup Matt Pocock's Skills
 
+## Discrepancy Desk mode
+
+The Desk setup is deliberately governed. **Do not run the generic scaffolding process below in this repository.** Treat the remaining upstream text as reference material only.
+
+### Validate shared project skill wiring
+
+The canonical project-local skill copies live under `.agents/skills/` and are shared by both supported coding agents:
+
+```text
+.agents/skills/   canonical reviewed copies
+.grok/skills/     Grok Build links
+.claude/skills/   Claude Code links
+```
+
+Confirm these approved skills are present and available to both agents:
+
+- `setup-matt-pocock-skills`
+- `ask-matt`
+- `grill-with-docs`
+- `grilling`
+- `domain-modeling`
+- `wait-what`
+- `writing-for-agents`
+- `to-spec`
+- `to-tickets`
+- `wayfinder`
+- `prototype`
+- `research`
+- `implement`
+- `tdd`
+- `code-review`
+- `diagnosing-bugs`
+- `codebase-design`
+- `improve-codebase-architecture`
+- `resolving-merge-conflicts`
+- `handoff`
+- `wizard`
+
+### Validate Desk policy only
+
+- `skills-lock.json` is installer/upstream provenance only. Do not invent private lockfile fields for Desk policy.
+- Local adaptations live in `.agents/skills/` and Git history. Never blindly overwrite them during an upstream refresh.
+- Do not create `docs/agents/`, triage labels, `CONTEXT-MAP.md`, or an issue-tracker configuration merely because upstream defaults to them.
+- Desk tickets are currently governed repository artifacts, not a GitHub-label state machine.
+- During Foundation Model v2, `docs/design/` is non-authoritative workshop material; do not create authority files merely to satisfy setup conventions.
+- Once accepted, the Desk expects a concise root `CONTEXT.md`, with authority and role rules defined by the eventual `AGENTS.md` and accepted ADR/spec/ticket structure.
+- No skill setup or refresh authorizes a push, provider/network action, credential use, production mutation, or Product decision.
+
+Report discrepancies to the Project Steward and stop. Do not ask generic setup questions or write generic scaffolding in Desk mode.
+
+---
+
+## Upstream process — reference only; do not run in Desk mode
+
 Scaffold the per-repo configuration that the engineering skills assume:
 
 - **Issue tracker**: where issues live (GitHub by default; local markdown is also supported out of the box)

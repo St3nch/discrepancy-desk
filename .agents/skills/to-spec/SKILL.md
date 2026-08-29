@@ -6,7 +6,24 @@ disable-model-invocation: true
 
 This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize what you already know.
 
-The issue tracker and triage label vocabulary should have been provided to you. If not, tell the user to run `/setup-matt-pocock-skills`.
+## Discrepancy Desk mode
+
+Desk mode supersedes upstream issue-tracker publication behavior.
+
+- Use the canonical project-local skill under `.agents/skills/`; Grok Build and Claude Code consume the same adapted method.
+- Work only from already-reconciled Product/design context. Do not reopen settled Product choices merely because upstream normally asks for tracker setup.
+- Read current Desk authority and canonical `CONTEXT.md` vocabulary once those exist. During Foundation Model v2, distinguish `docs/design/` workshop material from accepted authority.
+- **Do not publish a spec to GitHub, GitLab, or another external tracker and do not apply triage labels.**
+- Produce a non-authoritative draft spec for Project Steward review. The Steward decides whether it is discarded, revised, retained as working material, or promoted into an accepted normative spec.
+- Prefer existing test seams and keep the number of new seams small, but do not let a convenient seam redefine Product behavior.
+- A spec is an implementation contract, not a place to invent new domain nouns, silently choose irreversible architecture, or broaden the accepted work.
+- No spec generation authorizes implementation, provider/network calls, credentials, production mutation, or push.
+
+```text
+reconciled design → to-spec synthesis → draft spec → Steward review → accepted spec when needed
+```
+
+In Desk mode, ignore the upstream requirement for an issue tracker or triage-label vocabulary. The project-local setup skill validates Desk policy instead.
 
 ## Process
 

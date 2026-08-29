@@ -57,6 +57,8 @@ If a `CONTEXT-MAP.md` exists at the root, the repo has multiple contexts. The ma
 
 Create files lazily: only when you have something to write. If no `CONTEXT.md` exists, create one when the first term is resolved. If no `docs/adr/` exists, create it when the first ADR is needed.
 
+For the Desk foundation phase, do **not** create `CONTEXT.md` merely because upstream normally would. Propose reconciled entries first; the Steward will create or promote authority when Foundation Model v2 is ready.
+
 ## During the session
 
 ### Challenge against the glossary
@@ -75,9 +77,9 @@ When domain relationships are being discussed, stress-test them with specific sc
 
 When the user states how something works, check whether the code agrees. If you find a contradiction, surface it: "Your code cancels entire Orders, but you just said partial cancellation is possible. Which is right?"
 
-### Update CONTEXT.md inline
+### Reconcile CONTEXT.md deliberately
 
-When a term is resolved, update `CONTEXT.md` right there. Don't batch these up: capture them as they happen. Use the format in [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md).
+In ordinary mature-project use, resolved terms should be captured promptly in `CONTEXT.md`. During Foundation Model v2, return the proposed term, definition, avoided synonyms, affected existing concepts, and concrete scenarios to the Project Steward instead of writing authority directly. Use [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) as a formatting reference when promotion is authorized.
 
 `CONTEXT.md` should be totally devoid of implementation details. Do not treat `CONTEXT.md` as a spec, a scratch pad, or a repository for implementation decisions. It is a glossary and nothing else.
 
