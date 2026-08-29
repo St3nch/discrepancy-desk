@@ -38,6 +38,16 @@ This register does not promote an answer to project authority. `resolved-design`
 | FND-018 | open-design | C01 | **Capture retry semantics and receipt immutability.** A retry must not rewrite an existing Capture receipt; define idempotency/retry relationship and append semantics. |
 | FND-019 | open-design | C01 | **Slice-1 Locator anchor kinds and text offset convention.** Freeze only the anchor kinds actually needed by the first executable slice; define byte/code-point/normalization semantics before storage. |
 
+## Active schema sketches
+
+`POSTGRESQL-SCHEMA-SKETCH-01.md` is the current non-authoritative physical-design instrument for FND-001, FND-002, FND-004, FND-005, FND-007, FND-008, FND-009, FND-010, FND-011, and FND-015.
+
+Its leading candidates are: serialized governed admission order; typed same-identity/distinct Decision effects with visible graph conflict; subordinate `(observation_id, slot_no)` occurrence addressing; exact Claim-version + posture-Decision-set bindings; typed FK provenance tables with a read-only UNION traversal view; automatic capture of material Decision-derived dependencies; runtime append-only role separation; reference pinning versus stale-state refusal; and request-identity idempotency distinct from proposition identity.
+
+These are **candidates, not resolved items**. The sketch explicitly keeps `0001_initial` blocked and requires disposable PostgreSQL 18 scratch proofs before physical promotion.
+
+---
+
 ## Before first Publication
 
 | ID | Status | Owner | Question / current direction |
