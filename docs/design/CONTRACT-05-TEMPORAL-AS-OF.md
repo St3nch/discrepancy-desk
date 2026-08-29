@@ -16,11 +16,11 @@ The Desk must not collapse distinct temporal meanings into one generic `timestam
 
 Depending on the object and evidence, relevant clocks may include:
 
-- **world/effective time** — when something happened or was true in the world;
+- **world time** — when something happened or was true in the world;
 - **source-presented time** — the time or interval a source itself states or implies;
 - **capture time** — when the Desk acquired the material;
-- **Record/admission time** — when structured material entered the Record;
-- **decision time** — when a human Decision became operative;
+- **Record admission time/order** — when and in what immutable governed visibility order structured material entered the Record;
+- **decision time** — when the human made the Decision; this does not by itself determine when that Decision became visible/operative in the Record;
 - **publication time** — when a Publication was actually emitted.
 
 Not every object needs every clock.

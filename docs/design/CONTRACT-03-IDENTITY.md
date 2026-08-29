@@ -122,6 +122,8 @@ Old IDs must never become dead historical references merely because a later reso
 
 Accepted same-identity Decisions may produce a transitive current resolution cluster:
 
+Same-identity and distinctness are both effects expressed through the existing human `Decision` primitive; this contract does not add a second identity-authority noun.
+
 ```text
 D1: E17 = E42
 D2: E42 = E99
@@ -133,13 +135,21 @@ The projection may infer cluster membership transitively, but the system must no
 
 Every authoritative supporting Decision/edge remains inspectable.
 
-If a supporting Decision is later superseded, the current cluster is recomputed from the surviving accepted Decisions.
+If a supporting Decision is later superseded, the current cluster is recomputed from the surviving accepted Decisions and any operative distinctness Decisions.
+
+An authoritative **distinctness/split Decision** may state that specified Entity anchors must not occupy the same current resolved-identity cluster. It may also explicitly supersede the positive same-identity Decisions whose reasoning it overturns.
+
+Distinctness is stronger than merely rejecting a candidate: rejected means "not accepted as same"; distinctness means "currently decided not to be the same identity."
+
+If surviving positive same-identity Decisions still imply a path that conflicts with an operative distinctness Decision, the projection must not invent a hidden partition or silently choose one Decision over another. The affected resolution state is conflicted until human authority explicitly supersedes/reconciles the contradictory Decisions.
+
+> **Identity projection may compute consequences of Decisions. It may not resolve contradictions between Decisions by itself.**
 
 ---
 
 # 8. Split / unmerge
 
-An incorrect historical resolution is corrected by appending a new Decision that supersedes the prior resolution.
+An incorrect historical resolution is corrected by appending a new distinctness/split Decision and, where necessary, explicitly superseding the prior positive resolution Decision(s) that conflict with the corrected identity state.
 
 Do not delete, mutate, or rewrite the old Decision merely to make current identity tidy.
 
@@ -246,6 +256,12 @@ This prevents repeated rediscovery of old dead ends and makes changed reasoning 
 
 Resolving one source-local occurrence must not silently resolve every similar string in the same source or corpus.
 
+Observation structure therefore needs stable addressable identity occurrences/slots inside the Observation when more than one independently resolvable identity-bearing occurrence exists. These are subordinate addressable parts of an Observation, not a new top-level `Mention` foundation noun.
+
+The occurrence/slot must preserve enough identity to target the exact source-local presentation that was reviewed, including its evidence-local address and wording/context as required by the Observation contract.
+
+If an Observation contains only one identity-bearing subject, the Observation itself may be sufficient as the target. If it contains multiple independently resolvable subjects/occurrences, the Decision targets the stable subordinate occurrence rather than the whole Observation.
+
 Example:
 
 ```text
@@ -256,7 +272,7 @@ Example:
 
 The first occurrence may support an identity Decision while the second remains unresolved.
 
-Identity resolution should bind to the smallest addressable evidence/Observation subject that supports the Decision.
+Identity resolution binds to the smallest stable addressable Observation subject/occurrence that supports the Decision.
 
 Do not globally substitute text tokens or infer that every same-name occurrence denotes the same Entity without a separately supportable candidate path.
 
@@ -319,7 +335,7 @@ If the final physical design cannot perform this proof, the Identity contract ha
 1. Physical Entity identity row and internal/public identifier strategy.
 2. Physical representation of same-identity Decision edges and current cluster projection.
 3. Exact supersession model for identity Decisions.
-4. Whether Entity resolution targets Observation subjects directly or requires a narrower durable occurrence identity later.
+4. Exact stable subordinate Observation-occurrence/slot representation and addressing rules for identity targets.
 5. Preferred display-label selection/governance.
 6. Identifier Observation shape and whether any identifier deserves a dedicated typed structure.
 7. Temporal qualification representation for identity decisions when needed.

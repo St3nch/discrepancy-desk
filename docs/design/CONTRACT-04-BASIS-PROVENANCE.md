@@ -83,7 +83,11 @@ Claim
 
 An Observation gives structured source-local meaning.
 
-Direct evidence path may also be valid when the exact bounded material itself is the relevant support and an additional Observation would add no semantic value:
+The direct evidence path is a narrow exception. It is valid only when the Claim proposition is materially about the existence/content of the exact bounded material itself and no additional interpretation beyond that presence is being asserted. Ordinary world-fact Claims require the Observation layer.
+
+Example narrow case: "this preserved document contains the exact string X at this location." That proposition may be supported directly by the verified Excerpt. "Person P committed act A" may not skip Observation merely because an Excerpt contains words about P and A.
+
+When the narrow condition holds:
 
 ```text
 Excerpt ──directly_evidences──> Claim
@@ -98,6 +102,8 @@ These paths must not be treated as interchangeable.
 `Claim` means the Desk-level proposition.
 
 The physical design must preserve those distinctions rather than forcing every dependency through one ceremonial layer.
+
+> **Direct Excerpt support proves bounded material presence/content. It is not a deadline shortcut around source-local Observation semantics.**
 
 ---
 
