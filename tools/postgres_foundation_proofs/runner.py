@@ -28,6 +28,7 @@ from .databases import (
     ProofDatabaseRegistry,
     assert_database_empty,
     assert_role_can_manage_databases,
+    close_connections,
     connect,
     create_proof_database,
     drop_proof_database,
@@ -130,7 +131,20 @@ def _run_one_proof(
                 probe, database
             )
         finally:
-            probe.close()
+            # The probe is a runner-owned connection to the proof database, so
+            # it goes through the same recorded-close contract as the proof
+            # sessions rather than being closed silently.
+            result.connection_closures.extend(close_connections([("preflight_probe", probe)]))
+
+        if result.close_failures:
+            # Setup did not complete cleanly. Entering the substantive proof
+            # now would run it alongside a connection the runner could not
+            # release, and FORCE would later mask that during teardown.
+            raise ProofRunError(
+                ErrorCategory.CONNECTION_CLOSE_FAILED,
+                f"proof {key} could not explicitly close its preflight probe connection "
+                "to the proof database; setup is not clean, so the proof was not run",
+            )
 
         observations = run_fn(connect_fn, database, result)
         result.assertions = evaluate_fn(observations)

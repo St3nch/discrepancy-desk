@@ -17,6 +17,10 @@ from tools.postgres_foundation_proofs.errors import ErrorCategory, ProofRunError
 
 SYNTHETIC = "postgresql://proofuser:NOT_A_REAL_PASSWORD@127.0.0.1:54321/postgres"
 
+#: The exact shape the fixed VedaOps host operation supplies. The password is
+#: synthetic; no real credential appears in this repository.
+VEDAOPS_SHAPE = "postgresql://vedaops:NOT_A_REAL_PASSWORD@127.0.0.1:49183/vedaops"
+
 
 def test_parses_a_well_formed_dsn():
     dsn = parse_dsn(SYNTHETIC)
@@ -53,8 +57,91 @@ def test_secret_candidates_cover_encoded_forms():
     assert "a@b!c" in candidates
 
 
-def test_dsn_without_password_has_no_candidates():
-    assert parse_dsn("postgresql://u@127.0.0.1:5432/postgres").secret_candidates() == frozenset()
+def test_an_encoded_authority_password_is_represented_in_both_forms():
+    # A VedaOps-random password containing reserved characters must be
+    # scrubbable whether the report ever renders it encoded or decoded.
+    dsn = parse_dsn("postgresql://vedaops:p%40ss%2Fw%3Ard%21@127.0.0.1:49183/vedaops")
+    candidates = dsn.secret_candidates()
+    assert "p%40ss%2Fw%3Ard%21" in candidates
+    assert "p@ss/w:rd!" in candidates
+    assert all(candidate for candidate in candidates)
+    assert dsn.raw_for_connect().endswith("/vedaops")
+    assert "p%40ss" not in str(dsn)
+
+
+def test_the_exact_vedaops_shape_parses():
+    # postgresql://vedaops:<random>@127.0.0.1:<random-port>/vedaops
+    dsn = parse_dsn(VEDAOPS_SHAPE)
+    assert (dsn.scheme, dsn.username, dsn.host, dsn.port, dsn.dbname) == (
+        "postgresql",
+        "vedaops",
+        "127.0.0.1",
+        49183,
+        "vedaops",
+    )
+    assert dsn.observation()["password_present"] is True
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        # No password at all: libpq would consult a passfile, a service file,
+        # or environment variables, none of which the runner models or scrubs.
+        "postgresql://vedaops@127.0.0.1:49183/vedaops",
+        # Empty password.
+        "postgresql://vedaops:@127.0.0.1:49183/vedaops",
+    ],
+)
+def test_a_dsn_without_an_explicit_password_is_refused(raw):
+    with pytest.raises(ProofRunError) as excinfo:
+        parse_dsn(raw)
+    assert excinfo.value.category is ErrorCategory.DSN_REJECTED
+    assert "explicit password" in excinfo.value.message
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "password=NOT_A_REAL_PASSWORD",
+        "user=someone_else",
+        "sslmode=require",
+        "options=-csearch_path%3Dpublic",
+        "host=elsewhere",
+        "hostaddr=10.0.0.1",
+        "port=5433",
+        "dbname=other",
+        "service=svc",
+        "passfile=/tmp/pass",
+        "connect_timeout=1",
+        "totally_unknown_key=whatever",
+        "",  # a bare trailing "?" that urlsplit reports as an empty query
+    ],
+)
+def test_any_query_string_is_refused(query):
+    with pytest.raises(ProofRunError) as excinfo:
+        parse_dsn(f"{VEDAOPS_SHAPE}?{query}")
+    assert excinfo.value.category is ErrorCategory.DSN_REJECTED
+    assert "no query string" in excinfo.value.message
+
+
+@pytest.mark.parametrize("fragment", ["frag", "", "sslmode=require"])
+def test_any_fragment_is_refused(fragment):
+    with pytest.raises(ProofRunError) as excinfo:
+        parse_dsn(f"{VEDAOPS_SHAPE}#{fragment}")
+    assert excinfo.value.category is ErrorCategory.DSN_REJECTED
+    assert "no fragment" in excinfo.value.message
+
+
+def test_a_query_string_password_is_never_treated_as_the_credential():
+    # Refused outright, so it can never become a secret candidate the scrubber
+    # would then have to model.
+    with pytest.raises(ProofRunError):
+        parse_dsn("postgresql://vedaops@127.0.0.1:49183/vedaops?password=NOT_A_REAL_PASSWORD")
+
+
+def test_keyword_dsn_syntax_is_not_supported():
+    with pytest.raises(ProofRunError):
+        parse_dsn("host=127.0.0.1 port=49183 dbname=vedaops user=vedaops password=x")
 
 
 @pytest.mark.parametrize(
@@ -91,16 +178,6 @@ def test_malformed_dsn_is_refused(raw, category):
 def test_implicit_fallback_shapes_are_refused(raw):
     with pytest.raises(ProofRunError) as excinfo:
         parse_dsn(raw)
-    assert excinfo.value.category is ErrorCategory.DSN_REJECTED
-
-
-@pytest.mark.parametrize(
-    "param",
-    ["host=other", "hostaddr=10.0.0.1", "port=5433", "dbname=other", "service=svc", "passfile=/x"],
-)
-def test_redirecting_query_parameters_are_refused(param):
-    with pytest.raises(ProofRunError) as excinfo:
-        parse_dsn(f"postgresql://u:p@127.0.0.1:5432/postgres?{param}")
     assert excinfo.value.category is ErrorCategory.DSN_REJECTED
 
 
