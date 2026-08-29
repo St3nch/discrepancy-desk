@@ -4,7 +4,7 @@
 
 **Owner:** Project Steward
 
-**Designated Writer:** Grok Build
+**Designated Writer:** Claude Code (temporary substitution while Grok Build is usage-limited)
 
 **Implementation start commit:** pinned by the Project Steward to the exact clean post-ticket commit in the Writer handoff. The Writer must refuse a different HEAD.
 
