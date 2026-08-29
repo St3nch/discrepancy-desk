@@ -161,6 +161,7 @@ Decision is a general conceptual primitive, not permission to create one weak po
 A Decision conceptually carries:
 
 - actor identity;
+- human-authority authentication channel/capability identity;
 - decided time;
 - target object and exact target version/state;
 - action/decision kind;
@@ -188,6 +189,10 @@ Do not let a generic Decision table become a place where arbitrary string action
 
 Human Decisions always identify a human actor, even in a single-operator system.
 
+Human actor identity alone is not sufficient authority. The authoritative Decision path must require a human-only authentication channel or capability that no model Run, model credential, or Run-scoped database/application role can present, inherit, impersonate, or assume.
+
+The final implementation must make it mechanically impossible for a model to create a human Decision merely by supplying an actor label such as `CHAZ`.
+
 Machine proposals separately preserve:
 
 - Run identity;
@@ -202,6 +207,8 @@ The machine may propose.
 
 The machine may not manufacture a human Decision.
 
+> **A role name is not an authority credential.**
+
 ---
 
 # 8. Mutation / lineage rule
@@ -215,7 +222,7 @@ The exact physical mechanism remains open, but the final design must support:
 - prior Claim versions remaining addressable;
 - prior Decisions remaining addressable;
 - a later Decision superseding/changing current posture without deleting the prior Decision;
-- publication bindings remaining tied to the exact historical Claim/version/posture they used;
+- publication bindings remaining tied to the exact historical Claim identity, Claim content version, and operative posture-determining Decision set they used;
 - as-of reconstruction.
 
 Operational/rebuildable rows such as leases, caches, heartbeats, indexes, or projections may mutate under their own contracts.
@@ -298,7 +305,7 @@ If the final model requires deleting `CL2`, overwriting `D1`, or rewriting the o
 8. As-of query convention over Claim versions/Decisions.
 9. Whether any genuine Case-scoped Claim exists; prove with worked examples before admitting.
 10. Inference-Claim representation and publication-risk inheritance rules.
-11. Human actor identity model.
+11. Exact human-only authentication channel/capability and database/application enforcement model for Decisions.
 12. Command/refusal contract for `propose_claim` and human decision operations.
 
 ---
