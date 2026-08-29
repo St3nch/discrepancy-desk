@@ -97,15 +97,43 @@ def test_the_document_is_a_single_json_object(capsys):
     json.loads(out)
 
 
-def test_fixed_argv_is_flagless_and_carries_no_credential():
+def test_fixed_argv_matches_the_live_vedaops_binding():
+    # Must equal the finalized external task binding exactly.
     assert FIXED_ARGV == [
-        "/home/chaz/projects/vedaops/discrepancy-desk/.venv/bin/python",
+        "uv",
+        "run",
+        "--offline",
+        "--no-sync",
+        "python",
         "-m",
         "tools.postgres_foundation_proofs",
     ]
+
+
+def test_fixed_argv_carries_no_credential_or_connection_input():
     joined = " ".join(FIXED_ARGV)
-    for forbidden in ("--", "postgres://", "postgresql://", "password", "@"):
+    for forbidden in ("postgres://", "postgresql://", "password", "@", "127.0.0.1"):
         assert forbidden not in joined
+
+
+def test_the_only_flags_are_uv_environment_policy_not_proof_inputs():
+    # The task takes no caller flags. The two present belong to uv: --offline
+    # forbids network access, --no-sync forbids runtime provisioning.
+    flags = [arg for arg in FIXED_ARGV if arg.startswith("-") and arg != "-m"]
+    assert flags == ["--offline", "--no-sync"]
+
+
+def test_fixed_argv_pins_no_absolute_interpreter_path():
+    # `uv` is resolved from the task environment; the repository must not pin a
+    # machine-specific interpreter path that can drift from operator policy.
+    assert FIXED_ARGV[0] == "uv"
+    assert not any(arg.startswith("/") for arg in FIXED_ARGV)
+
+
+def test_fixed_argv_cannot_install_or_resolve_dependencies():
+    joined = " ".join(FIXED_ARGV)
+    for forbidden in ("sync", "install", "add", "pip", "--frozen"):
+        assert forbidden not in joined.replace("--no-sync", "")
 
 
 def test_the_printed_document_is_the_scanned_document(capsys, monkeypatch):

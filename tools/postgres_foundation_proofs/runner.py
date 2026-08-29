@@ -48,9 +48,15 @@ EXIT_CLEANUP_FAILED = 3
 EXIT_REPORT_CONTAMINATED = 4
 EXIT_INTERNAL_ERROR = 5
 
-#: The governed task is flagless (reconciliation section 10).
+#: The exact argv the external VedaOps task `postgres-foundation-proofs` is
+#: bound to. The two flags belong to `uv` and are environment policy, not proof
+#: inputs: the task itself still takes no caller flags of any kind.
 FIXED_ARGV = [
-    "/home/chaz/projects/vedaops/discrepancy-desk/.venv/bin/python",
+    "uv",
+    "run",
+    "--offline",
+    "--no-sync",
+    "python",
     "-m",
     "tools.postgres_foundation_proofs",
 ]
@@ -68,11 +74,30 @@ def _runner_metadata() -> dict[str, Any]:
         "python_version": platform.python_version(),
         "psycopg_version": psycopg.__version__,
         "fixed_argv": FIXED_ARGV,
-        "argv_contract": (
-            "The governed task accepts no proof-selection, DSN, host, port, image, "
-            "relaxation, skip, or report-path flags. The DSN is read only from "
-            f"{DSN_ENVIRONMENT_VARIABLE} and never appears in argv."
-        ),
+        "argv_contract": {
+            "executable": (
+                "`uv` is the bare executable required by VedaOps task policy; it is "
+                "resolved from the task environment, not from a path this repository pins."
+            ),
+            "offline": "`--offline` forbids network access for the duration of the task.",
+            "no_sync": ("`--no-sync` forbids runtime environment synchronization or provisioning."),
+            "provisioning": (
+                "Dependencies must already have been provisioned before commissioning. "
+                "The task neither resolves nor installs dependencies during the proof, and "
+                "the runner has no fallback that could."
+            ),
+            "working_directory": (
+                "The repository root remains the working directory, which is what makes "
+                "`-m tools.postgres_foundation_proofs` resolve."
+            ),
+            "dsn": (
+                f"The DSN is read only from {DSN_ENVIRONMENT_VARIABLE} and never appears in argv."
+            ),
+            "caller_inputs": (
+                "The task accepts no caller flags and no alternate DSN, host, port, image, "
+                "relaxation, skip, or report-path inputs."
+            ),
+        },
         "docker": "The runner does not start or inspect Docker.",
     }
 
