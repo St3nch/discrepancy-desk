@@ -23,13 +23,13 @@ This register does not promote an answer to project authority. `resolved-design`
 | FND-003 | resolved-design | C05/FM | **Clock vocabulary.** Frozen semantic names: world time, source-presented time, capture time, Record admission time/order, decision time, publication time. Physical field/type names remain open. |
 | FND-004 | open-design | C04/C06 | **Reference pinning vs stale-state refusal.** Define operation classes: durable references should pin exact inspected targets; mutations of target state should fail closed on stale current state. Every mutation-capable operation must declare its binding mode; unspecified mode should refuse. |
 | FND-005 | open-design | C02/C04/C06 | **Claim historical binding.** Canonical publication/dependency binding must distinguish Claim identity, exact content version, and operative posture-determining Decision set. Final vocabulary/shape remains open. |
-| FND-006 | open-product | C01/C02/C07 | **Observation and Claim content shape.** Decide compatible structured/hybrid representations so Observation→Claim promotion is explicit rather than an ad-hoc translation layer. |
+| FND-006 | resolved-design | C01/C02/C07 | **Observation and Claim content shape.** Use a deliberately small typed-hybrid semantic grammar that may be shared where compatible while preserving separate Observation and Claim objects. No durable `Proposition` noun is admitted by default; physical shape storage remains open in C07. |
 | FND-007 | open-design | C03/C07 | **Addressable Observation occurrences.** No top-level `Mention` noun. Define stable subordinate Observation occurrence/slot addressing, including identity-bearing occurrences and evidence-local locality. |
 | FND-008 | open-design | C03 | **Identity cluster algorithm.** Same-identity and distinctness are Decision effects. Define deterministic projection, conflict detection, explicit supersession, and cycle handling without hidden arbitrary partitioning. |
 | FND-009 | open-design | C04 | **Automatic dependency capture for derived state.** When governed work consumes current identity clusters, Claim posture, preferred labels, or other Decision-derived state, determine which operative Decisions are machine-captured as dependencies so reverse provenance is not dependent on human diligence. |
 | FND-010 | open-design | C04 | **Allowed provenance relation matrix.** Default-deny legal source-type × relation-kind × target-type combinations, initially limited to admitted slice nouns. |
 | FND-011 | open-physical | C02 | **Append-only enforcement locus.** Determine database privileges/constraints/triggers required so governed immutability is not merely application convention. ADR candidate. |
-| FND-012 | open-design | C07 | **Relationship between source-local structured Observation and Desk-level proposition shape.** Includes temporal values, identity slots, and relation-as-stated semantics. |
+| FND-012 | resolved-design | C07 | **Relationship between source-local structured Observation and Desk-level proposition shape.** Compatible typed grammar may be reused, but Observation remains source-local/evidence-bound and Claim remains a separate Desk proposition. Source-stated relationships may go Observation→Claim; inferred relationships require Notice first. |
 | FND-013 | open-design | C08 | **Notice contract.** Identity/deduplication, evidence-set identity, re-raise rules, suppression, disposition, deterministic vs interpretive triggers, queue behavior, and human-only authority boundaries. |
 | FND-014 | open-design | C09 | **Run contract.** Mode vocabulary, mode→operation matrix, parent/child lineage, non-escalation, producer identity, read/write audit, and one-mode-per-Run behavior. |
 | FND-015 | open-design | C06 | **Idempotency contract.** Request-identity scope, retention, payload mismatch conflict, replay result identity, and explicit separation from semantic Claim deduplication. |
@@ -79,6 +79,8 @@ This register does not promote an answer to project authority. `resolved-design`
 | RES-007 | resolved-design | Child Runs cannot escalate authority above the parent capability ceiling. Broader authority requires a separately authorized Run. |
 | RES-008 | resolved-design | Grok Build and Claude Code consume one canonical project-local skill set under `.agents/skills/`. |
 | RES-009 | resolved-design | Project Steward reconciliation produces proposed authority; CHAZ explicitly accepts promotion. |
+| RES-010 | resolved-design | Observation uses one source-local semantic assertion with stable subordinate participant/value slots; unrelated assertions split even when they share evidence. |
+| RES-011 | resolved-design | Observation and Claim use compatible typed-hybrid semantic grammar without creating a durable Proposition object or unrestricted JSONB semantic escape hatch. |
 
 ## Register discipline
 
