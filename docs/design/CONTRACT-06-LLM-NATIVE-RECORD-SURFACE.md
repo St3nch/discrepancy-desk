@@ -27,6 +27,7 @@ PostgreSQL / Vault-backed Record
 Production LLMs do **not** receive arbitrary SQL, unrestricted table writes, database credentials, or generic object mutation.
 
 The Record is human-authoritative and LLM-native.
+
 ---
 
 # 2. Small stable read surface
@@ -59,6 +60,7 @@ A read envelope should expose enough context to prevent confusion about current 
 - pagination cursor when needed.
 
 Example field names are not schema decisions. Temporal perspective must never be implicit.
+
 ---
 
 # 3. Bounded reads and expansion budgets
@@ -84,6 +86,7 @@ There must be no accidental `expand=everything` path capable of returning unboun
 Pagination and expansion limits are part of the governed interface.
 
 A Claim read should expose enough provenance by default that the model does not have to guess whether support, contradiction, or a current human Decision exists. Full Basis traversal remains an explicit expansion.
+
 ---
 
 # 4. Writes are semantic commands
@@ -107,6 +110,7 @@ Names are provisional.
 Reject generic escape hatches such as `write_record(type, json)`, `update_any_object(...)`, or `execute_sql(...)`.
 
 Each operation validates object-specific invariants, allowed references, provenance, caller role, Run mode, exact target state, and required preconditions.
+
 ---
 
 # 5. Human-only authority has no LLM write path
@@ -126,6 +130,7 @@ Examples include:
 An LLM may read requirements and prepare proposals or review material. It cannot invoke the authoritative Decision path.
 
 This boundary must exist in the operation/authorization layer, not merely in prompts.
+
 ---
 
 # 6. Producer provenance is distinct from human authority
@@ -144,6 +149,7 @@ Model/vendor identity may be useful provenance. It never creates epistemic autho
 The same governed operation may be performed by OpenAI, Claude, Grok, a local model, or another approved worker. Authority comes from the operation contract, caller capability, Run mode, accepted project policy, and human Decision where required.
 
 > **The method belongs to the project, not the model vendor.**
+
 ---
 
 # 7. Run identity and mode participate in authorization
@@ -164,6 +170,7 @@ Run mode affects which operations are legal. It does not alter evidence truth.
 A Quinton/editorial Run has no legal write path into authoritative Evidence state, Observation admission/meaning, Entity resolution, Claim posture, human-only Notice disposition, or Decisions. It may draft Renditions from governed Record material.
 
 A governed Run does not silently switch from neutral research to editorial voice and then back into evidence extraction while retaining the same write permissions. If work needs another mode, create a new Run or explicit governed child Run.
+
 ---
 
 # 8. Idempotent, replay-safe mutations
@@ -175,6 +182,7 @@ If a response is lost after a committed `propose_claim` and the model retries, t
 Return the same accepted logical result or an explicit conflict/refusal.
 
 Do not implement idempotency through weak textual deduplication that could merge distinct propositions or evidence.
+
 ---
 
 # 9. Stale-target writes fail closed
@@ -194,6 +202,7 @@ required_next_step = reread_target
 ```
 
 This protects concurrent model work, human/model races, and ordinary retries.
+
 ---
 
 # 10. Structured refusals and legal next actions
@@ -218,6 +227,7 @@ Where safe, expose a bounded legal next step.
 A resource envelope may also advertise legal next actions or expansions for the current caller/Run. Human-only actions must not appear as executable model actions merely because they exist conceptually.
 
 The server remains authoritative about legality. The model does not invent its own workflow.
+
 ---
 
 # 11. Current and historical reads are explicit
@@ -243,6 +253,7 @@ What current Record material concerns world-time interval Y?
 These are distinct semantic questions even if one transport later represents them through parameters.
 
 Later knowledge may change current reconstruction without contaminating earlier as-of views.
+
 ---
 
 # 12. Nothing durable depends only on hidden model context
@@ -254,6 +265,7 @@ The model's private conversational context is not durable evidence.
 Model analysis/prose may be preserved as producer provenance when useful, but it cannot become the sole support for durable epistemic state.
 
 > **If the model cannot walk the result back toward addressable Record material, it is not a valid durable Record dependency.**
+
 ---
 
 # 13. Worked proof
@@ -275,6 +287,7 @@ Model analysis/prose may be preserved as producer provenance when useful, but it
 15. An as-of query reconstructs the Record before `D20` without back-projecting that Decision.
 
 If the final operation surface cannot perform this proof without arbitrary SQL, generic JSON writes, prompt-only authority boundaries, or unbounded context dumps, this contract has failed.
+
 ---
 
 # 14. Open before schema/API promotion
@@ -295,6 +308,7 @@ If the final operation surface cannot perform this proof without arbitrary SQL, 
 14. Default provenance-summary depth by object type.
 15. Audit requirements for model reads versus writes.
 16. Whether safe bounded bulk traversal is needed for research Runs.
+
 ---
 
 # 15. Rejected shortcuts
@@ -314,6 +328,7 @@ If the final operation surface cannot perform this proof without arbitrary SQL, 
 - durable objects depending only on hidden conversational context;
 - default reads hiding contradiction/posture/provenance;
 - a sprawling tool per relationship when bounded resource traversal can express the same capability.
+
 ---
 
 # 16. Contract test
