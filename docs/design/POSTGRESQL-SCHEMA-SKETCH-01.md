@@ -767,6 +767,10 @@ The next useful step is not more broad doctrine. It is to turn the candidates ab
 2. identity triangle + distinctness conflict + explicit supersession + historical boundary query;
 3. typed forward/reverse provenance query over Claim/Decision dependencies.
 
-Those proofs should run against disposable scratch tables only. They must not create the production Desk schema.
+Those proofs run against a disposable `postgres:18-alpine` container using the same isolation pattern already proven by Observatory: random loopback host port, real connection readiness, numeric major-version assertion, unique temporary database per proof, forced database cleanup, and automatic container teardown.
+
+The host-installed PostgreSQL cluster is not part of the proof contract. Proof results must not depend on its port, configuration, data, or availability.
+
+The proof databases contain disposable scratch tables only. They must not create the production Desk schema or retain a persistent PostgreSQL volume.
 
 If the scratch behavior contradicts this document, change the design document. Do not code around the contradiction.

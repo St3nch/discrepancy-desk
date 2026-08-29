@@ -4,37 +4,102 @@
 
 **Target:** PostgreSQL 18.x
 
+**Execution substrate:** disposable `postgres:18-alpine` container on a random loopback port
+
 **Depends on:** `POSTGRESQL-SCHEMA-SKETCH-01.md`
 
 **Purpose:** Make the three migration-gating scratch proofs executable and falsifiable without creating the production Desk schema.
 
 This document is not a migration or accepted schema. It defines disposable proof tables, session choreography, and pass/fail assertions. If observed PostgreSQL behavior contradicts the design sketch, revise the design rather than coding around the result.
 
+The substrate pattern intentionally follows the proven Observatory test fixture: start `postgres:18-alpine` with `--rm`, bind it only to a dynamically selected `127.0.0.1` port, wait for a real PostgreSQL connection, create isolated temporary databases, and tear everything down after the proof run. The Desk does not depend on a host-installed PostgreSQL cluster for these proofs.
+
 ---
 
-# 1. Scratch database rules
+# 1. Ephemeral PostgreSQL 18 substrate
 
-Use a dedicated database such as:
+## 1.1 Container lifecycle contract
+
+Use exactly the PostgreSQL major targeted by the Desk:
 
 ```text
-discrepancy_desk_foundation_proof_01
+postgres:18-alpine
 ```
 
 Rules:
 
-1. no production Desk schema objects;
-2. no real Evidence or credentials;
-3. all proof objects live in schema `proof`;
-4. record PostgreSQL version and relevant settings before testing;
-5. destroy the scratch database only through an explicitly authorized cleanup path.
+1. choose a free host port dynamically and bind only `127.0.0.1:<random>:5432`;
+2. start the container with a unique name and `--rm`;
+3. use proof-only credentials and no real Desk Evidence, secrets, or production data;
+4. attach no persistent volume;
+5. wait for a real SQL connection before beginning a proof;
+6. verify the **connected server**, not merely the image tag, is PostgreSQL major version 18;
+7. create a unique temporary database for each proof so one proof cannot contaminate another;
+8. force-drop each temporary database after its proof;
+9. stop the container after the proof session, allowing `--rm` to remove it;
+10. a failed teardown is visible test failure/cleanup debt, never permission to reuse unknown state.
 
-Preflight evidence:
+The host PostgreSQL `18/main` cluster currently listening on port `5433` is **not part of this proof substrate**. Its presence or absence must not affect proof results.
+
+## 1.2 Future automated fixture contract
+
+When the Desk has an accepted implementation ticket and test package, the reusable fixture should mirror Observatory's proven behavior:
+
+```text
+session fixture
+  ├─ find free 127.0.0.1 port
+  ├─ docker run --rm postgres:18-alpine
+  ├─ wait using a real psycopg connection
+  ├─ SHOW server_version_num; require major == 18
+  ├─ yield admin DSN
+  └─ docker stop container
+
+per-proof fixture
+  ├─ CREATE DATABASE <unique-name>
+  ├─ yield proof DSN
+  └─ DROP DATABASE ... WITH (FORCE)
+```
+
+This document specifies that contract; it does **not** add Python/pytest infrastructure before the Writer implementation gate.
+
+An explicit environment-selected external DSN may be supported later for CI or controlled diagnostics, but it must fail closed if unreachable or if `SHOW server_version_num` is not major 18. It must never silently fall back to another server after an explicit DSN was supplied.
+
+## 1.3 Preflight evidence
+
+For every proof database, capture:
 
 ```sql
 SELECT version();
+SHOW server_version_num;
 SHOW server_version;
 SHOW track_commit_timestamp;
 ```
+
+The major-version assertion is numeric:
+
+```text
+integer(server_version_num) / 10000 == 18
+```
+
+Do not infer the exercised version from Docker metadata or presentation text alone.
+
+## 1.4 Proof-database isolation
+
+Run the three proofs in three different temporary databases inside the same disposable container session:
+
+```text
+proof A database  admission ordering / concurrency
+proof B database  identity conflict / historical boundary
+proof C database  typed provenance / integrity adversaries
+```
+
+All objects inside each database live under schema `proof`.
+
+Proof A requires **two independent client connections to the same temporary proof-A database** so the advisory-lock behavior is real PostgreSQL concurrency rather than sequential statements in one session.
+
+Proof B and Proof C must begin from newly created empty databases, not from Proof A's mutated state.
+
+After each proof, force-drop its database. At the end of the session, stop the container. No proof database or container volume is retained as authoritative state.
 
 ---
 
@@ -404,6 +469,10 @@ RELEASE SAVEPOINT bad_kind;
 
 For each proof record:
 
+- container image reference used (`postgres:18-alpine`);
+- unique container name and selected loopback host port;
+- connected server `server_version_num` and proof that the numeric major is 18;
+- temporary database name and teardown result;
 - PostgreSQL exact version;
 - relevant settings;
 - exact SQL executed;
@@ -413,3 +482,11 @@ For each proof record:
 - design consequences for `FND-002`, `FND-008`, `FND-009`, `FND-010`, and `FND-011`.
 
 Do not mark an open item resolved merely because the SQL parses. The proof must demonstrate the stated invariant under the adversarial case.
+
+The execution report must also state whether the host-installed PostgreSQL cluster was contacted. The expected answer for this harness is **no**.
+
+---
+
+# 6. Promotion boundary
+
+Once these proofs pass, the successful SQL behavior may inform an accepted spec/ticket for the reusable Desk PostgreSQL test fixture. The fixture implementation itself belongs to the designated Writer and should copy the proven Observatory lifecycle semantics rather than introducing a second PostgreSQL testing convention.

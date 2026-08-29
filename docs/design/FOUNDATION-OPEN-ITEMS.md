@@ -46,7 +46,9 @@ Its leading candidates are: serialized governed admission order; typed same-iden
 
 These are **candidates, not resolved items**. The sketch explicitly keeps `0001_initial` blocked and requires disposable PostgreSQL 18 scratch proofs before physical promotion.
 
-`POSTGRESQL-SCRATCH-PROOF-HARNESS-01.md` is the executable/falsifiable harness for those proofs. Live execution remains required before any affected physical item is promoted; a parsing-only or design-only pass is not sufficient.
+`POSTGRESQL-SCRATCH-PROOF-HARNESS-01.md` is the executable/falsifiable harness for those proofs. Its substrate is a disposable `postgres:18-alpine` container on a random loopback port, with a numeric connected-server major-version assertion and one fresh temporary database per proof. It intentionally does not depend on the host PostgreSQL cluster.
+
+Live execution remains required before any affected physical item is promoted; a parsing-only or design-only pass is not sufficient.
 
 ---
 
