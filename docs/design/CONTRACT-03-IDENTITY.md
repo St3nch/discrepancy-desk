@@ -284,33 +284,9 @@ Rebuildable projections may recompute automatically under their own contracts. G
 
 # 15. LLM Entity read shape
 
-LLM-native Entity reads should be bounded and progressively disclosable.
+The generic LLM read-envelope, pagination, expansion-budget, and available-action contract is owned by `CONTRACT-06-LLM-NATIVE-RECORD-SURFACE.md`.
 
-Default Entity envelope should conceptually include:
-
-- stable Entity ID;
-- preferred display label;
-- current resolution status/cluster summary;
-- bounded key observed names/identifiers;
-- temporal/identity warnings;
-- counts for linked Cases, Claims, Notices, identity Decisions/candidates;
-- available legal expansions.
-
-The default read should not dump every historical Observation/Claim/Case/publication.
-
-The model walks explicitly:
-
-```text
-expand names
-expand identifiers
-expand identity decisions
-expand candidate Notices
-expand Claims
-expand Cases
-expand evidence
-```
-
-> **The model gets doors, not the master key.**
+Identity contributes object-specific requirements to that shared envelope: a stable Entity ID, preferred display label, current resolution/cluster summary, bounded observed names/identifiers, temporal/identity warnings, and discoverable identity Decisions/candidates. Do not create a second Entity-specific read protocol here.
 
 ---
 

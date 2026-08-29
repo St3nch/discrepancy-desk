@@ -62,7 +62,7 @@ Observatory proved several workflow adaptations worth retaining because they pro
 
 1. **Project-local skills override generic/plugin copies.**
 2. **Skill output is working input, not project authority.**
-3. **The Project Steward reconciles vocabulary, architecture, and decisions before they become authority.**
+3. **The Project Steward reconciles vocabulary, architecture, and decisions into proposed authority changes; CHAZ explicitly accepts promotion to project authority.**
 4. **Implementation starts from an exact clean commit.**
 5. **One accepted ticket has one designated Writer.**
 6. **A ticket receives read-only adversarial review before implementation.**
@@ -102,6 +102,7 @@ For the Desk specifically:
 - `CONTEXT.md` is expected to become the concise canonical domain glossary once Foundation Model v2 terminology is reconciled.
 - PostgreSQL 18 is intended to hold the authoritative structured Record; Vault/evidence payload authority is a distinct concern. Do not import Observatory's disposable-PostgreSQL doctrine.
 - skills may propose glossary entries, ADRs, specs, tickets, and implementation changes; they cannot promote their own output to authority.
+- Project Steward reconciliation may produce a proposed authority diff, but promotion itself requires an explicit CHAZ acceptance act. A model role name is not an authority credential.
 - CHAZ remains Product Owner/final human authority.
 - GPT is Project Steward/reviewer unless explicitly changed.
 - a designated Writer implements accepted tickets; no ticket means no implementation.
