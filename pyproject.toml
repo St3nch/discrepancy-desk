@@ -1,0 +1,39 @@
+# FND-PG01 proof-only tooling.
+#
+# Scope boundary (FND-PG01-steward-reconciliation-01.md section 10):
+# this file establishes the minimum Python environment needed to execute and
+# deterministically test the PostgreSQL 18 foundation proof runner. It is NOT
+# the future Desk application package. No production package, migration
+# package, database abstraction, ORM, web framework, or type-check stack
+# belongs here. The Desk application layout remains undecided.
+
+[project]
+name = "discrepancy-desk-proof-tooling"
+version = "0.0.0"
+description = "Proof-only runner for the FND-PG01 PostgreSQL 18 foundation proofs."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "psycopg[binary]==3.3.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.16.2",
+]
+
+[tool.uv]
+# Proof tooling is executed as `python -m tools.postgres_foundation_proofs`
+# from the repository root. It is deliberately not an installable package.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests/proofs"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
