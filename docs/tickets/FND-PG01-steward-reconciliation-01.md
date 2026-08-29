@@ -194,10 +194,12 @@ Do not add a production application package, migration package, database abstrac
 The reviewed fixed argv to target is:
 
 ```text
-["/home/chaz/projects/vedaops/discrepancy-desk/.venv/bin/python", "-m", "tools.postgres_foundation_proofs"]
+["uv", "run", "--offline", "--no-sync", "python", "-m", "tools.postgres_foundation_proofs"]
 ```
 
-The task accepts no proof-selection, DSN, host, port, image, relaxation, or skip flags. Dependency provisioning is a separate Steward commissioning step (`uv sync --frozen` after a reviewed lockfile exists); the bound VedaOps proof task must never install or resolve dependencies at run time.
+Commissioning reconciliation note (2026-08-29): live VedaOps registry validation rejects an absolute path in task `argv[0]` and requires a bare executable name. The finalized binding therefore invokes `uv` from the governed task environment. `--offline` forbids network access and `--no-sync` forbids runtime environment synchronization/provisioning, preserving the original requirement that dependency provisioning is a separate Steward commissioning step (`uv sync --frozen` after a reviewed lockfile exists).
+
+The task accepts no proof-selection, DSN, host, port, image, relaxation, or skip flags. The bound VedaOps proof task must never install or resolve dependencies at run time.
 
 The expected changed-path surface is limited to:
 
