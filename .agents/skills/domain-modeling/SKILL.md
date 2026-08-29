@@ -7,6 +7,24 @@ description: Build and sharpen a project's domain model. Use when discussing cod
 
 Actively build and sharpen the project's domain model as you design. This is the *active* discipline: challenging terms, inventing edge-case scenarios, and writing the glossary and decisions down the moment they crystallise. (Merely *reading* `CONTEXT.md` for vocabulary is not this skill: that's a one-line habit any skill can do. This skill is for when you're changing the model, not just consuming it.)
 
+## Discrepancy Desk preflight
+
+1. Use the canonical project-local skill copy under `.agents/skills/`; Grok Build and Claude Code consume the same adapted skill.
+2. During Foundation Model v2, read `docs/design/FOUNDATION-MODEL-V2.md` and the relevant `docs/design/CONTRACT-*.md` files before proposing model changes.
+3. `docs/design/` is non-authoritative workshop material. Do not silently treat a committed design draft as settled Product authority.
+4. Once accepted, the Desk expects one concise root `CONTEXT.md` as the canonical ubiquitous-language glossary. Do not create `CONTEXT-MAP.md` or multiple bounded-context glossaries unless the actual project later proves that need.
+5. The Project Steward reconciles accepted vocabulary and ADRs into authority. During the foundation phase this skill proposes; it does not self-promote proposals.
+
+## Desk modeling rules
+
+- Preserve `Observation → Claim → Decision`; do not collapse source-local evidence, proposition, and human authority.
+- Treat Case as scope of investigative attention unless a worked example proves Case-local truth is necessary.
+- Prefer one candidate-intelligence envelope over noun proliferation.
+- Identity resolution must remain reversible and must not rewrite historical evidence provenance.
+- Relationship is currently a Claim shape/projection, not a second truth system, unless evidence forces a different model.
+- Preserve temporal precision and disagreement rather than normalizing them into false certainty.
+- A brainstorm phrase does not become a domain noun until a concrete scenario proves the concept is distinct.
+
 ## File structure
 
 Most repos have a single context:
