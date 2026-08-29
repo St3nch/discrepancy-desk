@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Node
+node_modules/
+coverage/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Runtime
+data/
+runtime/
+tmp/
+
+# Local design/archive material
+.scratch/
+archive/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Claude / Grok local state
+.claude/settings.local.json
+.grok/sessions/
