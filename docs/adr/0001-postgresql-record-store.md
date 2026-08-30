@@ -1,0 +1,3 @@
+# PostgreSQL 18 is the authoritative structured Record store
+
+The current rebuild deliberately supersedes the previous Desk implementation's SQLite stack decision. PostgreSQL 18 is the authoritative store for structured Record state; immutable evidence payload authority remains a distinct Vault concern. FND-PG01 proved selected PostgreSQL behaviors only and did not create or bless a production schema, so each product ticket should introduce only the schema/migration surface its vertical slice actually needs. This ADR does not choose the eventual HTTP/UI framework or turn the proof-only Python environment into the application package.

@@ -1,0 +1,3 @@
+# File is the investigation identity; discrepancy is an investigative handle
+
+The product/operator term **File** and the Foundation Model term **Case** name the same durable scope of investigative attention; they must not become separate objects or truth stores. Public File identity is domain-neutral (`DD-####`) while Domain remains classification/navigation. A File-scoped discrepancy (`D##`) is a durable handle containing a concise question/description, minimal lifecycle, links to supporting Record material, and update history; it is not a new proposition authority, global ontology, or proof that any explanation is true.

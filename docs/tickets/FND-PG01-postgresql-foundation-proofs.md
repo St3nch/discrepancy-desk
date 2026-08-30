@@ -94,3 +94,24 @@ The designated Writer must answer these before implementation:
 6. Confirm the changed-path surface and justify why no production schema/migration/application path is needed.
 
 Implementation does not begin until the Steward accepts the adversarial pre-implementation review.
+
+## Steward commissioning acceptance — 2026-08-30
+
+FND-PG01 is commissioned and accepted as a **foundation checkpoint**, not as a production schema milestone.
+
+The governed VedaOps PostgreSQL execution used PostgreSQL 18 (`server_version_num = 180006`) and reported:
+
+- **Proof A PASS** — advisory-lock admission ordering was physically exercised, including rollback/sequence-gap behavior;
+- **Proof B PASS** — historical identity projection, explicit conflict state, supersession/repair, and historical reconstruction were physically exercised;
+- **Proof C PASS** — typed provenance, forward/reverse traversal, and exact default-deny adversaries were physically exercised;
+- all proof databases and the disposable PostgreSQL substrate were removed after execution;
+- no production Desk schema or migration was created.
+
+Steward consequence:
+
+- `FND-002` received partial physical evidence;
+- `FND-008` received candidate projection evidence;
+- `FND-010` received typed/default-deny candidate evidence;
+- `FND-009` and `FND-011` were not exercised by this checkpoint.
+
+This acceptance does **not** authorize another general foundation-proof series. Remaining physical questions should be resolved when a real vertical product slice encounters them. `docs/adr/0001-postgresql-record-store.md` records the promoted Record-store decision; successful scratch SQL is evidence for implementation choices, not the production schema itself.

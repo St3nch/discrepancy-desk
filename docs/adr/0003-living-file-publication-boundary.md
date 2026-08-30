@@ -1,0 +1,3 @@
+# Living Files project forward; Publications preserve exact approved history
+
+The Desk may maintain a current living File report while public history remains immutable. A Publication records an exact human-authorized rendition/revision and later Record changes never silently rewrite it; factual/assessment/discrepancy/correction changes are material and require exact re-authorization, while non-material copy edits may use a lighter CHAZ-authority path but still leave revision history. Quinton Clearance is a presentation voice over governed File/Record material and has no Capture, Observation, Claim, Decision, or Notice-disposition write authority.
