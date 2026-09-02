@@ -1,6 +1,6 @@
 # FILE-01: First real investigative File
 
-**Status:** draft — Product subject and File identity selected; awaiting verified initial source corpus and technical pre-implementation reconciliation
+**Status:** draft — Product subject, File identity, and initial source corpus selected; awaiting technical pre-implementation reconciliation
 
 **Owner:** Project Steward
 
@@ -8,7 +8,7 @@
 
 **Implementation start commit:** TBD. Implementation must start from the exact clean authority commit accepted by the Steward.
 
-**Blocked by:** Verify and name the initial real source corpus, then complete the ticket's technical pre-implementation review. No other foundation program is a prerequisite.
+**Blocked by:** Complete the ticket's technical pre-implementation review against the selected real corpus. No other foundation program is a prerequisite.
 
 ## Goal
 
@@ -26,6 +26,46 @@ This ticket is intentionally **not** the website, Quinton, X/social, autonomous 
 The investigation is not framed as either “Was it aliens?” or “Debunk Rendlesham.” The available Record may support mostly explained events, narrative growth, genuinely strange details, remaining unknowns, or a combination.
 
 The D01 wording is an investigative starting question, not a predetermined conclusion. It may be reconciled against the verified corpus before this ticket is accepted.
+
+## Initial source corpus
+
+The initial corpus is selected for ticket design, not yet captured into the Desk. Acquisition must preserve the retrieved bytes, retrieval metadata, source identity, and the limitations below. A working URL is an acquisition route, not proof that the host is the origin or evidentiary authority.
+
+### 1. MoD File DEFE 24/1948/1
+
+- **Role in the File:** Official archival compilation containing Lieutenant Colonel Charles Halt's signed “Unexplained Lights” memorandum and later government/public correspondence about the incident.
+- **Official identity:** [The National Archives catalogue record C10342055](https://discovery.nationalarchives.gov.uk/details/r/C10342055), reference `DEFE 24/1948/1`.
+- **Acquisition candidate:** [Public PDF mirror](https://documents.theblackvault.com/documents/ufos/UK/defe-24-1948.pdf).
+- **Required treatment:** Capture the complete available PDF as one Artifact. Represent the Halt memorandum as a bounded document Surface/Locator within that Artifact; do not count the embedded memorandum as a second independent source.
+- **Provenance limit:** The archival reference and file identity are official, but the available bytes are retrieved from a non-official mirror. The file is a later compilation, not 191 pages of contemporaneous material. Record the retrieval chain, hash, page count, and any completeness uncertainty rather than labelling the mirror itself an MoD original.
+
+### 2. Halt field recording access copy
+
+- **Role in the File:** Audio recorded by Halt's party during the early-hours forest investigation.
+- **Acquisition candidate:** [Public MP3 access copy](https://avalonlibrary.net/Rendlesham_Forest_incident_1980/The_December_1980_Bentwaters_Charles_Halt_tape.mp3).
+- **Provenance companion:** [Ian Ridpath's annotated transcript and recording-history note](https://avalonlibrary.net/Rendlesham_Forest_incident_1980/Transcript%20of%20Colonel%20Halt%20Tape%20(Ian%20Ridpath).pdf).
+- **Required treatment:** Capture the audio bytes as an access-copy Artifact. Create only the bounded, time-coded transcript Surface needed by admitted Observations and link it to exact audio ranges. If the Ridpath PDF is captured, treat it as a separately authored source Artifact, not as a Desk-derived transcript Surface.
+- **Provenance limit:** The candidate MP3 is not established as the original microcassette or a first-generation official copy. Available recording history describes researcher copies released in 1984 and later copying through loudspeaker/microphone playback. Do not label the captured MP3 “the original” or silently infer official MoD custody from web availability.
+
+### 3. Suffolk Constabulary record packet
+
+- **Role in the File:** Seven-page police packet containing contemporaneous December 26 call/station entries and later police correspondence, including the responding officer's account of the marks and the visible Orford lighthouse.
+- **Historical official publication identity:** Suffolk Constabulary publication-scheme document ID `cdf0ea85-e6d5-4a75-bcd4-cb5e385eb526`.
+- **Acquisition candidate:** [Internet Archive PDF mirror](https://archive.org/download/BritishUFOFiles/unusuallights.pdf).
+- **Required treatment:** Capture the complete packet as one Artifact. Use page/region Locators that distinguish the contemporaneous entries from the 1983 and 1999 retrospective material.
+- **Provenance limit:** The former first-party download is no longer available at its historical URL. The packet carries strong internal official identity, but the transfer to the current mirror and completeness of the release are not independently established. Record that limitation explicitly.
+
+### Optional institutional context
+
+The official [MoD FOI response dated May 11, 2015](https://assets.publishing.service.gov.uk/media/5a7f599240f0b6230268ef6d/20150511-FOI2015-03810-Rendlesham-Redacted-Final-Response.pdf) may be captured if the implementation needs a first-party source for later archival disposition. It is context about held/transferred records, not contemporaneous incident evidence and not a substitute for the three core sources.
+
+### Deferred image lead
+
+The early landing-site photograph attributed to Master Sergeant Ray Gulyas remains a useful lead, but it is not admitted to the initial corpus. Current public reproductions do not yet establish the exact source bytes, complete custody chain, or reuse rights. FILE-01 must not launder a later web reproduction into “original photographic evidence” merely to check an image-media box.
+
+### Corpus boundary
+
+The three numbered sources are the implementation corpus unless the technical review identifies a concrete evidence-walkback blocker. Any substitution or material addition requires Steward reconciliation before implementation. The document-plus-audio mix is sufficient to prove media-neutral evidence authority in this slice; video and image processing remain deferred.
 
 ## Required end-to-end behavior
 
@@ -56,11 +96,9 @@ The Writer should implement only the schema, storage, operations, and operator-r
 
 ### 2. Capture real sources
 
-- Manually acquire a small verified corpus relevant to `DD-7225`.
-- The minimum corpus must include:
-  - at least one contemporaneous or official document;
-  - the Halt audio recording from the best available source with documented provenance and provenance limits;
-  - one additional verified item, preferably a genuinely useful contemporaneous image. If no suitable image can be authenticated, use another official/contemporaneous record and record the image gap rather than admitting dubious material.
+- Manually acquire the three-source corpus selected above for `DD-7225`.
+- Preserve the official/archive identity separately from the actual acquisition host and retrieval event.
+- Do not expand or substitute the corpus without Steward reconciliation.
 - Each acquisition creates a Capture receipt.
 - Preserve immutable original source bytes/material as Artifacts in the smallest truthful Vault shape needed by this slice.
 - Create frozen inspectable/citable Surfaces and durable Locators sufficient for the admitted Observations. Text/document material may use bounded textual regions; audio requires time ranges; an admitted image may use the whole image or a bounded region.
@@ -144,8 +182,8 @@ For audio-derived report material, walkback must continue through the transcript
 ## Acceptance behavior
 
 - [ ] `DD-7225` exists with stable public identity, separate internal identity, and honest temporal metadata independent of its non-semantic filing number.
-- [ ] A verified small corpus is captured through the implemented path, including at least one contemporaneous/official document, the Halt audio recording, and one additional verified item.
-- [ ] The corpus records source provenance and material provenance limits rather than silently treating availability as authenticity.
+- [ ] The selected DEFE 24/1948/1 compilation, Halt audio access copy, and Suffolk Constabulary packet are captured through the implemented path.
+- [ ] The corpus records official/source identity, acquisition host, retrieval event, and material provenance limits separately rather than silently treating availability as authenticity.
 - [ ] Original captured media remains evidence authority; each used derived Surface retains explicit lineage to it.
 - [ ] A representative audio Observation resolves through a time-range Locator to the preserved recording. If an image is admitted, representative image material resolves through a whole-image or bounded-region Locator.
 - [ ] A recapture creates a new Capture receipt without overwriting prior acquisition history.
@@ -164,7 +202,7 @@ Before mutation, the designated Writer must inspect the accepted authority and a
 
 1. What is the smallest application/module boundary required now that `pyproject.toml` is explicitly proof-only?
 2. What minimal production migration/bootstrap mechanism should this first PostgreSQL slice use, and why is it no broader than FILE-01 needs?
-3. What exact Vault payload shape is sufficient for the verified document, audio, and optional image forms while preserving immutable source versions, derived-Surface lineage, and durable media-appropriate Locators?
+3. What exact Vault payload shape is sufficient for the selected document and audio forms while preserving immutable source versions, derived-Surface lineage, and durable media-appropriate Locators?
 4. Where is the human-Decision authority seam enforced so no model/Run path can invoke it?
 5. Show the proposed report-to-Capture reverse walkback for representative document and audio material before implementation and identify every durable relation it requires.
 6. Identify any requirement above that the verified Rendlesham corpus makes dishonest or impossible, rather than silently substituting toy data or weakly sourced media.
