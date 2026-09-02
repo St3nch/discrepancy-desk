@@ -9,8 +9,8 @@ The durable investigation and scope of attention around one subject. The Foundat
 _Avoid_: Case as a separate domain object, dossier
 
 **File ID**:
-The durable public/tool-facing identifier for a File, using a domain-neutral form such as `DD-0001`. Internal storage identity is separate; Domain classification is not encoded into File identity.
-_Avoid_: domain-coded primary identity such as `QANON-0001`
+The durable public/tool-facing identifier for a File, using a domain-neutral form such as `DD-7225`. The filing number is non-semantic and non-sequential: it does not encode creation order, archive size, Domain, priority, truth, or another investigative judgment. Internal storage identity and honest creation/admission/revision metadata remain separate.
+_Avoid_: domain-coded identity such as `QANON-0001`, sequential allocation presented as archive order, inferring archive size from a File ID
 
 **Domain**:
 A broad subject area used for classification and navigation, such as UFO/UAP or QAnon. A File may relate to more than one Domain without changing identity.
@@ -62,7 +62,7 @@ A File-scoped durable handle for something in the available Record that does not
 _Avoid_: proof of conspiracy, truth score, global discrepancy graph
 
 **Discrepancy ID**:
-A stable identifier scoped to one File, such as `D01` within `DD-0001`.
+A stable identifier scoped to one File, such as `D01` within `DD-7225`.
 
 ## Work, presentation, and publication
 

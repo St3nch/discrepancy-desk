@@ -17,8 +17,14 @@ The current repository is a **rebuild**. FND-PG01 established a bounded PostgreS
 
 ## Current phase
 
-The next product milestone is the first real investigative File (`DD-0001`): capture real source material, admit source-local Observations, represent Claims without laundering source assertions into truth, record a human Decision, preserve a file-scoped Discrepancy, and render a living internal report with evidence walkback.
+The next product milestone is the first real investigative File: `DD-7225`, concerning the Rendlesham Forest incident of December 1980.
 
-The subject of `DD-0001` is a Product Owner decision and is intentionally not invented by the repository.
+The working investigation question is:
+
+> What does the contemporaneous record establish about the Rendlesham Forest incident, how did the story change in later retellings, and which reported details remain unexplained after the strongest conventional explanations are considered?
+
+FILE-01 will capture a small verified mixed-media corpus, admit source-local Observations, represent Claims without laundering source assertions into truth, record a human Decision, preserve a File-scoped Discrepancy, and render a living internal report with evidence walkback. Original media remains evidence authority; OCR, transcripts, frames, and other derived Surfaces never silently replace it.
+
+`DD-7225` is a non-semantic archival filing number. It does not mean this was the 7,225th File or reveal the Desk's real creation order.
 
 No website, Quinton publishing workflow, X integration, giant ontology, or additional foundation program is required before that tracer-bullet slice.
