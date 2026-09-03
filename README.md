@@ -96,10 +96,14 @@ creation order, File count, Domain, priority, or truth.
 
 ## Current work boundary
 
-FILE-01's read-only technical design review and bounded real-corpus verification are
-complete. The ticket remains a draft pending final Steward confirmation of the positive
-Decision seam and smallest application/migration/Vault shape, followed by an exact clean
-Writer start commit.
+FILE-01's read-only technical design review, bounded real-corpus verification, and final
+Steward reconciliation are complete. The ticket is accepted for one bounded implementation
+Writer. The exact clean implementation start commit is pinned in the governed Writer dispatch.
+
+Implementation and integration tests may use disposable PostgreSQL 18. Reacquiring the
+accepted corpus onto the VPS, creating a persistent database and runtime credentials, choosing
+the absolute Desk data root, admitting the first real Record, and recording CHAZ's exact first
+Decision remain explicit runtime gates.
 
 It does not include a public website, Quinton production, X/social tooling, autonomous
 research, broad Workspace UX, a universal ontology, graph-as-truth, general OCR or media

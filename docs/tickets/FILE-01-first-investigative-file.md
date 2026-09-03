@@ -1,14 +1,14 @@
 # FILE-01: First real investigative File
 
-**Status:** draft — bounded corpus verified; awaiting final Steward reconciliation of the Decision and application seams before acceptance
+**Status:** accepted — ready for one bounded implementation Writer
 
 **Owner:** Project Steward
 
-**Active Writer:** Assigned operationally when implementation begins. Any capable available model may serve, but only one Writer may mutate the shared worktree at a time.
+**Active Writer:** Unassigned. Any capable available model may serve, but only one Writer may mutate the shared worktree at a time.
 
-**Implementation start commit:** TBD. Implementation must start from the exact clean authority commit accepted by the Steward.
+**Implementation start commit:** Pin the exact clean HEAD in the governed Writer dispatch. The dispatch record is the operational authority for this value; it must point at a commit containing this accepted ticket.
 
-**Blocked by:** Confirm the smallest positive Decision-capability seam and application/migration/Vault shape, then accept the ticket and pin its clean Writer start commit. No other foundation program is a prerequisite.
+**Blocked by:** None for code implementation. Real source acquisition, persistent database/bootstrap, new credentials, and the first human Decision remain explicit runtime gates stated below. No other foundation program is a prerequisite.
 
 ## Goal
 
@@ -29,7 +29,7 @@ D01 is an open, event-bounded investigative question, not a predetermined conclu
 
 ## Bounded corpus verification gate
 
-Before implementation begins, CHAZ must authorize one bounded verification pass over the core candidate URLs named below: the National Archives catalogue record, the mirrored MoD PDF, the Halt audio access copy, the Ridpath provenance companion, and the mirrored Suffolk packet. The optional FOI response is excluded unless the Steward later identifies a concrete need.
+CHAZ authorized one bounded verification pass over the core candidate URLs named below: the National Archives catalogue record, the mirrored MoD PDF, the Halt audio access copy, the Ridpath provenance companion, and the mirrored Suffolk packet. The optional FOI response was excluded.
 
 This pass is research and ticket verification, not Capture or Record admission. It must make no provider purchase and must not invent substitutes. For each candidate, record in this ticket what was actually observed: availability and redirects, retrieval time, media type, byte size, SHA-256 digest, page/duration metadata where applicable, usable text-layer status for PDFs, asserted identity and its asserting source, and custody/completeness limitations. Facts currently described below as expected must be corrected if the retrieved material disagrees.
 
@@ -228,7 +228,102 @@ For audio-derived report material, walkback must continue through any transcript
 - Introduce only the smallest application/package and forward migration/bootstrap surface needed for FILE-01. Exact module names, table names, surrogate-key types, migration implementation, and Vault fan-out are implementation choices unless another accepted authority constrains them.
 - Do not import proof-only parsing or schema assumptions into the application merely because they exist.
 - If application packaging changes `pyproject.toml` or `uv.lock`, preserve the governed `postgres-foundation-proofs` execution contract, make application tests discoverable by the governed `test` task, and explicitly re-provision and verify the environment rather than assuming `uv run --offline --no-sync` will adapt.
-- A persistent PostgreSQL 18 substrate and any new credential or privilege boundary require their own CHAZ authorization before real Record admission. They are not permission to start another foundation program.
+- A persistent PostgreSQL 18 substrate and any new credential or privilege boundary require their own CHAZ authorization before real Record admission. They are not prerequisites for implementing and proving the slice against governed disposable PostgreSQL 18, and they are not permission to start another foundation program.
+
+## Accepted implementation boundary
+
+The following choices are accepted for FILE-01. They are deliberately narrower than a complete
+Desk architecture.
+
+### Application shape
+
+- Keep one root uv project and one lockfile for the application and the completed proof tooling.
+- Add the production package under `src/discrepancy_desk/` and application tests under
+  `tests/desk/`. Preserve `tools/postgres_foundation_proofs/` and `tests/proofs/`.
+- Convert the existing proof-only package configuration only as far as required to make the
+  application importable and both test suites discoverable. Do not add an ORM, web framework,
+  migration framework, provider SDK, or another runtime dependency; `psycopg` and the Python
+  standard library are sufficient for this slice.
+- Preserve five cohesive seams: database admission/migration; Vault and evidence handling;
+  Record semantics; report/walkback reads; and operator command composition. These are
+  responsibilities, not a mandated one-file-per-seam layout. Prefer deep modules with small
+  interfaces over pass-through wrappers.
+- The application performs no network acquisition. An operator supplies a local file plus
+  observed retrieval metadata to Capture. The application must hash, verify, preserve, and admit
+  that material; it must never imply that it observed the socket transfer itself.
+
+### PostgreSQL migration and admission
+
+- Introduce one forward-only production SQL migration containing only the FILE-01 schema.
+- Use a minimal migration ledger containing migration version, filename, SHA-256 digest, and
+  application time. Hold an advisory lock while applying migrations and refuse to continue when
+  the recorded digest for an applied migration no longer matches. Do not add Alembic,
+  autogeneration, down migrations, branching, or a seed framework.
+- Keep role/bootstrap work separate from schema migration because role creation requires elevated
+  authority and new credentials.
+- Carry the already-proved lock-first admission ordinal into production writes. Every governed
+  semantic row must point to its admission. Commit-timestamp finalization and civil-time
+  `as_of` semantics remain outside FILE-01; ordinary timestamps must not be presented as that
+  deferred receipt.
+- Governed Record tables are append-only for this slice. Deny `UPDATE`, `DELETE`, and
+  `TRUNCATE` to runtime roles and defend the invariant in the database, not only in application
+  code.
+- Do not import the proof harness DSN parser or scratch schema. Reuse the proved behavior, not its
+  disposable implementation.
+
+### Vault and evidence contracts
+
+- Require an operator-configured absolute `DESK_DATA_ROOT` for write operations and fail closed
+  when it is absent, relative, or unusable. Keep the Vault outside Git.
+- Store Artifact and frozen-Surface payloads by SHA-256 content address beneath that root. Writes
+  must be atomic and non-overwriting; a successful write returns only after recomputing and
+  matching digest and byte size.
+- PostgreSQL records the hash algorithm, digest, byte size, media type, Vault reference, Capture
+  receipt, and lineage. Rebuildable text or bounded selections may also be stored in PostgreSQL
+  only as explicitly non-authoritative conveniences.
+- Freeze only the locator contracts the verified corpus needs:
+  - `document_page_char_range`: a one-based page plus half-open character range into an
+    immutable UTF-8, NFC-normalized page-text Surface;
+  - `document_page`: a one-based whole-page address into a captured PDF Artifact, used to anchor
+    bounded operator transcription for the image-only or corrupt-text pages;
+  - `media_time_range`: a half-open integer-millisecond range into the captured audio Artifact.
+- Every Locator carries a contract version and one exact typed target. Unsupported kinds and
+  invalid bounds fail closed. Geometric page regions are deferred until a real citation needs
+  precision below the page.
+- `Excerpt` may be a durable row or stable projection. In either form it must be reproducible
+  from the exact Locator target and selection contract.
+
+### Human Decision capability
+
+- Enforce the seam first with PostgreSQL privileges. A non-login owner owns the schema. The
+  ordinary Desk runtime role can read and append the non-Decision Record but cannot insert a
+  Decision or Decision-effect/supersession relation. A separate human-authority role can read the
+  required context and append only the Decision admission surface it needs. Neither runtime role
+  may update, delete, truncate, own the schema, or grant itself privileges.
+- Ordinary application code reads only `DESK_POSTGRES_URL`. The Decision operator path reads a
+  distinct `DESK_HUMAN_POSTGRES_URL`, refuses when it is absent, and never falls back to the
+  ordinary credential. Credentials do not enter the repository.
+- Prove the negative path in PostgreSQL: an attempted Decision write using the ordinary role must
+  fail with SQLSTATE `42501` (`insufficient_privilege`). Prove the positive path through the
+  separately granted operator capability.
+- This establishes capability separation, not a human identity system. F13 remains deferred. The
+  real FILE-01 Decision is admitted only after CHAZ supplies and authorizes its exact content.
+
+### Verification and expected change surface
+
+- Run application integration tests through the governed `test` task against disposable
+  PostgreSQL 18. The VedaOps task was verified at the acceptance baseline to receive
+  `VEDAOPS_POSTGRES_URL`; application runtime configuration remains `DESK_POSTGRES_URL`.
+- Preserve and rerun the unchanged `postgres-foundation-proofs` task plus lint and format checks.
+- Expected implementation paths are `src/discrepancy_desk/**`, `tests/desk/**`,
+  `pyproject.toml`, `uv.lock` when dependency metadata actually changes, and concise authority
+  or operator documentation updates required by the delivered behavior.
+- Changes under `tools/postgres_foundation_proofs/**` or `tests/proofs/**` are not expected.
+  A compatibility repair there requires explicit Writer justification and Steward review.
+- Before real Capture and Record admission, CHAZ must separately authorize: reacquisition of the
+  accepted URLs onto the VPS; a dedicated persistent PostgreSQL 18 target and local runtime
+  roles/credentials; the absolute Desk data root; and the exact first human Decision. Those gates
+  do not block implementation in disposable infrastructure.
 
 ## Explicitly out of scope
 
@@ -272,16 +367,17 @@ For audio-derived report material, walkback must continue through any transcript
 
 ## Technical review disposition
 
-The read-only technical review is complete and has been reconciled into this draft. It established the behavioral seams above but did not settle its proposed seven-module package, exact SQL/table layout, custom migration ledger, Vault directory fan-out, three fixed Locator kinds, or two-login-role design. Those remain candidate implementation choices, not project authority.
+The read-only technical review and the bounded corpus verification are complete. The Steward
+accepted their behavioral findings, rejected premature module/table proliferation, and settled
+only the minimum implementation contracts above.
 
-Before the ticket becomes accepted:
+The ticket is accepted for one Writer. The exact clean implementation start commit is pinned in
+the governed Writer dispatch so it cannot drift between assignment and execution. No persistent
+database, credential, source acquisition, human Decision, public action, or push is implied by
+ticket acceptance.
 
-1. **Complete —** CHAZ authorized the bounded corpus verification gate on September 3, 2026.
-2. **Complete —** the Steward recorded and reconciled the observed corpus facts, selected the honest media-specific Locator paths, and bound D01 to the Halt-recording event without erasing the source-level date conflict.
-3. **Pending —** the Steward confirms the smallest positive Decision-capability seam and the smallest application/migration/Vault shape without reopening FND-PG01.
-4. **Pending —** the Steward accepts this ticket and pins the exact clean Writer start commit.
-
-A persistent PostgreSQL 18 target and any new credentials are authorized separately before real bootstrap/admission. No implementation Writer begins while this ticket remains draft.
+A persistent PostgreSQL 18 target and new runtime credentials are authorized separately before
+real bootstrap/admission.
 
 ## Deferred capability record
 
