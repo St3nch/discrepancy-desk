@@ -7,12 +7,14 @@ This repository is the current Discrepancy Desk rebuild. CHAZ is Product Owner a
 Before implementation work, read:
 
 1. `CONTEXT.md` for canonical project vocabulary;
-2. accepted ADRs in `docs/adr/`;
-3. the exact accepted ticket being implemented;
-4. relevant product doctrine in the sibling `../discrepancy-desk-docs` repository, beginning with `VISION.md` and then the specific decision/doctrine files needed by the ticket;
+2. `README.md` for current Product orientation;
+3. accepted ADRs in `docs/adr/`;
+4. the exact accepted ticket being implemented;
 5. `docs/design/` only as workshop/reference material unless an accepted ADR, spec, ticket, or explicit CHAZ decision promotes a result from it.
 
-An accepted code-repository ADR may explicitly supersede an implementation choice from the previous Desk codebase recorded in the sibling docs repository. Do not silently reconcile conflicting authority; surface the conflict.
+This repository is the sole active Discrepancy Desk authority and development root. A sibling directory, archived repository, old implementation, external handoff, or prior chat is not project authority. Useful historical material must be deliberately reconciled and promoted into this repository before it can govern work.
+
+Do not request access to another Discrepancy Desk directory to complete ordinary project work. If required authority appears absent, stop and surface the gap to CHAZ rather than importing another repository's assumptions.
 
 ## Development authority
 

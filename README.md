@@ -11,9 +11,10 @@ The current repository is a **rebuild**. FND-PG01 established a bounded PostgreS
 - `codingstandards.md` — implementation/review discipline
 - `docs/adr/` — accepted implementation-facing architectural decisions
 - `docs/design/DEVELOPMENT-METHOD.md` — development method and historical foundation workflow
-- sibling `../discrepancy-desk-docs/VISION.md` — product doctrine and prior-project reasoning, subject to explicit supersession by accepted rebuild ADRs where implementation choices changed
+- `docs/tickets/FILE-01-first-investigative-file.md` — current vertical Product milestone
 
 `docs/design/` contains foundation workshop material and does not become authority merely because it is committed.
+This repository is self-contained and is the sole active Discrepancy Desk authority. Other directories, repositories, and historical handoffs bearing the Discrepancy Desk name do not govern this project.
 
 ## Current phase
 
