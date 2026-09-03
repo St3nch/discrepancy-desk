@@ -1,6 +1,6 @@
 # FILE-01: First real investigative File
 
-**Status:** accepted — ready for one bounded implementation Writer
+**Status:** implementation accepted — real FILE-01 runtime commissioning pending
 
 **Owner:** Project Steward
 
@@ -371,13 +371,16 @@ The read-only technical review and the bounded corpus verification are complete.
 accepted their behavioral findings, rejected premature module/table proliferation, and settled
 only the minimum implementation contracts above.
 
-The ticket is accepted for one Writer. The exact clean implementation start commit is pinned in
-the governed Writer dispatch so it cannot drift between assignment and execution. No persistent
-database, credential, source acquisition, human Decision, public action, or push is implied by
-ticket acceptance.
+The bounded FILE-01 application implementation is accepted. Steward verification on September 3,
+2026 ran format and lint checks, the unchanged FND-PG01 PostgreSQL 18 proof suite, and the full
+application test suite against governed disposable PostgreSQL 18. After repairing one malformed
+SQL fragment in the new production migration, the application suite completed with 268 passing
+tests. No real File Record, persistent database, credential, source acquisition, human Decision,
+public action, or push occurred during implementation acceptance.
 
-A persistent PostgreSQL 18 target and new runtime credentials are authorized separately before
-real bootstrap/admission.
+FILE-01 remains open for real runtime commissioning. A persistent PostgreSQL 18 target and new
+runtime credentials, the absolute Desk data root, reacquisition of the accepted corpus onto the
+VPS, real Record admission, and CHAZ's exact first Decision remain separate explicit gates.
 
 ## Deferred capability record
 

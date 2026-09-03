@@ -1,16 +1,9 @@
-# FND-PG01 proof-only tooling.
-#
-# Scope boundary (FND-PG01-steward-reconciliation-01.md section 10):
-# this file establishes the minimum Python environment needed to execute and
-# deterministically test the PostgreSQL 18 foundation proof runner. It is NOT
-# the future Desk application package. No production package, migration
-# package, database abstraction, ORM, web framework, or type-check stack
-# belongs here. The Desk application layout remains undecided.
+# Discrepancy Desk application and preserved FND-PG01 proof tooling.
 
 [project]
-name = "discrepancy-desk-proof-tooling"
+name = "discrepancy-desk"
 version = "0.0.0"
-description = "Proof-only runner for the FND-PG01 PostgreSQL 18 foundation proofs."
+description = "Private evidence-first investigative Record system."
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "psycopg[binary]==3.3.4",
@@ -23,18 +16,15 @@ dev = [
 ]
 
 [tool.uv]
-# Proof tooling is executed as `python -m tools.postgres_foundation_proofs`
-# from the repository root. It is deliberately not an installable package.
-package = false
+# FILE-01 is importable as an application while preserving the root proof runner.
+package = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests/proofs"]
+testpaths = ["tests/proofs", "tests/desk"]
 addopts = "-q"
-# The proof tooling is executed as `python -m tools.postgres_foundation_proofs`
-# from the repository root and is deliberately not an installable package, so
-# the canonical governed task `uv run pytest` needs the root on sys.path. The
-# console script does not add it the way `python -m pytest` does.
-pythonpath = ["."]
+# Keep the root for `tools.postgres_foundation_proofs` and add the production
+# src tree for `python -m discrepancy_desk`.
+pythonpath = [".", "src"]
 
 [tool.ruff]
 line-length = 100

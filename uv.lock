@@ -12,9 +12,9 @@ wheels = [
 ]
 
 [[package]]
-name = "discrepancy-desk-proof-tooling"
+name = "discrepancy-desk"
 version = "0.0.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },
 ]
