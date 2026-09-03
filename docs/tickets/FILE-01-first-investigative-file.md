@@ -1,6 +1,6 @@
 # FILE-01: First real investigative File
 
-**Status:** draft — technical design review reconciled; awaiting CHAZ-authorized bounded corpus verification and final Steward acceptance
+**Status:** draft — bounded corpus verified; awaiting final Steward reconciliation of the Decision and application seams before acceptance
 
 **Owner:** Project Steward
 
@@ -8,7 +8,7 @@
 
 **Implementation start commit:** TBD. Implementation must start from the exact clean authority commit accepted by the Steward.
 
-**Blocked by:** Complete the bounded corpus verification pass below and reconcile its observed results into this ticket. No other foundation program is a prerequisite.
+**Blocked by:** Confirm the smallest positive Decision-capability seam and application/migration/Vault shape, then accept the ticket and pin its clean Writer start commit. No other foundation program is a prerequisite.
 
 ## Goal
 
@@ -25,7 +25,7 @@ This ticket is intentionally **not** the website, Quinton, X/social, autonomous 
 
 The investigation is not framed as either “Was it aliens?” or “Debunk Rendlesham.” The available Record may support mostly explained events, narrative growth, genuinely strange details, remaining unknowns, or a combination.
 
-D01 is an open, event-bounded investigative question, not a predetermined conclusion. It may close as adequately explained without failing this ticket. The corpus verification pass must pin the exact event/night description supported by the material before final ticket acceptance.
+D01 is an open, event-bounded investigative question, not a predetermined conclusion. It may close as adequately explained without failing this ticket. It is bound to the forest investigation preserved on the Halt recording. The Ridpath companion dates that recording to the early hours of December 28, while the Halt memorandum in the mirrored MoD compilation uses December 27 and 29 dates. FILE-01 must preserve that source-level dating tension rather than silently normalize it.
 
 ## Bounded corpus verification gate
 
@@ -35,13 +35,63 @@ This pass is research and ticket verification, not Capture or Record admission. 
 
 Final corpus selection, Locator path, and the Writer start commit are pinned only after the Steward reconciles those observations. Link rot or a materially different object requires explicit corpus reconciliation; it does not authorize silent substitution.
 
+### Verification result — September 3, 2026
+
+CHAZ authorized the bounded pass. Retrieval began at `2026-09-03T13:05:12Z`. No purchase, provider credential, substitution, optional FOI retrieval, Record admission, or publication occurred. SHA-256 was computed with GNU coreutils 9.4; PDF inspection used Poppler 26.05.0; audio inspection used FFmpeg/ffprobe 6.1.1.
+
+#### National Archives catalogue identity
+
+- The direct Discovery record route returned HTTP 202 with a zero-byte body and required a JavaScript/robot challenge. It supplied no citable record payload and therefore no Capture candidate.
+- The official National Archives [UFO reports collection page](https://www.nationalarchives.gov.uk/explore-the-collection/explore-by-time-period/postwar/ufo-reports/) independently identifies “Correspondence on the Rendlesham Forest incident,” dated December 1980, as catalogue reference `DEFE 24/1948/1`. It also says the single-sheet report is the only event record in its holdings and that the surrounding file material is largely later handling and correspondence.
+- This verifies the catalogue reference and broad archival description. It does **not** prove that the Black Vault bytes are identical to a National Archives distribution.
+
+#### Mirrored MoD compilation
+
+- Retrieval: HTTP 200 from the named Black Vault route; no redirect; response `Content-Type: application/pdf`.
+- Bytes: `88,169,480`; SHA-256 `c870481af7658000d060621c738401e2cb9030e6543dbbbe50427c16ba64e1ec`.
+- Format: PDF 1.6, 192 pages. PDF page 1 is an added Black Vault identification page; page 2 is a National Archives cover. The mirror is therefore not a clean byte-for-byte official-source Artifact.
+- Content: the signed January 13, 1981 “Unexplained Lights” memorandum is visibly present at PDF page 19. Only 40 of 192 pages produced non-empty extracted text; 152 produced none. The memo page has an OCR/text layer, but it is too corrupted for exact quotation.
+- Locator decision: preserve the complete 192-page mirror as acquired, record the added mirror cover, and cite the memo through a bounded operator-authored transcription Surface plus page/page-region Locator to PDF page 19. Do not cite its broken OCR text as exact evidence.
+
+#### Halt recording access copy
+
+- Retrieval: HTTP 200 from the named Avalon Library route; no redirect; response reported `audio/mpeg`.
+- Bytes: `2,189,367`; SHA-256 `97ec012712bb18e2f3fe3d6726f3e9923138de1bf99647d0bc9feb8bfe3fbdc4`.
+- Detected media: despite the `.mp3` filename and response type, the bytes are a QuickTime/MOV container carrying one mono MP3 audio stream at 16 kHz and approximately 16 kb/s.
+- Duration: 1,093 seconds (`18:13`). The stream decoded end to end without error. Its embedded `2010-12-30` creation-time tag describes this digital file, not the 1980 recording event or chain of custody.
+- Locator decision: time ranges target this exact captured audio Artifact. Any Desk transcript is a derived Surface. The source identity and generational history remain asserted by the acquisition host and Ridpath companion, not independently authenticated by container metadata.
+
+#### Ridpath transcript and recording-history companion
+
+- Retrieval: HTTP 200 from the named Avalon Library route; no redirect; response `Content-Type: application/pdf`.
+- Bytes: `303,854`; SHA-256 `a3a85fbf2bf944f7c6996bc4c93a5aa18d42dd4797a5aa0575bc539c5785e3f4`.
+- Format: PDF 1.7, 12 pages, usable text on all pages. Body text is extractable, though the first-page heading/sidebar layout does not extract cleanly.
+- Provenance content: the companion describes the recording as the second-sighting investigation in the early hours of December 28 and describes the available copy as made by playing a copy through a loudspeaker into a microphone. These remain Ridpath's source assertions, not verified custody facts.
+- Integrity lesson: the first transfer ended with only 32,768 local bytes despite a successful HTTP response and a declared 303,854-byte transfer. A clean retry matched the declared length and parsed successfully. HTTP success alone is not acquisition integrity.
+- Locator decision: this separately authored source may use a frozen page-text Surface with page/text ranges for its own statements. It is not the Desk-derived transcript of the audio.
+
+#### Mirrored Suffolk Constabulary packet
+
+- Retrieval: HTTP 302 from the named Internet Archive route to `ia801908.us.archive.org/29/items/BritishUFOFiles/unusuallights.pdf`, then HTTP 200.
+- Bytes: `231,927`; SHA-256 `c17f48a9948d15a7a0bbb1d833eda29873d2983ae0dd45b847b94891bcd4953c`.
+- Format: PDF 1.4, seven pages, no usable text layer on any page.
+- Content inspection: pages 1–2 are December 26, 1980 station/log material; page 3 is an October 1988 letter; page 4 is a November 1983 summary letter; page 5 is a January 2001 fax cover; pages 6–7 are a July 1999 letter. The material visibly presents Suffolk Constabulary letterhead/forms and redactions.
+- Identity limit: neither this mirror transfer nor the inspected PDF independently established the previously asserted publication-scheme document ID or completeness of the historical official release.
+- Locator decision: cited material requires bounded operator-authored transcription Surfaces plus page/page-region Locators to the exact scanned pages. Contemporaneous entries and later retrospective correspondence must remain distinct.
+
+### Corpus reconciliation outcome
+
+The three numbered corpus components are accepted without substitution: the mirrored MoD compilation; the Halt audio access copy with the Ridpath PDF as a separate provenance companion; and the mirrored Suffolk packet. The optional FOI response and image lead remain outside FILE-01.
+
+The verified corpus requires two document citation paths, not a general OCR system: operator transcription with page/region walkback for the MoD memo and Suffolk scans, and frozen page text for the Ridpath companion. Audio walkback targets the captured recording by time range. The reusable acquisition lesson is simple and worth preserving: HTTP 200 is not integrity; digest, byte count, parse/decode, and visual inspection all matter.
+
 ## Initial source corpus
 
-The following is the candidate implementation corpus, not yet captured into the Desk. Descriptions of contents, size, format, and archival correspondence remain verify-at-retrieval statements until the bounded pass above is recorded. Acquisition must preserve the retrieved bytes, retrieval metadata, asserted source identity, and the limitations below. A working URL is an acquisition route, not proof that the host is the origin or evidentiary authority.
+The following is the verified implementation corpus, not yet captured into the Desk. Acquisition must preserve the retrieved bytes, retrieval metadata, asserted source identity, and the limitations below. The verification digests identify the inspected candidates; the real Capture path must recompute them. A working URL is an acquisition route, not proof that the host is the origin or evidentiary authority.
 
 ### 1. MoD File DEFE 24/1948/1
 
-- **Expected role in the File:** Archival compilation expected to contain Lieutenant Colonel Charles Halt's signed “Unexplained Lights” memorandum and later government/public correspondence about the incident; verify against the retrieved bytes.
+- **Verified role in the File:** A 192-page mirrored compilation containing Lieutenant Colonel Charles Halt's signed “Unexplained Lights” memorandum at PDF page 19 and later government/public correspondence about the incident.
 - **Asserted archival identity candidate:** [The National Archives catalogue record C10342055](https://discovery.nationalarchives.gov.uk/details/r/C10342055), reference `DEFE 24/1948/1`. The verification pass must distinguish what the official catalogue establishes from what the mirror asserts about its bytes.
 - **Acquisition candidate:** [Public PDF mirror](https://documents.theblackvault.com/documents/ufos/UK/defe-24-1948.pdf).
 - **Required treatment:** Capture the complete available PDF as one Artifact. Represent the Halt memorandum as a bounded document Surface/Locator within that Artifact; do not count the embedded memorandum as a second independent source.
@@ -57,7 +107,7 @@ The following is the candidate implementation corpus, not yet captured into the 
 
 ### 3. Suffolk Constabulary record packet
 
-- **Expected role in the File:** Police material expected to contain December 26 call/station entries and later correspondence, including an officer account relevant to reported marks and the Orford lighthouse; verify its pages and contents against the retrieved bytes.
+- **Verified role in the File:** A seven-page image-only packet containing December 26 station/log material and later 1983, 1988, 1999, and 2001 correspondence, including police statements relevant to the marks and Orford lighthouse.
 - **Asserted historical publication identity:** Suffolk Constabulary publication-scheme document ID `cdf0ea85-e6d5-4a75-bcd4-cb5e385eb526`; retain the source and verification state of this assertion.
 - **Acquisition candidate:** [Internet Archive PDF mirror](https://archive.org/download/BritishUFOFiles/unusuallights.pdf).
 - **Required treatment:** Capture the complete packet as one Artifact. Use page/region Locators that distinguish the contemporaneous entries from the 1983 and 1999 retrospective material.
@@ -73,7 +123,7 @@ The early landing-site photograph attributed to Master Sergeant Ray Gulyas remai
 
 ### Corpus boundary
 
-The three numbered sources are the implementation corpus unless the technical review identifies a concrete evidence-walkback blocker. Any substitution or material addition requires Steward reconciliation before implementation. The document-plus-audio mix is sufficient to prove media-neutral evidence authority in this slice; video and image processing remain deferred.
+The three numbered sources are the verified implementation corpus. The verified Locator paths are operator transcription plus page/region walkback for the MoD memo and Suffolk scans, frozen page text for citable Ridpath statements, and exact time ranges against the captured audio Artifact. Any substitution or material addition requires Steward reconciliation before implementation. The document-plus-audio mix is sufficient to prove media-neutral evidence authority in this slice; video and image processing remain deferred.
 
 ## Required end-to-end behavior
 
@@ -226,10 +276,10 @@ The read-only technical review is complete and has been reconciled into this dra
 
 Before the ticket becomes accepted:
 
-1. CHAZ authorizes the bounded corpus verification gate.
-2. The Steward records and reconciles the observed corpus facts, selects the honest document Locator path, and pins D01 to the supported event/night wording.
-3. The Steward confirms the smallest positive Decision-capability seam and the smallest application/migration/Vault shape without reopening FND-PG01.
-4. The Steward accepts this ticket and pins the exact clean Writer start commit.
+1. **Complete —** CHAZ authorized the bounded corpus verification gate on September 3, 2026.
+2. **Complete —** the Steward recorded and reconciled the observed corpus facts, selected the honest media-specific Locator paths, and bound D01 to the Halt-recording event without erasing the source-level date conflict.
+3. **Pending —** the Steward confirms the smallest positive Decision-capability seam and the smallest application/migration/Vault shape without reopening FND-PG01.
+4. **Pending —** the Steward accepts this ticket and pins the exact clean Writer start commit.
 
 A persistent PostgreSQL 18 target and any new credentials are authorized separately before real bootstrap/admission. No implementation Writer begins while this ticket remains draft.
 

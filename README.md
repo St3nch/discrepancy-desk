@@ -96,9 +96,10 @@ creation order, File count, Domain, priority, or truth.
 
 ## Current work boundary
 
-FILE-01's read-only technical design review is reconciled. The ticket remains a draft pending
-a CHAZ-authorized bounded verification of the real candidate corpus, final Steward
-reconciliation, and an exact clean Writer start commit.
+FILE-01's read-only technical design review and bounded real-corpus verification are
+complete. The ticket remains a draft pending final Steward confirmation of the positive
+Decision seam and smallest application/migration/Vault shape, followed by an exact clean
+Writer start commit.
 
 It does not include a public website, Quinton production, X/social tooling, autonomous
 research, broad Workspace UX, a universal ontology, graph-as-truth, general OCR or media
