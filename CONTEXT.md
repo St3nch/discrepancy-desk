@@ -33,10 +33,10 @@ _Avoid_: model summary as evidence, citation without preserved material, source 
 A governed acquisition act and receipt for external material. Recapturing later creates a new Capture/version; it never overwrites the earlier acquisition.
 
 **Artifact**:
-Immutable acquired bytes or material preserved by the Vault.
+Immutable acquired bytes or material preserved by the Vault. An Artifact may be an access copy several generations from the originating object; it is authoritative relative to Desk-derived Surfaces, while Capture provenance must state rather than conceal its custody and generational limits.
 
 **Surface**:
-A frozen, versioned representation of an Artifact used for inspection and citation. A better extractor creates a new Surface rather than mutating an old citation target.
+A frozen, versioned representation of an Artifact used for inspection and citation. It retains producing-method and payload-integrity provenance plus exact Artifact lineage. A better extractor creates a new Surface rather than mutating an old citation target.
 
 **Locator**:
 A durable address into one exact Artifact/Surface version.

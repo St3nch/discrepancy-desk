@@ -52,9 +52,10 @@ written note as Record.
 ## D4 — Evidence is media-neutral and originals retain authority
 
 **Decision:** Evidence follows `Capture → Artifact → Surface → Locator → Observation`
-across documents, images, audio, and video. Original media remains authoritative.
-OCR, transcripts, extracted frames, normalization, and enhancement are versioned derived
-Surfaces with explicit lineage.
+across documents, images, audio, and video. The captured Artifact remains authoritative
+relative to every Desk-derived Surface; Capture provenance states whether it is an original,
+access copy, or other known generation. OCR, transcripts, extracted frames, normalization,
+and enhancement are versioned derived Surfaces with explicit lineage.
 
 **Why:** The Desk must inspect and cite mixed media without silently replacing evidence
 with an extractor's interpretation.

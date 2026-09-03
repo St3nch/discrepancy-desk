@@ -145,8 +145,9 @@ closes it.
 - A File is a scope of investigative attention, not a scope of truth.
 - Workspace is not Record merely because it was written down.
 - A Discrepancy earns investigation; it does not earn a conclusion.
-- Original media remains evidence authority. Derived Surfaces retain explicit lineage and
-  never silently replace originals.
+- A captured Artifact remains evidence authority relative to its derived Surfaces. Capture
+  provenance states whether it is an original, access copy, or other known generation;
+  derived Surfaces retain explicit lineage and never silently replace it.
 - Quinton Clearance presents Files; Quinton does not investigate or create Record.
 - Publication is never autonomous. Human authorization binds the exact public content.
 - Do not invent universal truth, trust, suspicion, certainty, or evidence scores.

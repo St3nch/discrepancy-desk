@@ -172,7 +172,9 @@ File, or leak real creation order.
 and hosted operations may eventually be required.
 
 **Why not now:** The Desk is a local single-operator Product and FILE-01 does not require a
-network service.
+network service. This defers production human authentication and multi-user access; it does
+not waive FILE-01's positive capability separation between ordinary/model-facing Record work
+and human-authorized Decision admission.
 
 **Trigger:** A second human operator or non-local production client needs governed access.
 

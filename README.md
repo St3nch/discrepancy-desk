@@ -71,9 +71,10 @@ File
   → exact evidence walkback
 ```
 
-Original documents, images, audio, and video remain evidence authority. OCR, transcripts,
-extracted frames, normalization, and enhancement are derived Surfaces with explicit
-lineage; they never silently replace the original.
+Captured documents, images, audio, and video remain authoritative relative to Desk-derived
+Surfaces. Capture provenance states whether an Artifact is an original, access copy, or other
+known generation. OCR, transcripts, extracted frames, normalization, and enhancement retain
+explicit lineage; they never silently replace the captured Artifact.
 
 ## Active File
 
@@ -95,8 +96,9 @@ creation order, File count, Domain, priority, or truth.
 
 ## Current work boundary
 
-FILE-01 is a draft awaiting technical pre-implementation reconciliation against the real
-corpus and existing code seams.
+FILE-01's read-only technical design review is reconciled. The ticket remains a draft pending
+a CHAZ-authorized bounded verification of the real candidate corpus, final Steward
+reconciliation, and an exact clean Writer start commit.
 
 It does not include a public website, Quinton production, X/social tooling, autonomous
 research, broad Workspace UX, a universal ontology, graph-as-truth, general OCR or media
