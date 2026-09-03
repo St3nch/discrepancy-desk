@@ -4,7 +4,7 @@
 
 **Owner:** Project Steward
 
-**Designated Writer:** TBD after ticket reconciliation
+**Active Writer:** Assigned operationally when implementation begins. Any capable available model may serve, but only one Writer may mutate the shared worktree at a time.
 
 **Implementation start commit:** TBD. Implementation must start from the exact clean authority commit accepted by the Steward.
 
@@ -161,7 +161,7 @@ For audio-derived report material, walkback must continue through the transcript
 - PostgreSQL 18 is the authoritative structured Record store per ADR-0001.
 - Vault payload authority remains distinct from PostgreSQL structured Record state.
 - The FND-PG01 proof environment is not the application package and its scratch SQL is not a production migration.
-- The Writer must propose the smallest application/module and migration/bootstrap shape needed for this slice during pre-implementation review. Do not reopen the PostgreSQL decision or select a public UI framework merely because one will eventually be needed.
+- The pre-implementation review must propose the smallest application/module and migration/bootstrap shape needed for this slice. Do not reopen the PostgreSQL decision or select a public UI framework merely because one will eventually be needed.
 
 ## Explicitly out of scope
 
@@ -198,7 +198,7 @@ For audio-derived report material, walkback must continue through the transcript
 
 ## Pre-implementation review questions
 
-Before mutation, the designated Writer must inspect the accepted authority and answer only the technical questions needed to make this slice implementable:
+Before mutation, any capable available model may inspect the accepted authority and answer the technical questions needed to make this slice implementable:
 
 1. What is the smallest application/module boundary required now that `pyproject.toml` is explicitly proof-only?
 2. What minimal production migration/bootstrap mechanism should this first PostgreSQL slice use, and why is it no broader than FILE-01 needs?

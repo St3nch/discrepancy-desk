@@ -17,12 +17,15 @@ An accepted code-repository ADR may explicitly supersede an implementation choic
 ## Development authority
 
 - No ticket means no implementation.
-- One accepted implementation ticket has one designated Writer.
+- Available capable models may research, review, draft, or implement within the current task and ticket boundaries. Model/provider identity is an operational choice, not a permanent project role.
+- One accepted implementation ticket has one active Writer at a time. The Steward may assign or change the active Writer according to capability and availability without treating the model choice as a Product decision.
+- A Writer change requires an explicit handoff and the prior Writer must stop before the replacement mutates the shared worktree.
 - Implementation begins from the exact clean start commit named by the Steward.
-- The Writer does not change Product authority to make implementation convenient and does not widen scope because adjacent work is interesting.
+- The active Writer does not change Product authority to make implementation convenient and does not widen scope because adjacent work is interesting.
+- Review may use any available capable model and does not grant that model Product, Decision, publication, or continuing implementation authority.
 - Only one development agent touches the working tree at a time.
 - Do not push without explicit CHAZ authorization.
-- Do not make provider, credential, paid, production, or external-publication calls unless the current task explicitly authorizes them.
+- Already-available model accounts/subscriptions may be used for bounded project work without separate model-role authorization. New credentials, incremental paid API spend, production calls, and external publication still require explicit CHAZ authorization.
 
 ## Product invariants
 
