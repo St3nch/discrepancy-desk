@@ -14,7 +14,7 @@ Both axes run as **parallel sub-agents** so they don't pollute each other's cont
 
 Desk review keeps Pocock's independent **Standards** and **Spec** axes and adds project-specific seam checks. It does not require `docs/agents/issue-tracker.md`.
 
-- Use the shared canonical skill under `.agents/skills/`; Grok Build and Claude Code consume the same review method.
+- Use the shared canonical skill under `.agents/skills/`; every supported coding client consumes the same review method.
 - The fixed point should normally be the exact Steward-issued implementation start commit.
 - Prefer the accepted repository ticket/spec as the Spec source. External issue lookup is optional evidence, never authority by itself.
 - Read current Desk authority, canonical `CONTEXT.md` vocabulary, coding standards, and relevant ADR/spec/ticket before reviewing.

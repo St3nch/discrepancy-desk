@@ -8,19 +8,49 @@ disable-model-invocation: true
 
 ## Discrepancy Desk mode
 
-The Desk setup is deliberately governed. **Do not run the generic scaffolding process below in this repository.** Treat the remaining upstream text as reference material only.
+The Desk setup is governed. **Do not run the generic scaffolding process below in this
+repository.** Treat the remaining upstream text as reference material only.
+
+### Validate the Product authority foundation
+
+The canonical single-repository foundation is:
+
+```text
+VISION.md
+CONTEXT.md
+decisions/decisions.md
+decisions/deferred.md
+AGENTS.md
+codingstandards.md
+docs/adr/
+docs/specs/       created when accepted normative behavior needs one
+docs/tickets/
+```
+
+- `VISION.md` owns Product purpose and boundaries.
+- `CONTEXT.md` is the concise single-context ubiquitous-language glossary.
+- `decisions/decisions.md` records settled Product/project choices.
+- `decisions/deferred.md` records deliberately unbuilt work with triggers.
+- `AGENTS.md` defines authority, roles, workflow, and external-effect gates.
+- `docs/design/` is non-authoritative Foundation Model v2 workshop/history.
+- This repository is the sole active Discrepancy Desk authority. Do not create or consult
+  a sibling Desk repository as a second authority.
+
+If any required authority file is absent or contradictory, report the gap to the VedaOps
+Project Steward. Do not fabricate Product content merely to satisfy a template.
 
 ### Validate shared project skill wiring
 
-The canonical project-local skill copies live under `.agents/skills/` and are shared by both supported coding agents:
+The canonical project-local skill copies live under `.agents/skills/` and are shared by
+supported coding clients:
 
 ```text
 .agents/skills/   canonical reviewed copies
-.grok/skills/     Grok Build links
-.claude/skills/   Claude Code links
+.grok/skills/     Grok links
+.claude/skills/   Claude links
 ```
 
-Confirm these approved skills are present and available to both agents:
+Confirm these approved skills are present and available to both clients:
 
 - `setup-matt-pocock-skills`
 - `ask-matt`
@@ -46,15 +76,20 @@ Confirm these approved skills are present and available to both agents:
 
 ### Validate Desk policy only
 
-- `skills-lock.json` is installer/upstream provenance only. Do not invent private lockfile fields for Desk policy.
-- Local adaptations live in `.agents/skills/` and Git history. Never blindly overwrite them during an upstream refresh.
-- Do not create `docs/agents/`, triage labels, `CONTEXT-MAP.md`, or an issue-tracker configuration merely because upstream defaults to them.
-- Desk tickets are currently governed repository artifacts, not a GitHub-label state machine.
-- During Foundation Model v2, `docs/design/` is non-authoritative workshop material; do not create authority files merely to satisfy setup conventions.
-- Once accepted, the Desk expects a concise root `CONTEXT.md`, with authority and role rules defined by the eventual `AGENTS.md` and accepted ADR/spec/ticket structure.
-- No skill setup or refresh authorizes a push, provider/network action, credential use, production mutation, or Product decision.
+- `skills-lock.json` is installer/upstream provenance only. Do not invent private
+  lockfile fields for Desk policy.
+- Local adaptations live in `.agents/skills/` and Git history. Never blindly overwrite
+  them during an upstream refresh.
+- Do not create `docs/agents/`, triage labels, `CONTEXT-MAP.md`, or issue-tracker
+  configuration merely because upstream defaults to them.
+- Desk tickets are governed repository artifacts, not a GitHub-label state machine.
+- CHAZ is Product Owner. Codex is the exclusive VedaOps Project Steward. Other models may
+  perform bounded tasks but do not receive Steward authority.
+- No skill setup or refresh authorizes implementation, push, provider/network action,
+  credentials, production mutation, publication, or Product decisions.
 
-Report discrepancies to the Project Steward and stop. Do not ask generic setup questions or write generic scaffolding in Desk mode.
+Report discrepancies to the Project Steward and stop. Do not ask generic setup questions
+or write generic scaffolding in Desk mode.
 
 ---
 

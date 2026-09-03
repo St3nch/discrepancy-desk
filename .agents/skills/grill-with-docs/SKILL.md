@@ -6,33 +6,41 @@ disable-model-invocation: true
 
 # Grill with Docs — Discrepancy Desk mode
 
-Use the project-local `grilling` and `domain-modeling` skills together to stress-test a design before it becomes authority.
+Use the project-local `grilling` and `domain-modeling` skills together to stress-test a
+design before it becomes authority.
 
 ## Preflight
 
-1. Use the canonical project-local skill copy under `.agents/skills/`; Grok Build and Claude Code are consumers of the same project method.
-2. Read the current Desk authority relevant to the subject. During Foundation Model v2, `docs/design/` is explicitly workshop material, not authority.
-3. Once `VISION.md`, `CONTEXT.md`, `AGENTS.md`, accepted ADRs/specs, and tickets exist, respect that hierarchy and surface conflicts rather than silently overriding it.
-4. Invoke the project-local `grilling` and `domain-modeling` skills only.
+1. Use the canonical project-local skill copies under `.agents/skills/`.
+2. Read `VISION.md`, `CONTEXT.md`, both decision registers, and relevant accepted
+   ADRs/specs/tickets.
+3. Treat `docs/design/` as non-authoritative Foundation Model v2 workshop/history.
+4. Surface conflicts instead of silently choosing the convenient source.
+5. Invoke only the project-local `grilling` and `domain-modeling` skills.
 
 ## Process
 
-1. Grill the current design using concrete scenarios and edge cases. Question Product facts; do not invent them.
-2. Use `domain-modeling` to challenge nouns, boundaries, relationships, and ADR candidacy.
+1. Grill the current idea using concrete scenarios and edge cases. Question Product facts;
+   do not invent them.
+2. Use `domain-modeling` to challenge nouns, boundaries, relationships, and genuine ADR
+   candidacy.
 3. Distinguish clearly among:
    - current accepted authority;
-   - current non-authoritative design material;
+   - non-authoritative research or workshop material;
    - new proposals from this session.
-4. End with a bounded proposal package containing, as relevant:
+4. For exploratory CHAZ questions, teach first, evaluate fit and trade-offs second,
+   recommend third, and leave the consequential decision to CHAZ.
+5. End with a bounded proposal package containing, as relevant:
    - proposed canonical terms and avoided synonyms;
    - proposed decisions and rejected alternatives;
-   - proposed deferrals with trigger/cost of forgetting;
-   - ADR candidates only when hard to reverse, surprising without context, and based on a real trade-off;
+   - proposed deferrals with trigger and cost of forgetting;
+   - ADR candidates only when hard to reverse, surprising without context, and based on a
+     real trade-off;
    - unresolved Product questions for CHAZ.
-5. Stop for Project Steward reconciliation.
+6. Stop for Project Steward reconciliation.
 
 ## Boundary
 
-Skill output is working input, not authority. Do not autonomously promote proposals into `VISION.md`, `CONTEXT.md`, ADRs, specs, tickets, schema, or implementation.
-
-During Foundation Model v2, the first calibration target is reversible identity: improve the model without creating noun sprawl or a second truth path.
+Skill output is working input, not authority. Do not autonomously promote proposals into
+`VISION.md`, `CONTEXT.md`, decisions, ADRs, specs, tickets, schema, or implementation.
+Codex is the Project Steward; another model using this skill does not acquire that role.

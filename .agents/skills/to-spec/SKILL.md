@@ -10,9 +10,9 @@ This skill takes the current conversation context and codebase understanding and
 
 Desk mode supersedes upstream issue-tracker publication behavior.
 
-- Use the canonical project-local skill under `.agents/skills/`; Grok Build and Claude Code consume the same adapted method.
+- Use the canonical project-local skill under `.agents/skills/`; every supported coding client consumes the same adapted method.
 - Work only from already-reconciled Product/design context. Do not reopen settled Product choices merely because upstream normally asks for tracker setup.
-- Read current Desk authority and canonical `CONTEXT.md` vocabulary once those exist. During Foundation Model v2, distinguish `docs/design/` workshop material from accepted authority.
+- Read `VISION.md`, canonical `CONTEXT.md`, both decision registers, and relevant accepted ADR/spec/ticket authority. Treat `docs/design/` only as non-authoritative workshop/history.
 - **Do not publish a spec to GitHub, GitLab, or another external tracker and do not apply triage labels.**
 - Produce a non-authoritative draft spec for Project Steward review. The Steward decides whether it is discarded, revised, retained as working material, or promoted into an accepted normative spec.
 - Prefer existing test seams and keep the number of new seams small, but do not let a convenient seam redefine Product behavior.

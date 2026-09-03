@@ -25,6 +25,10 @@ _Avoid_: treating notes as Evidence or Observations
 **Vault**:
 The authority for preserved evidence payloads and immutable acquired material. Structured Record state may refer to the Vault but does not replace payload authority.
 
+**Evidence**:
+Preserved source material whose exact version and acquisition provenance can be verified. Evidence can show what a source contains or presents; it does not automatically prove a world-fact Claim.
+_Avoid_: model summary as evidence, citation without preserved material, source assertion as universal truth
+
 **Capture**:
 A governed acquisition act and receipt for external material. Recapturing later creates a new Capture/version; it never overwrites the earlier acquisition.
 

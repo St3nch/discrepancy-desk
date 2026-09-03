@@ -9,16 +9,22 @@ Actively build and sharpen the project's domain model as you design. This is the
 
 ## Discrepancy Desk preflight
 
-1. Use the canonical project-local skill copy under `.agents/skills/`; Grok Build and Claude Code consume the same adapted skill.
-2. During Foundation Model v2, read `docs/design/FOUNDATION-MODEL-V2.md` and the relevant `docs/design/CONTRACT-*.md` files before proposing model changes.
-3. `docs/design/` is non-authoritative workshop material. Do not silently treat a committed design draft as settled Product authority.
-4. Once accepted, the Desk expects one concise root `CONTEXT.md` as the canonical ubiquitous-language glossary. Do not create `CONTEXT-MAP.md` or multiple bounded-context glossaries unless the actual project later proves that need.
-5. The Project Steward reconciles accepted vocabulary and ADRs into authority. During the foundation phase this skill proposes; it does not self-promote proposals.
+1. Use the canonical project-local skill copy under `.agents/skills/`; supported coding
+   clients consume the same adapted skill.
+2. Read `VISION.md`, `CONTEXT.md`, both decision registers, and the relevant accepted
+   ADR/spec/ticket before proposing model changes.
+3. Treat `docs/design/` as non-authoritative Foundation Model v2 workshop/history. It may
+   provide scenarios or rejected alternatives but cannot override current authority.
+4. Keep one concise root `CONTEXT.md` as the canonical ubiquitous-language glossary. Do
+   not create `CONTEXT-MAP.md` or multiple bounded-context glossaries unless the actual
+   project later proves that need.
+5. Task models propose terminology or ADR candidates. Codex, as Project Steward,
+   reconciles authority; CHAZ resolves consequential Product choices.
 
 ## Desk modeling rules
 
 - Preserve `Observation → Claim → Decision`; do not collapse source-local evidence, proposition, and human authority.
-- Treat Case as scope of investigative attention unless a worked example proves Case-local truth is necessary.
+- Treat File as the scope of investigative attention. Foundation Model `Case` is the same object, not a second noun or truth scope.
 - Prefer one candidate-intelligence envelope over noun proliferation.
 - Identity resolution must remain reversible and must not rewrite historical evidence provenance.
 - Relationship is currently a Claim shape/projection, not a second truth system, unless evidence forces a different model.
@@ -57,7 +63,7 @@ If a `CONTEXT-MAP.md` exists at the root, the repo has multiple contexts. The ma
 
 Create files lazily: only when you have something to write. If no `CONTEXT.md` exists, create one when the first term is resolved. If no `docs/adr/` exists, create it when the first ADR is needed.
 
-For the Desk foundation phase, do **not** create `CONTEXT.md` merely because upstream normally would. Propose reconciled entries first; the Steward will create or promote authority when Foundation Model v2 is ready.
+The Desk already has one accepted root `CONTEXT.md`. Propose only terms that a concrete scenario proves distinct, and update that canonical glossary through Steward reconciliation.
 
 ## During the session
 
@@ -79,7 +85,7 @@ When the user states how something works, check whether the code agrees. If you 
 
 ### Reconcile CONTEXT.md deliberately
 
-In ordinary mature-project use, resolved terms should be captured promptly in `CONTEXT.md`. During Foundation Model v2, return the proposed term, definition, avoided synonyms, affected existing concepts, and concrete scenarios to the Project Steward instead of writing authority directly. Use [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) as a formatting reference when promotion is authorized.
+Resolved terms should be captured promptly in `CONTEXT.md`. A task model returns the proposed term, definition, avoided synonyms, affected concepts, and concrete scenarios to the Project Steward rather than self-promoting authority. Use [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) as a formatting reference.
 
 `CONTEXT.md` should be totally devoid of implementation details. Do not treat `CONTEXT.md` as a spec, a scratch pad, or a repository for implementation decisions. It is a glossary and nothing else.
 

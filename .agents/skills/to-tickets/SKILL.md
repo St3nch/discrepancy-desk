@@ -12,7 +12,7 @@ Break a plan, spec, or conversation into a set of **tickets**: tracer-bullet ver
 
 Desk mode supersedes upstream issue-tracker publication behavior.
 
-- Use the shared canonical project skill under `.agents/skills/`; Grok Build and Claude Code consume the same adapted method.
+- Use the shared canonical project skill under `.agents/skills/`; every supported coding client consumes the same adapted method.
 - Work from an accepted spec, accepted design boundary, or explicit Steward request. Generated ticket text is a proposal until the Project Steward reconciles and accepts it.
 - Prefer tracer-bullet vertical slices with observable behavior and explicit blocking edges.
 - Keep each implementation ticket small enough for one fresh Writer context and one reviewable implementation commit.

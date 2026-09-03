@@ -11,11 +11,11 @@ Implementation starts only when all are true:
 - there is one final accepted Desk ticket;
 - the Project Steward supplied an exact implementation start commit;
 - the worktree/branch is clean at that commit;
-- exactly one Writer is designated for the ticket: Grok Build or Claude Code.
+- exactly one capable available model is designated as Writer for the ticket.
 
 The Writer may read the whole repository but must keep mutation inside the accepted ticket and project role boundaries. Do not edit Product authority merely to make implementation easier. Report adjacent work instead of silently broadening scope.
 
-Use the shared canonical project skill under `.agents/skills/`; Grok Build and Claude Code must follow the same implementation method.
+Use the shared canonical project skill under `.agents/skills/`; every supported coding client follows the same implementation method. Writer selection does not grant Project Steward authority.
 
 ### Implementation loop
 
