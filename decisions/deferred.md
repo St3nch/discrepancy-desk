@@ -43,7 +43,7 @@ The Pillar says where the idea belongs in the Product. Provider, model, library,
 and ticket names are not Pillars.
 
 Each durable entry preserves its disposition, Pillar, Clock, direction/question, why it
-matters, why not now, promotion trigger, deliberate revisit point, evidence basis, cost of
+matters, why not now, review trigger, deliberate revisit point, evidence basis, cost of
 forgetting, and explicit `Not authorized` boundary. Do not pre-design the eventual
 implementation inside this register.
 
@@ -66,7 +66,7 @@ sessions without turning weak mirrors or secondary summaries into authority.
 institutional source identity, acquisition routes, search tactics, access limitations,
 credibility or custody cautions, and topic-specific versus general research value.
 
-**Promotion trigger:** The Rendlesham investigation produces repeated source-discovery
+**Review trigger:** The Rendlesham investigation produces repeated source-discovery
 knowledge that would materially improve another research pass or File.
 
 **Revisit point:** After real `DD-7225` runtime commissioning and its first research/friction
@@ -98,7 +98,7 @@ become shadow Record or disappear across sessions.
 **Why not now:** FILE-01 needs only enough operator workflow to complete one real File.
 Workspace must not become Record by convenience.
 
-**Promotion trigger:** Real investigation is materially slowed by handling ordinary working
+**Review trigger:** Real investigation is materially slowed by handling ordinary working
 material outside the Product.
 
 **Revisit point:** After real `DD-7225` commissioning, using measured operator friction rather
@@ -128,7 +128,7 @@ rather than becoming ad hoc pseudo-authority.
 
 **Why not now:** FILE-01 needs only bounded derived Surfaces for material it actually cites.
 
-**Promotion trigger:** Repeated real captures require the same processing and manual treatment
+**Review trigger:** Repeated real captures require the same processing and manual treatment
 is materially limiting research.
 
 **Revisit point:** At FILE-02 planning even if the trigger has not fired, solely to confirm
@@ -160,7 +160,7 @@ must remain authoritative relative to every derived Surface.
 **Why not now:** FILE-01 requires only the minimum time-coded audio Surface needed for
 representative Observations. Video is not required.
 
-**Promotion trigger:** A real File needs repeatable processing beyond the bounded FILE-01
+**Review trigger:** A real File needs repeatable processing beyond the bounded FILE-01
 path.
 
 **Revisit point:** At FILE-02 planning even if the trigger has not fired, solely to confirm
@@ -192,7 +192,7 @@ must not quietly overwrite contemporaneous testimony.
 **Why not now:** One File can preserve explicit source dependence manually. Broad reusable
 machinery needs repeated examples.
 
-**Promotion trigger:** Multiple sources or Files make independence and retelling lineage a
+**Review trigger:** Multiple sources or Files make independence and retelling lineage a
 recurring investigative question.
 
 **Revisit point:** After the first real `DD-7225` living report explicitly states what its
@@ -224,7 +224,7 @@ places, and aliases without making names accidental identity.
 **Why not now:** FILE-01 does not require a general Entity system unless its real corpus
 proves otherwise.
 
-**Promotion trigger:** A File cannot honestly connect or distinguish people, organizations,
+**Review trigger:** A File cannot honestly connect or distinguish people, organizations,
 places, or aliases without durable governed resolution.
 
 **Revisit point:** At FILE-02 closure if no earlier File triggers it.
@@ -255,7 +255,7 @@ a second authority layer.
 **Why not now:** They are rebuildable access aids, not Record authority, and one File does
 not justify a platform.
 
-**Promotion trigger:** Measured investigation or evidence-walkback work becomes materially
+**Review trigger:** Measured investigation or evidence-walkback work becomes materially
 difficult with direct governed reads.
 
 **Revisit point:** After the second completed real File if measured pain has not triggered
@@ -286,7 +286,7 @@ human scope, capture, spend, and admission authority remain explicit.
 **Why not now:** Authority, scope, spend, capture, source safety, and admission behavior
 must first be proven through human-directed real work.
 
-**Promotion trigger:** Repeated Files establish a bounded research operation whose inputs,
+**Review trigger:** Repeated Files establish a bounded research operation whose inputs,
 outputs, refusals, and human checkpoints can be stated precisely.
 
 **Revisit point:** During the first major Product review after multiple completed real Files.
@@ -317,7 +317,7 @@ without becoming a second investigation.
 **Why not now:** The investigative Record and living internal report must become real
 before public presentation is designed.
 
-**Promotion trigger:** A File contains material worth showing and CHAZ chooses an outward
+**Review trigger:** A File contains material worth showing and CHAZ chooses an outward
 artifact.
 
 **Revisit point:** At MVP/outward-artifact review even if no website is selected.
@@ -347,7 +347,7 @@ governed File material rather than becoming investigative authority.
 
 **Why not now:** Quinton requires governed File material and a real editorial need.
 
-**Promotion trigger:** CHAZ selects a File and format for outward presentation.
+**Review trigger:** CHAZ selects a File and format for outward presentation.
 
 **Revisit point:** When the first outward Rendition is selected, or at the same MVP review
 used for F9 if that occurs first.
@@ -377,7 +377,7 @@ may preserve or display.
 
 **Why not now:** No current File or publication requires platform integration.
 
-**Promotion trigger:** A real investigation needs social testimony or an approved outward
+**Review trigger:** A real investigation needs social testimony or an approved outward
 plan requires a specific platform operation.
 
 **Revisit point:** Before any social-source Record acquisition or outward platform
@@ -409,7 +409,7 @@ real creation order or inventing semantic meaning.
 
 **Why not now:** `DD-7225` is selected and only one File exists.
 
-**Promotion trigger:** Before assigning the second public File ID.
+**Review trigger:** Before assigning the second public File ID.
 
 **Revisit point:** Immediately before the second public File ID is selected.
 
@@ -440,7 +440,7 @@ network service. This defers production human authentication and multi-user acce
 not waive FILE-01's positive capability separation between ordinary/model-facing Record work
 and human-authorized Decision admission.
 
-**Promotion trigger:** A second human operator or non-local production client needs governed
+**Review trigger:** A second human operator or non-local production client needs governed
 access.
 
 **Revisit point:** Before granting a second operator or non-local client any Desk access.
@@ -472,7 +472,7 @@ faithfully or safely otherwise.
 **Why not now:** FILE-01 uses a deliberately small manually verified corpus. The existence
 of a tool or provider does not create a Product requirement.
 
-**Promotion trigger:** A concrete source cannot be captured faithfully through the accepted
+**Review trigger:** A concrete source cannot be captured faithfully through the accepted
 path, or repeated manual acquisition creates demonstrated cost or risk.
 
 **Revisit point:** At FILE-02 acquisition planning if no earlier source triggers it.
@@ -507,14 +507,14 @@ human decides.
 **Why not now:** FILE-01 has not yet measured real operator reading/citation friction, and no
 model proposal/admission workflow has been proven against real Record material.
 
-**Promotion trigger:** Real File work shows that manually locating and binding evidence
+**Review trigger:** Real File work shows that manually locating and binding evidence
 materially limits investigation or model-assisted review.
 
 **Revisit point:** After real `DD-7225` commissioning and its friction review.
 
-**Evidence basis:** September 2026 Fable ecosystem research, Steward reconciliation, and
-CHAZ acceptance of provider-independent model-assisted exact evidence locating as a future
-direction.
+**Evidence basis:** `research/2026-09-04-fable-5.1-product-ecosystem-review-reconciliation.md`,
+Steward reconciliation, and CHAZ acceptance of provider-independent model-assisted exact
+evidence locating as a future direction.
 
 **Cost of forgetting:** Later model integration may default to floating citations, raw-PDF
 chat, or provider-specific references that cannot become durable Desk Locators.
@@ -543,15 +543,16 @@ history could break Desk walkback doctrine.
 **Why not now:** No active File requires provider-restricted material, and the answer may
 depend on the exact provider, acquisition route, agreement, and publication use.
 
-**Promotion trigger:** A real File requires material whose acquisition or retention terms
+**Review trigger:** A real File requires material whose acquisition or retention terms
 conflict with ordinary immutable preservation, or a provider integration with deletion or
 synchronization obligations is proposed.
 
 **Revisit point:** Before authorizing the first such acquisition/provider path; also during
 any future F11 social-acquisition review.
 
-**Evidence basis:** September 2026 X/API retention-policy research plus CHAZ/Steward
-discussion distinguishing source payload, historical reporting, and later source deletion.
+**Evidence basis:** `research/2026-09-04-fable-5.1-product-ecosystem-review-reconciliation.md`
+plus CHAZ/Steward reconciliation distinguishing source payload, historical reporting, and
+later source deletion.
 
 **Cost of forgetting:** The Desk could either retain material it was required to remove or
 destroy evidence history without an explicit governed doctrine for why walkback changed.

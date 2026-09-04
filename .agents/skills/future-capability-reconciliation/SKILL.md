@@ -65,13 +65,14 @@ Record:
 - Direction or exact unresolved Question
 - Why it matters
 - Why not now
-- observable Promotion trigger
+- observable Review trigger
 - deliberate Revisit point
 - Evidence basis and useful origin
 - Cost of forgetting
 - explicit **Not authorized** boundary
 
-The trigger says when a fresh review is earned. It never auto-promotes work.
+The review trigger says when a fresh review is earned. It never auto-promotes work; only a
+fresh CHAZ Product decision may promote an item into the normal project chain.
 
 ## 5. Preserve implementation uncertainty
 

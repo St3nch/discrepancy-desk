@@ -1,6 +1,6 @@
 # FILE-01: First real investigative File
 
-**Status:** post-review remediation in progress — implementation re-acceptance and real FILE-01 runtime commissioning pending
+**Status:** implementation accepted — real FILE-01 runtime commissioning pending
 
 **Owner:** Project Steward
 

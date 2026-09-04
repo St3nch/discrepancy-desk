@@ -120,7 +120,7 @@ The durable lifecycle is:
 
 `decisions/deferred.md` is the canonical Desk register for **Accepted Direction** and
 durable **Research Required** items. Each such item carries a primary Product Pillar, one
-Four-Horizon Clock position (`CURRENT`, `NEXT`, `TRIGGERED`, or `HORIZON`), a promotion
+Four-Horizon Clock position (`CURRENT`, `NEXT`, `TRIGGERED`, or `HORIZON`), a review
 trigger, a deliberate revisit point, evidence basis, cost of forgetting, and an explicit
 `Not authorized` boundary. A trigger firing or revisit arriving creates a review
 obligation, never automatic implementation.
@@ -204,7 +204,7 @@ not claim a green suite proves a substrate or behavior it never exercised.
 
 When a material future capability is accepted or requires durable research, reconcile it
 into `decisions/deferred.md` with its disposition, Pillar, Clock, direction/question,
-promotion trigger, revisit point, evidence basis, cost of forgetting, and explicit
+review trigger, revisit point, evidence basis, cost of forgetting, and explicit
 `Not authorized` boundary. Deferred means unbuilt, not pre-approved backlog.
 
 > Code the scaffold. Do not code the taste.
@@ -221,6 +221,7 @@ promotion trigger, revisit point, evidence basis, cost of forgetting, and explic
 | Normative specifications | `docs/specs/` | yes when accepted |
 | Implementation tickets | `docs/tickets/` | yes as bounded work units |
 | Foundation workshop/history | `docs/design/` | no |
+| Research/reviewer inputs | `research/` | no; evidence input only until reconciled |
 | Project-local skills | `.agents/skills/` | working method, not Product authority |
 
 Create directories only when they have real content. Do not create auxiliary indexes,
@@ -231,9 +232,10 @@ demonstrated need.
 
 Reviewed project-local skills live under `.agents/skills/`. Most existing skills are adapted
 Matt Pocock methods; VedaOps/Desk-specific working methods may live there too. Claude Code
-and Grok consume canonical skills through `.claude/skills/` and `.grok/skills/` links when
-configured, but the canonical source remains `.agents/skills/` and may be read directly.
-Do not fork separate client-specific adaptations.
+and Grok consume canonical skills through `.claude/skills/` and `.grok/skills/` links or
+thin pointer wrappers when configured, but the canonical behavior remains
+`.agents/skills/` and may be read directly. Do not fork separate client-specific
+adaptations.
 
 `skills-lock.json` records upstream installer provenance only. Local policy lives in the
 adapted skills and Git history. An upstream refresh is a comparison exercise, never

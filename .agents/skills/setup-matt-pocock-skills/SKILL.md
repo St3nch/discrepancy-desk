@@ -30,7 +30,8 @@ docs/tickets/
 - `VISION.md` owns Product purpose and boundaries.
 - `CONTEXT.md` is the concise single-context ubiquitous-language glossary.
 - `decisions/decisions.md` records settled Product/project choices.
-- `decisions/deferred.md` records deliberately unbuilt work with triggers.
+- `decisions/deferred.md` records accepted/research-required future direction with
+  Pillar/Clock placement, review triggers, revisit points, and non-authorization boundaries.
 - `AGENTS.md` defines authority, roles, workflow, and external-effect gates.
 - `docs/design/` is non-authoritative Foundation Model v2 workshop/history.
 - This repository is the sole active Discrepancy Desk authority. Do not create or consult
@@ -46,9 +47,12 @@ supported coding clients:
 
 ```text
 .agents/skills/   canonical reviewed copies
-.grok/skills/     Grok links
-.claude/skills/   Claude links
+.grok/skills/     Grok links or thin canonical-pointer wrappers
+.claude/skills/   Claude links or thin canonical-pointer wrappers
 ```
+
+Client pointer wrappers may contain only discovery metadata plus an instruction to read the
+canonical `.agents/skills/<name>/SKILL.md`; behavior must not be duplicated there.
 
 Confirm these approved skills are present and available to both clients:
 
@@ -73,6 +77,7 @@ Confirm these approved skills are present and available to both clients:
 - `resolving-merge-conflicts`
 - `handoff`
 - `wizard`
+- `future-capability-reconciliation`
 
 ### Validate Desk policy only
 
