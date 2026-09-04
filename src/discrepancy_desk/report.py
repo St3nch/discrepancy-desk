@@ -9,6 +9,8 @@ from typing import Any
 from psycopg import Connection
 
 from discrepancy_desk.errors import EvidenceContractError, RecordNotFoundError
+from discrepancy_desk.evidence import verify_file_evidence
+from discrepancy_desk.vault import Vault
 
 
 def render_file_report(conn: Connection, *, file_public_id: str) -> str:
@@ -156,6 +158,7 @@ def render_file_report(conn: Connection, *, file_public_id: str) -> str:
 
 def walkback(
     conn: Connection,
+    vault: Vault,
     *,
     object_kind: str,
     object_id: str,
@@ -205,10 +208,28 @@ def walkback(
 
     if not observation_ids:
         raise EvidenceContractError("Record object has no Observation evidence path")
+    file_public_ids = [
+        str(row[0])
+        for row in conn.execute(
+            """
+            SELECT DISTINCT f.public_id
+            FROM desk.file_observation fo
+            JOIN desk.file f ON f.file_id = fo.file_id
+            WHERE fo.observation_id = ANY(%s::uuid[])
+            ORDER BY f.public_id
+            """,
+            (observation_ids,),
+        ).fetchall()
+    ]
+    if not file_public_ids:
+        raise EvidenceContractError("Observation evidence is not associated with a File")
+    for file_public_id in file_public_ids:
+        verify_file_evidence(conn, vault, file_public_id=file_public_id)
     observations = [_observation_walkback(conn, value) for value in observation_ids]
     return {
         "object_kind": object_kind,
         "object_id": object_id,
+        "verified_file_public_ids": file_public_ids,
         "observations": observations,
     }
 
@@ -321,6 +342,7 @@ def _observation_walkback(
                 "excerpt": {
                     "excerpt_id": str(excerpt_id),
                     "exact_text": exact_text,
+                    "exact_text_authority": "non_authoritative_convenience_copy",
                 },
                 "locator": {
                     "locator_id": str(locator_id),

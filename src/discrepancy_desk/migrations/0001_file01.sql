@@ -52,7 +52,22 @@ CREATE TABLE desk.capture (
         CHECK (identity_verification_state IN ('unverified', 'contested')),
     identity_verification_basis text,
     provenance_note text NOT NULL CHECK (btrim(provenance_note) <> ''),
-    admission_order bigint NOT NULL REFERENCES desk.record_admission
+    admission_order bigint NOT NULL REFERENCES desk.record_admission,
+    CHECK (
+        (asserted_source_identity IS NULL OR btrim(asserted_source_identity) <> '')
+        AND (asserted_by IS NULL OR btrim(asserted_by) <> '')
+        AND (identity_verification_basis IS NULL OR btrim(identity_verification_basis) <> '')
+        AND
+        (asserted_source_identity IS NULL) = (asserted_by IS NULL)
+    ),
+    CHECK (
+        identity_verification_state <> 'contested'
+        OR (
+            asserted_source_identity IS NOT NULL
+            AND asserted_by IS NOT NULL
+            AND identity_verification_basis IS NOT NULL
+        )
+    )
 );
 
 CREATE TABLE desk.file_capture (
@@ -141,6 +156,32 @@ ALTER TABLE desk.surface
     REFERENCES desk.locator
     DEFERRABLE INITIALLY DEFERRED;
 
+CREATE FUNCTION desk.require_surface_source_locator_artifact()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM desk.locator locator
+        LEFT JOIN desk.surface located_surface
+          ON located_surface.surface_id = locator.surface_id
+        WHERE locator.locator_id = NEW.source_locator_id
+          AND NEW.artifact_id = COALESCE(locator.artifact_id, located_surface.artifact_id)
+    ) THEN
+        RAISE EXCEPTION 'Surface Artifact must match its source Locator target Artifact'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER require_surface_source_locator_artifact
+AFTER INSERT ON desk.surface
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION desk.require_surface_source_locator_artifact();
+
 CREATE TABLE desk.excerpt (
     excerpt_id uuid PRIMARY KEY,
     locator_id uuid NOT NULL REFERENCES desk.locator,
@@ -151,6 +192,71 @@ CREATE TABLE desk.excerpt (
     digest text NOT NULL CHECK (digest ~ '^[0-9a-f]{64}$'),
     admission_order bigint NOT NULL REFERENCES desk.record_admission
 );
+
+CREATE FUNCTION desk.require_excerpt_surface_locator_binding()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    locator_surface_id uuid;
+BEGIN
+    SELECT locator.surface_id
+    INTO locator_surface_id
+    FROM desk.locator locator
+    WHERE locator.locator_id = NEW.locator_id;
+
+    IF locator_surface_id IS NOT NULL THEN
+        IF NEW.surface_id IS NOT NULL
+           AND NEW.surface_id IS DISTINCT FROM locator_surface_id THEN
+            RAISE EXCEPTION 'Excerpt Surface must match its Locator Surface'
+                USING ERRCODE = '23514';
+        END IF;
+    ELSIF NEW.surface_id IS NULL OR NOT EXISTS (
+        SELECT 1
+        FROM desk.surface surface
+        WHERE surface.surface_id = NEW.surface_id
+          AND surface.source_locator_id = NEW.locator_id
+    ) THEN
+        RAISE EXCEPTION 'Excerpt Surface must derive from its Locator'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER require_excerpt_surface_locator_binding
+AFTER INSERT ON desk.excerpt
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION desk.require_excerpt_surface_locator_binding();
+
+CREATE FUNCTION desk.require_excerpt_capture_locator_artifact()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM desk.capture capture
+        JOIN desk.locator locator
+          ON locator.locator_id = NEW.locator_id
+        LEFT JOIN desk.surface surface
+          ON surface.surface_id = locator.surface_id
+        WHERE capture.capture_id = NEW.capture_id
+          AND capture.artifact_id = COALESCE(locator.artifact_id, surface.artifact_id)
+    ) THEN
+        RAISE EXCEPTION 'Excerpt Capture must contain its Locator target Artifact'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER require_excerpt_capture_locator_artifact
+AFTER INSERT ON desk.excerpt
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION desk.require_excerpt_capture_locator_artifact();
 
 CREATE TABLE desk.observation (
     observation_id uuid PRIMARY KEY,
@@ -171,6 +277,92 @@ CREATE TABLE desk.observation_excerpt (
     admission_order bigint NOT NULL REFERENCES desk.record_admission,
     PRIMARY KEY (observation_id, excerpt_id)
 );
+
+CREATE FUNCTION desk.require_observation_excerpt()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM desk.observation_excerpt evidence
+        WHERE evidence.observation_id = NEW.observation_id
+          AND evidence.admission_order = NEW.admission_order
+    ) THEN
+        RAISE EXCEPTION 'Observation requires an Excerpt evidence path'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER require_observation_excerpt
+AFTER INSERT ON desk.observation
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION desk.require_observation_excerpt();
+
+CREATE FUNCTION desk.require_observation_excerpt_file()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM desk.file_observation observation_file
+        WHERE observation_file.observation_id = NEW.observation_id
+          AND NOT EXISTS (
+              SELECT 1
+              FROM desk.excerpt excerpt
+              JOIN desk.file_capture file_capture
+                ON file_capture.capture_id = excerpt.capture_id
+               AND file_capture.file_id = observation_file.file_id
+              WHERE excerpt.excerpt_id = NEW.excerpt_id
+          )
+    ) THEN
+        RAISE EXCEPTION 'Every Observation File must include its Excerpt Capture'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER require_observation_excerpt_file
+AFTER INSERT ON desk.observation_excerpt
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION desk.require_observation_excerpt_file();
+
+CREATE FUNCTION desk.require_file_observation_captures()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM desk.observation_excerpt observation_evidence
+        JOIN desk.excerpt excerpt
+          ON excerpt.excerpt_id = observation_evidence.excerpt_id
+        WHERE observation_evidence.observation_id = NEW.observation_id
+          AND NOT EXISTS (
+              SELECT 1
+              FROM desk.file_capture file_capture
+              WHERE file_capture.file_id = NEW.file_id
+                AND file_capture.capture_id = excerpt.capture_id
+          )
+    ) THEN
+        RAISE EXCEPTION 'Observation File must include every Excerpt Capture'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER require_file_observation_captures
+AFTER INSERT ON desk.file_observation
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW
+EXECUTE FUNCTION desk.require_file_observation_captures();
 
 CREATE TABLE desk.claim (
     claim_id uuid PRIMARY KEY,

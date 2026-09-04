@@ -13,7 +13,11 @@ from urllib.parse import urlsplit
 from psycopg import Connection
 
 from discrepancy_desk.db import admission
-from discrepancy_desk.errors import EvidenceContractError, RecordNotFoundError
+from discrepancy_desk.errors import (
+    EvidenceContractError,
+    RecordNotFoundError,
+    VaultIntegrityError,
+)
 from discrepancy_desk.vault import PayloadRef, Vault
 
 
@@ -69,10 +73,13 @@ def capture_local_file(
         raise EvidenceContractError(
             "Verified source identity is unavailable until a durable verification seam exists"
         )
-    if bool(asserted_source_identity) != bool(asserted_by):
+    asserted_identity_present = bool(asserted_source_identity and asserted_source_identity.strip())
+    asserting_source_present = bool(asserted_by and asserted_by.strip())
+    if asserted_identity_present != asserting_source_present:
         raise EvidenceContractError("A source-identity assertion requires its asserting source")
-    if identity_verification_state == "contested" and not all(
-        (asserted_source_identity, asserted_by, identity_verification_basis)
+    basis_present = bool(identity_verification_basis and identity_verification_basis.strip())
+    if identity_verification_state == "contested" and not (
+        asserted_identity_present and asserting_source_present and basis_present
     ):
         raise EvidenceContractError("Contested source identity requires an assertion and basis")
     if not provenance_note.strip() or not relevance_note.strip():
@@ -86,7 +93,17 @@ def capture_local_file(
         raise EvidenceContractError("Capture requires a valid expected SHA-256 and byte size")
     _validate_media_metadata(detected_media_type, page_count, duration_ms)
 
-    payload = vault.put_file(source_path, detected_media_type)
+    try:
+        payload = vault.put_file(
+            source_path,
+            detected_media_type,
+            expected_sha256=expected_sha256,
+            expected_byte_size=expected_byte_size,
+        )
+    except VaultIntegrityError as exc:
+        raise EvidenceContractError(
+            "Captured bytes do not match the accepted digest and byte size"
+        ) from exc
     if payload.digest != expected_sha256 or payload.byte_size != expected_byte_size:
         raise EvidenceContractError("Captured bytes do not match the accepted digest and byte size")
 

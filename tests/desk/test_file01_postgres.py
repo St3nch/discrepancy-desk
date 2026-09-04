@@ -5,13 +5,25 @@ import os
 import shutil
 import subprocess
 import sys
+import uuid
 from datetime import UTC, datetime
 
 import psycopg
 import pytest
 
-from discrepancy_desk.db import MIGRATIONS, apply_migrations, bootstrap_database, connect_url
-from discrepancy_desk.errors import ConfigurationError, EvidenceContractError, MigrationDriftError
+from discrepancy_desk.db import (
+    MIGRATIONS,
+    admission,
+    apply_migrations,
+    bootstrap_database,
+    connect_url,
+)
+from discrepancy_desk.errors import (
+    ConfigurationError,
+    EvidenceContractError,
+    MigrationDriftError,
+    VaultIntegrityError,
+)
 from discrepancy_desk.evidence import (
     add_document_page_locator,
     add_document_text_locator,
@@ -37,7 +49,7 @@ from discrepancy_desk.vault import Vault
 def admin_connection():
     database_url = os.environ.get("VEDAOPS_POSTGRES_URL")
     if not database_url:
-        pytest.skip("requires the governed disposable PostgreSQL 18 task")
+        pytest.fail("the full test suite requires governed disposable PostgreSQL 18")
     conn = connect_url(database_url)
     bootstrap_database(conn)
     try:
@@ -310,6 +322,7 @@ def file01_record(app_connection, human_connection, tmp_path_factory):
     )
     return {
         "vault": vault,
+        "data_root": data_root,
         "file_id": file_id,
         "capture": capture,
         "recapture": recapture,
@@ -317,6 +330,7 @@ def file01_record(app_connection, human_connection, tmp_path_factory):
         "excerpt_id": excerpt_id,
         "observation_id": observation_id,
         "page_locator_id": page_locator_id,
+        "page_text_locator_id": page_text_locator_id,
         "page_text_surface": page_text_surface,
         "page_text_observation_id": page_text_observation_id,
         "audio_capture": audio_capture,
@@ -345,6 +359,7 @@ def test_full_slice_renders_durable_refs_and_walks_back(app_connection, file01_r
 
     result = walkback(
         app_connection,
+        file01_record["vault"],
         object_kind="claim_version",
         object_id=file01_record["claim"].claim_version_id,
     )
@@ -359,6 +374,7 @@ def test_full_slice_renders_durable_refs_and_walks_back(app_connection, file01_r
 def test_audio_walkback_terminates_at_captured_recording(app_connection, file01_record) -> None:
     result = walkback(
         app_connection,
+        file01_record["vault"],
         object_kind="observation",
         object_id=file01_record["audio_observation_id"],
     )
@@ -424,6 +440,7 @@ def test_page_text_walkback_exposes_surface_integrity_and_lineage(
 ) -> None:
     result = walkback(
         app_connection,
+        file01_record["vault"],
         object_kind="observation",
         object_id=file01_record["page_text_observation_id"],
     )
@@ -431,6 +448,7 @@ def test_page_text_walkback_exposes_surface_integrity_and_lineage(
     evidence = result["observations"][0]["evidence"][0]
     surface = evidence["surface"]
     assert evidence["locator"]["locator_kind"] == "document_page_char_range"
+    assert evidence["excerpt"]["exact_text_authority"] == "non_authoritative_convenience_copy"
     assert surface["surface_kind"] == "document_page_text"
     assert surface["digest"] == file01_record["page_text_surface"].payload.digest
     assert surface["text_length"] == len("Frozen page text for a separately authored source.")
@@ -474,6 +492,8 @@ def test_capture_refuses_unverified_bytes_and_unavailable_verified_identity(
     source = tmp_path / "candidate.bin"
     source.write_bytes(b"not the accepted bytes")
     vault = Vault(tmp_path.resolve())
+    actual_digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    rejected_vault_path = tmp_path / f"vault/sha256/{actual_digest[:2]}/{actual_digest}"
     common = {
         "file_public_id": "DD-7225",
         "source_path": source,
@@ -498,6 +518,7 @@ def test_capture_refuses_unverified_bytes_and_unavailable_verified_identity(
             identity_verification_state="unverified",
             **common,
         )
+    assert not rejected_vault_path.exists()
     with pytest.raises(EvidenceContractError, match="Verified source identity is unavailable"):
         capture_local_file(
             app_connection,
@@ -543,6 +564,330 @@ def test_file_evidence_verification_recomputes_every_boundary(
     assert result.surfaces_verified == 3
     assert result.locators_verified == 3
     assert result.excerpts_verified == 3
+
+
+def test_walkback_fails_loudly_when_vault_payload_is_missing(app_connection, file01_record) -> None:
+    ref = file01_record["page_text_surface"].payload
+    payload_path = file01_record["data_root"] / ref.vault_key
+    original = payload_path.read_bytes()
+    payload_path.unlink()
+    try:
+        with pytest.raises(VaultIntegrityError, match="missing"):
+            walkback(
+                app_connection,
+                file01_record["vault"],
+                object_kind="observation",
+                object_id=file01_record["page_text_observation_id"],
+            )
+    finally:
+        payload_path.write_bytes(original)
+        payload_path.chmod(0o444)
+
+
+def test_database_refuses_observation_without_excerpt(app_connection) -> None:
+    with (
+        pytest.raises(psycopg.errors.CheckViolation) as refused,
+        admission(app_connection, label="refuse uncitable Observation") as admission_order,
+    ):
+        app_connection.execute(
+            """
+            INSERT INTO desk.observation (observation_id, statement, admission_order)
+            VALUES (%s, %s, %s)
+            """,
+            (
+                str(uuid.uuid4()),
+                "This raw Observation has no preserved evidence path.",
+                admission_order,
+            ),
+        )
+    assert refused.value.sqlstate == "23514"
+
+
+def test_database_refuses_cross_file_excerpt(app_connection, file01_record) -> None:
+    open_file(
+        app_connection,
+        public_id="DD-9999",
+        subject="Synthetic unrelated File",
+        investigation_question="Can evidence cross File boundaries without Capture relevance?",
+    )
+    with pytest.raises(psycopg.errors.CheckViolation, match="Excerpt Capture") as refused:
+        admit_observation(
+            app_connection,
+            file_public_id="DD-9999",
+            statement="This must not cite another File's Capture.",
+            excerpt_ids=[file01_record["excerpt_id"]],
+        )
+    assert refused.value.sqlstate == "23514"
+
+
+def test_database_refuses_excerpt_capture_for_different_locator_artifact(
+    app_connection, file01_record
+) -> None:
+    exact_text = "Synthetic mismatched Excerpt that must never become Record."
+    digest = hashlib.sha256(exact_text.encode("utf-8")).hexdigest()
+    with (
+        pytest.raises(psycopg.errors.CheckViolation, match="Locator target Artifact") as refused,
+        admission(app_connection, label="refuse mismatched Excerpt Capture") as order,
+    ):
+        app_connection.execute(
+            """
+            INSERT INTO desk.excerpt (
+                excerpt_id, locator_id, surface_id, capture_id, exact_text,
+                hash_algorithm, digest, admission_order
+            )
+            VALUES (%s, %s, %s, %s, %s, 'sha256', %s, %s)
+            """,
+            (
+                str(uuid.uuid4()),
+                file01_record["page_locator_id"],
+                file01_record["surface"].surface_id,
+                file01_record["audio_capture"].capture_id,
+                exact_text,
+                digest,
+                order,
+            ),
+        )
+    assert refused.value.sqlstate == "23514"
+
+
+def test_database_refuses_surface_with_wrong_source_artifact(app_connection, file01_record) -> None:
+    payload = file01_record["page_text_surface"].payload
+    with (
+        pytest.raises(
+            psycopg.errors.CheckViolation, match="source Locator target Artifact"
+        ) as refused,
+        admission(app_connection, label="refuse mismatched Surface lineage") as order,
+    ):
+        app_connection.execute(
+            """
+            INSERT INTO desk.surface (
+                surface_id, artifact_id, surface_kind, produced_by_method,
+                produced_by_actor, produced_by_version, produced_at,
+                hash_algorithm, digest, byte_size, media_type, text_length,
+                vault_key, source_locator_id, admission_order
+            )
+            VALUES (
+                %s, %s, 'operator_transcription', 'synthetic_direct_sql',
+                'integration-test operator', NULL, %s,
+                %s, %s, %s, %s, 1, %s, %s, %s
+            )
+            """,
+            (
+                str(uuid.uuid4()),
+                file01_record["audio_capture"].artifact_id,
+                datetime(2026, 9, 4, tzinfo=UTC),
+                payload.hash_algorithm,
+                payload.digest,
+                payload.byte_size,
+                payload.media_type,
+                payload.vault_key,
+                file01_record["page_locator_id"],
+                order,
+            ),
+        )
+    assert refused.value.sqlstate == "23514"
+
+
+def test_database_refuses_surface_locator_self_cycle(app_connection, file01_record) -> None:
+    payload = file01_record["page_text_surface"].payload
+    surface_id = str(uuid.uuid4())
+    locator_id = str(uuid.uuid4())
+    with (
+        pytest.raises(psycopg.errors.CheckViolation, match="document text Locator") as refused,
+        admission(app_connection, label="refuse Surface Locator self-cycle") as order,
+    ):
+        app_connection.execute(
+            """
+            INSERT INTO desk.surface (
+                surface_id, artifact_id, surface_kind, produced_by_method,
+                produced_by_actor, produced_by_version, produced_at,
+                hash_algorithm, digest, byte_size, media_type, text_length,
+                vault_key, source_locator_id, admission_order
+            )
+            VALUES (
+                %s, %s, 'document_page_text', 'synthetic_direct_sql',
+                'integration-test operator', NULL, %s,
+                %s, %s, %s, %s, 1, %s, %s, %s
+            )
+            """,
+            (
+                surface_id,
+                file01_record["capture"].artifact_id,
+                datetime(2026, 9, 4, tzinfo=UTC),
+                payload.hash_algorithm,
+                payload.digest,
+                payload.byte_size,
+                payload.media_type,
+                payload.vault_key,
+                locator_id,
+                order,
+            ),
+        )
+        app_connection.execute(
+            """
+            INSERT INTO desk.locator (
+                locator_id, locator_kind, contract_version, artifact_id, surface_id,
+                page_number, start_char, end_char, start_ms, end_ms, admission_order
+            )
+            VALUES (%s, 'document_page_char_range', 1, NULL, %s, 1, 0, 1, NULL, NULL, %s)
+            """,
+            (locator_id, surface_id, order),
+        )
+    assert refused.value.sqlstate == "23514"
+
+
+def test_database_refuses_excerpt_surface_not_derived_from_locator(
+    app_connection, file01_record
+) -> None:
+    alternate_locator_id = add_document_page_locator(
+        app_connection,
+        artifact_id=file01_record["capture"].artifact_id,
+        page_number=1,
+    )
+    alternate_surface = add_text_surface(
+        app_connection,
+        file01_record["vault"],
+        artifact_id=file01_record["capture"].artifact_id,
+        source_locator_id=alternate_locator_id,
+        surface_kind="operator_transcription",
+        text="Alternate bounded transcription for relational binding proof.",
+        produced_by_method="operator_transcription",
+        produced_by_actor="integration-test operator",
+        produced_by_version=None,
+        produced_at=datetime(2026, 9, 4, tzinfo=UTC),
+    )
+    exact_text = "Synthetic relational mismatch that walkback must not have to discover."
+    digest = hashlib.sha256(exact_text.encode("utf-8")).hexdigest()
+    with (
+        pytest.raises(
+            psycopg.errors.CheckViolation, match="Surface must derive from its Locator"
+        ) as refused,
+        admission(app_connection, label="refuse mismatched Excerpt Surface") as order,
+    ):
+        app_connection.execute(
+            """
+            INSERT INTO desk.excerpt (
+                excerpt_id, locator_id, surface_id, capture_id, exact_text,
+                hash_algorithm, digest, admission_order
+            )
+            VALUES (%s, %s, %s, %s, %s, 'sha256', %s, %s)
+            """,
+            (
+                str(uuid.uuid4()),
+                file01_record["page_locator_id"],
+                alternate_surface.surface_id,
+                file01_record["capture"].capture_id,
+                exact_text,
+                digest,
+                order,
+            ),
+        )
+    assert refused.value.sqlstate == "23514"
+
+
+def test_database_refuses_text_range_excerpt_with_different_surface(
+    app_connection, file01_record
+) -> None:
+    exact_text = "Synthetic wrong Surface selection."
+    digest = hashlib.sha256(exact_text.encode("utf-8")).hexdigest()
+    with (
+        pytest.raises(
+            psycopg.errors.CheckViolation, match="Surface must match its Locator Surface"
+        ) as refused,
+        admission(app_connection, label="refuse text-range Excerpt Surface mismatch") as order,
+    ):
+        app_connection.execute(
+            """
+            INSERT INTO desk.excerpt (
+                excerpt_id, locator_id, surface_id, capture_id, exact_text,
+                hash_algorithm, digest, admission_order
+            )
+            VALUES (%s, %s, %s, %s, %s, 'sha256', %s, %s)
+            """,
+            (
+                str(uuid.uuid4()),
+                file01_record["page_text_locator_id"],
+                file01_record["surface"].surface_id,
+                file01_record["capture"].capture_id,
+                exact_text,
+                digest,
+                order,
+            ),
+        )
+    assert refused.value.sqlstate == "23514"
+
+
+def test_database_refuses_late_cross_file_observation_link(app_connection, file01_record) -> None:
+    unrelated_file_id = open_file(
+        app_connection,
+        public_id="DD-9998",
+        subject="Synthetic late-linked File",
+        investigation_question="Can a citable Observation be linked to an unrelated File?",
+    )
+    with (
+        pytest.raises(psycopg.errors.CheckViolation, match="every Excerpt Capture") as refused,
+        admission(app_connection, label="refuse late cross-File Observation link") as order,
+    ):
+        app_connection.execute(
+            """
+            INSERT INTO desk.file_observation (file_id, observation_id, admission_order)
+            VALUES (%s, %s, %s)
+            """,
+            (unrelated_file_id, file01_record["observation_id"], order),
+        )
+    assert refused.value.sqlstate == "23514"
+
+
+@pytest.mark.parametrize(
+    ("verification_state", "asserted_identity", "asserted_by", "verification_basis"),
+    [
+        ("unverified", "An assertion without its source", None, None),
+        ("contested", "A contested assertion", "test operator", None),
+        ("contested", "A contested assertion", "test operator", "   "),
+    ],
+)
+def test_database_refuses_incomplete_capture_identity(
+    app_connection,
+    file01_record,
+    verification_state,
+    asserted_identity,
+    asserted_by,
+    verification_basis,
+) -> None:
+    payload = file01_record["capture"].payload
+    with (
+        pytest.raises(psycopg.errors.CheckViolation) as refused,
+        admission(app_connection, label="refuse malformed Capture identity") as order,
+    ):
+        app_connection.execute(
+            """
+            INSERT INTO desk.capture (
+                capture_id, artifact_id, acquisition_url, acquisition_host,
+                retrieved_at, reported_media_type, expected_hash_algorithm,
+                expected_digest, expected_byte_size, asserted_source_identity,
+                asserted_by, identity_verification_state,
+                identity_verification_basis, provenance_note, admission_order
+            )
+            VALUES (
+                %s, %s, 'https://example.test/invalid-identity', 'example.test',
+                %s, 'application/pdf', 'sha256', %s, %s, %s, %s, %s, %s,
+                'Synthetic database refusal proof.', %s
+            )
+            """,
+            (
+                str(uuid.uuid4()),
+                file01_record["capture"].artifact_id,
+                datetime(2026, 9, 4, tzinfo=UTC),
+                payload.digest,
+                payload.byte_size,
+                asserted_identity,
+                asserted_by,
+                verification_state,
+                verification_basis,
+                order,
+            ),
+        )
+    assert refused.value.sqlstate == "23514"
 
 
 def test_record_is_append_only_even_for_admin(admin_connection, file01_record) -> None:

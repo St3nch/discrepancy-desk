@@ -1,6 +1,6 @@
 # FILE-01: First real investigative File
 
-**Status:** implementation accepted — real FILE-01 runtime commissioning pending
+**Status:** post-review remediation in progress — implementation re-acceptance and real FILE-01 runtime commissioning pending
 
 **Owner:** Project Steward
 
@@ -371,12 +371,31 @@ The read-only technical review and the bounded corpus verification are complete.
 accepted their behavioral findings, rejected premature module/table proliferation, and settled
 only the minimum implementation contracts above.
 
-The bounded FILE-01 application implementation is accepted. Steward verification on September 3,
-2026 ran format and lint checks, the unchanged FND-PG01 PostgreSQL 18 proof suite, and the full
-application test suite against governed disposable PostgreSQL 18. After repairing one malformed
-SQL fragment in the new production migration, the application suite completed with 268 passing
-tests. No real File Record, persistent database, credential, source acquisition, human Decision,
-public action, or push occurred during implementation acceptance.
+The bounded FILE-01 application implementation previously entered Steward acceptance after the
+September 3, 2026 verification pass. A later independent implementation review exposed additional
+integrity gaps around rejected Capture bytes, Vault-backed walkback verification, database-level
+Observation evidence enforcement, Capture identity assertions, and cross-File Observation/Excerpt
+binding. After targeted remediation and review, the Steward performed a separate SQL-grain lineage
+audit and independently reproduced two additional admissible bad states: a derived Surface could
+name a source Locator for a different Artifact, and an Excerpt could bind a Surface that did not
+derive from its Locator. The working tree now rejects both states in PostgreSQL and also proves that
+a Surface/Locator self-cycle fails closed.
+
+A fresh independent post-remediation review then returned READY after reading authority and the full
+dirty tree, running the full application suite plus FND-PG01 on disposable PostgreSQL 18.6, and
+performing additional direct-SQL, lineage, cycle, recapture, File-sharing, Vault-integrity, and
+login-role capability probes. The Steward separately reconciled its two low residual observations:
+raw direct SQL can store a non-authoritative Excerpt convenience text/digest pair that verification
+later rejects, and the human capability can insert an otherwise orphan Decision row outside the
+operator function. Neither is a FILE-01 acceptance blocker: the governed application path refuses
+or avoids those states, report/walkback does not launder them into evidence authority, and the
+accepted ticket does not require a general database-only payload verifier or a broader human
+Decision workflow constraint program.
+
+FILE-01 implementation acceptance is therefore restored on this tree. Final governed checks are
+green: 280 application/proof tests against disposable PostgreSQL 18, format, lint, and the unchanged
+FND-PG01 PostgreSQL 18 foundation proofs. No real File Record, persistent database, credential,
+source acquisition, human Decision, public action, or push has occurred during this reconciliation.
 
 FILE-01 remains open for real runtime commissioning. A persistent PostgreSQL 18 target and new
 runtime credentials, the absolute Desk data root, reacquisition of the accepted corpus onto the

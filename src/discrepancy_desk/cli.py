@@ -310,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "report":
             print(render_file_report(conn, file_public_id=args.file), end="")
         elif args.command == "walkback":
-            _print(walkback(conn, object_kind=args.kind, object_id=args.id))
+            _print(walkback(conn, _vault(), object_kind=args.kind, object_id=args.id))
         elif args.command == "verify":
             _print(
                 asdict(

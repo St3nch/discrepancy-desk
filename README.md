@@ -99,10 +99,11 @@ creation order, File count, Domain, priority, or truth.
 
 ## Current work boundary
 
-FILE-01's bounded application slice is implemented and proven against governed disposable
-PostgreSQL 18. It provides the production migration, content-addressed Vault, evidence and
-Record operations, capability-separated Decision path, living internal report, exact
-walkback, and a small operator command surface.
+FILE-01's bounded application implementation is accepted after independent post-remediation
+review and Steward reconciliation. The accepted slice is green against governed disposable
+PostgreSQL 18 and provides the production migration, content-addressed Vault, evidence and Record
+operations, capability-separated Decision path, living internal report, fail-closed walkback, and
+a small operator command surface.
 
 No real File Record has been admitted by the implementation tests. Reacquiring the
 accepted corpus onto the VPS, creating a persistent database and runtime credentials, choosing

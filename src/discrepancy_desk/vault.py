@@ -34,11 +34,23 @@ class Vault:
         self._data_root = data_root
         self._vault_root = data_root / "vault"
 
-    def put_file(self, source: Path, media_type: str) -> PayloadRef:
+    def put_file(
+        self,
+        source: Path,
+        media_type: str,
+        *,
+        expected_sha256: str | None = None,
+        expected_byte_size: int | None = None,
+    ) -> PayloadRef:
         if not source.is_file():
             raise ConfigurationError(f"Capture source is not a regular file: {source}")
         with source.open("rb") as stream:
-            return self._put_stream(stream, media_type)
+            return self._put_stream(
+                stream,
+                media_type,
+                expected_sha256=expected_sha256,
+                expected_byte_size=expected_byte_size,
+            )
 
     def put_bytes(self, payload: bytes, media_type: str) -> PayloadRef:
         with tempfile.SpooledTemporaryFile() as stream:
@@ -58,7 +70,14 @@ class Vault:
     def verify(self, ref: PayloadRef) -> None:
         self._assert_payload(self._path_for_key(ref.vault_key), ref)
 
-    def _put_stream(self, stream: BinaryIO, media_type: str) -> PayloadRef:
+    def _put_stream(
+        self,
+        stream: BinaryIO,
+        media_type: str,
+        *,
+        expected_sha256: str | None = None,
+        expected_byte_size: int | None = None,
+    ) -> PayloadRef:
         if not media_type or "/" not in media_type:
             raise ConfigurationError("A concrete media type is required")
         staging_root = self._vault_root / ".staging"
@@ -77,6 +96,12 @@ class Vault:
                 os.fsync(target.fileno())
 
             digest_hex = digest.hexdigest()
+            digest_mismatch = expected_sha256 is not None and digest_hex != expected_sha256
+            size_mismatch = expected_byte_size is not None and byte_size != expected_byte_size
+            if digest_mismatch or size_mismatch:
+                raise VaultIntegrityError(
+                    "Payload does not match its accepted digest and byte size"
+                )
             vault_key = f"vault/sha256/{digest_hex[:2]}/{digest_hex}"
             destination = self._data_root / vault_key
             destination.parent.mkdir(parents=True, exist_ok=True)
