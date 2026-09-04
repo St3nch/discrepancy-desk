@@ -2,4 +2,4 @@ schema_version = 1
 id = "discrepancy-desk"
 name = "Discrepancy Desk"
 mutable = true
-capabilities = ["read", "write", "patch", "execute"]
+capabilities = ["read", "write", "patch", "execute", "grok_review"]
