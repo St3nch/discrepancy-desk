@@ -11,7 +11,7 @@ Read the smallest relevant set in this order:
 1. `VISION.md` — Product purpose, boundaries, evidence doctrine, and current milestone.
 2. `CONTEXT.md` — canonical domain vocabulary.
 3. `decisions/decisions.md` — settled Product and project decisions.
-4. `decisions/deferred.md` — deliberately unbuilt work and its triggers.
+4. `decisions/deferred.md` — future/deferred direction, lifecycle disposition, Pillar/Clock placement, triggers, and revisit points.
 5. `README.md` — current repository orientation and implementation state.
 6. the exact accepted ticket under `docs/tickets/`.
 7. relevant accepted ADRs under `docs/adr/`.
@@ -92,6 +92,46 @@ appropriate authority file or existing ticket.
 Do not create status-document trees, duplicate handoffs, or competing authority merely to
 record that work happened. Update the existing canonical location.
 
+## Idea and capability lifecycle
+
+Ideas may originate from CHAZ, the Project Steward, Writers, reviewers, LLM research,
+external research, incidents, operator friction, or real Product use. Origin does not grant
+authority. A persuasive model suggestion and a casual human brainstorm both begin as
+proposals until they are reconciled.
+
+For a material future idea, do not end with “later,” “eventually,” or “remember this.”
+Teach/explore it, evaluate it against live authority and evidence, recommend a disposition,
+and obtain CHAZ resolution when consequential. Then preserve the result if forgetting it
+would cause likely drift, repeated research, lost evidence, or accidental re-litigation.
+
+The durable lifecycle is:
+
+- **Exploring** — no Product judgment yet; no implementation authority.
+- **Rejected** — deliberately not part of the Product/approach; record in settled decision
+  authority only when the rejection itself must be remembered.
+- **Research Required** — the question matters but evidence is insufficient; bounded
+  research may be authorized separately.
+- **Accepted Direction** — the capability belongs in the Product if/when its conditions are
+  met; this is not backlog, priority, architecture, provider selection, or implementation
+  authorization.
+- **Promoted** — after a fresh CHAZ decision, the item may enter the normal authority,
+  spec/ticket, and implementation chain.
+- **Superseded** — later evidence or Product direction replaces the prior disposition.
+
+`decisions/deferred.md` is the canonical Desk register for **Accepted Direction** and
+durable **Research Required** items. Each such item carries a primary Product Pillar, one
+Four-Horizon Clock position (`CURRENT`, `NEXT`, `TRIGGERED`, or `HORIZON`), a promotion
+trigger, a deliberate revisit point, evidence basis, cost of forgetting, and an explicit
+`Not authorized` boundary. A trigger firing or revisit arriving creates a review
+obligation, never automatic implementation.
+
+LLM reports are research input, not backlog generators. The Steward reconciles material
+recommendations one by one; model confidence, repetition across models, token cost, or
+reviewer agreement cannot self-promote a suggestion. Use the project-local
+`future-capability-reconciliation` skill as the working method when a material idea needs
+durable disposition. Skill output remains working input until Steward reconciliation and
+any required CHAZ decision.
+
 ## Development method
 
 - No accepted ticket means no implementation.
@@ -162,9 +202,10 @@ Tests must defend visible behavior, valuable data, a durable invariant, a regres
 dangerous boundary. Do not build tests whose principal subject is test machinery, and do
 not claim a green suite proves a substrate or behavior it never exercised.
 
-When a larger capability is deliberately postponed, record only its direction, trigger,
-and cost of forgetting in `decisions/deferred.md`. Deferred means unbuilt, not pre-approved
-backlog.
+When a material future capability is accepted or requires durable research, reconcile it
+into `decisions/deferred.md` with its disposition, Pillar, Clock, direction/question,
+promotion trigger, revisit point, evidence basis, cost of forgetting, and explicit
+`Not authorized` boundary. Deferred means unbuilt, not pre-approved backlog.
 
 > Code the scaffold. Do not code the taste.
 
@@ -175,7 +216,7 @@ backlog.
 | Product vision | `VISION.md` | yes |
 | Canonical vocabulary | `CONTEXT.md` | yes |
 | Settled decisions | `decisions/decisions.md` | yes |
-| Deferred work | `decisions/deferred.md` | yes for the deferral, not its future design |
+| Future/deferred direction | `decisions/deferred.md` | yes for disposition, Pillar/Clock, trigger, revisit, and non-authorization boundary; not future design |
 | ADRs | `docs/adr/` | yes when accepted |
 | Normative specifications | `docs/specs/` | yes when accepted |
 | Implementation tickets | `docs/tickets/` | yes as bounded work units |
@@ -188,9 +229,11 @@ demonstrated need.
 
 ## Project-local skill policy
 
-Reviewed Matt Pocock skill adaptations live under `.agents/skills/`. Claude Code and Grok
-consume those canonical copies through `.claude/skills/` and `.grok/skills/`. Do not
-fork separate client-specific adaptations.
+Reviewed project-local skills live under `.agents/skills/`. Most existing skills are adapted
+Matt Pocock methods; VedaOps/Desk-specific working methods may live there too. Claude Code
+and Grok consume canonical skills through `.claude/skills/` and `.grok/skills/` links when
+configured, but the canonical source remains `.agents/skills/` and may be read directly.
+Do not fork separate client-specific adaptations.
 
 `skills-lock.json` records upstream installer provenance only. Local policy lives in the
 adapted skills and Git history. An upstream refresh is a comparison exercise, never
